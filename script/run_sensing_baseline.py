@@ -1,0 +1,102 @@
+import argparse
+
+import numpy as np
+
+from isac import PROJECT_ROOT
+from isac.system import System
+from isac.utils import set_random_seed
+
+
+def argument_parser() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 感知基线")
+
+    parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
+    parser.add_argument(
+        "--config_file", type=str, default="sensing_baseline.toml", help="配置文件路径"
+    )
+    parser.add_argument(
+        "--device",
+        "-d",
+        type=str,
+        default="cuda:0",
+        choices=["cuda:0", "cpu"],
+        help="计算设备类型",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="随机种子",
+    )
+    parser.add_argument(
+        "--domain",
+        type=str,
+        default="frequency",
+        choices=["frequency", "time"],
+        help="信道施加域：frequency 或 time",
+    )
+
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = argument_parser()  # 解析命令行参数
+    set_random_seed(args.seed)  # 设置随机种子
+    system = System(args)  # 创建系统实例
+
+    system.components.sensing_performance.display_performance()
+
+    script_out_dir = PROJECT_ROOT / "out" / "sensing_baseline"
+    script_out_dir.mkdir(parents=True, exist_ok=True)
+
+    system.components.rt_scene.render_to_file(
+        filename=script_out_dir / "sensing_baseline_scene.png"
+    )
+
+    domain = args.domain  # 获取域
+    system.components.rt_scene.get("reflector").velocity = [0, 0, -20]  # 设置反射器速度
+    system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]  # 设置基站1发射速度
+
+    x_rg = system.tx_symbols_to_resource_grid()
+
+    if domain == "frequency":
+        y_rg = system.apply_channel(x_rg, domain=domain)  # 信道
+    elif domain == "time":
+        x_time = system.components.modulator(x_rg)  # 调制到时域
+        y_time = system.apply_channel(x_time, domain=domain)  # 时域信道
+        y_rg = system.components.demodulator(y_time)  # 解调到频域
+    else:
+        raise ValueError(f"不支持的域: {domain}")
+
+    h = system.estimate_channel(x_rg, y_rg)
+
+    h_delay_doppler = system.components.delay_doppler_spectrum(h)  # 计算时延多普勒谱
+
+    system.components.delay_doppler_spectrum.visualize(
+        offset=20,
+        file_name=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
+        to_db=False,
+        metric_mode="delay_doppler",
+        backend="matplotlib",
+    )
+
+    system.components.music_estimator(
+        spectrum_tensor=h_delay_doppler,
+        metric_mode="dd",
+    )
+
+    print("Delay - LoS Path (ns) :", system.components.rt_scene.paths.tau[0, 0, 0] / 1e-9)
+    print("Doppler - LoS Path (Hz) :", system.components.rt_scene.paths.doppler[0, 0, 0])
+
+    print(
+        "Delay - Reflected Path (ns) :",
+        system.components.rt_scene.paths.tau[0, 0, 1].numpy() / 1e-9,
+    )
+    print(
+        "Doppler - Reflected Path (Hz) :",
+        system.components.rt_scene.paths.doppler[0, 0, 1],
+    )
+
+
+if __name__ == "__main__":
+    main()

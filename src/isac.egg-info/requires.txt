@@ -1,0 +1,9 @@
+torch
+numpy
+tensorflow
+pillow
+imageio
+matplotlib
+pandas
+tabulate
+scipy

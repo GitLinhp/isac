@@ -1,0 +1,18 @@
+# IDE / editor
+.cursor/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python test
+.pytest_cache/
+
+# Project dirs (excluded from repo)
+backup/
+CISSIR/
+data/
+docs/
+radarsimnb/
+SkySense-ISAC-Dataset-Generator-for-UAV-Localization-with-Sionna/
+labview/
+ISAC-Intelligent-Transportation-/

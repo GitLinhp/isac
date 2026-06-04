@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isac"
+version = "0.1.0"
+description = "ISAC Project"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "numpy",
+    "tqdm",
+    "tensorflow",
+    "pillow",
+    "imageio",
+    "matplotlib",
+    "pandas",
+    "tabulate",
+    "scipy",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+isac = ["**/*.py"]
+
+[tool.pytest.ini_options]
+# pytest 运行时自动添加 src 到 Python 路径
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:.*astroid.*:DeprecationWarning",
+    "ignore::DeprecationWarning:asttokens",
+]

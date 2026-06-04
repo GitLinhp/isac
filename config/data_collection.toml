@@ -1,0 +1,121 @@
+carrier_frequency = 26e9 # 载波频率(Hz)
+num_bits_per_symbol = 2  # QAM调制每个符号的比特数
+snr_db = 80              # 信噪比(dB)
+
+# OFDM参数
+[ofdm]
+num_symbols = 512            # 符号数
+num_subcarriers = 2048       # 子载波数
+num_valid_subcarriers = 2048 # 有效子载波数
+subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
+num_cyclic_prefix = 512      # 循环前缀长度
+l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
+# 射线追踪场景参数
+[rt_scene]
+# filename = "simple_street_canyon" # 场景文件名
+filename = "None"
+merge_shapes = false # 是否合并相同材质的形状
+
+# 相机参数
+[rt_scene.camera]
+# position = [0, 0, 250]
+position = [0, 0, 100]
+look_at = [0, 0, 0]
+
+# 天线阵列参数
+[rt_scene.antenna_arrays]
+# 发射天线阵列参数
+[rt_scene.antenna_arrays.tx_array]
+type = "PlanarArray"
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+# 接收天线阵列参数
+[rt_scene.antenna_arrays.rx_array]
+type = "PlanarArray"
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+
+# 收发机参数
+[rt_scene.transceivers]
+[rt_scene.transceivers.bs1]
+position = [0, 0, 30]
+look_at = [0, 0, 0]
+type = ["tx", "rx"]
+# power_dbm = 44        # 发射功率 (dBm)，对应 Sionna RT Transmitter
+# [rt_scene.transceivers.bs2]
+# position = [40, 0, 20]
+# look_at = [0, 0, 0]
+# type = ["tx", "rx"]
+
+# 目标材质参数
+[rt_scene.target_materials]
+[rt_scene.target_materials.car_material]
+type = "metal"
+thickness = 0.01
+color = [0, 0.2, 0.6]
+
+# 目标参数
+[rt_scene.targets]
+[rt_scene.targets.car]
+fname = "low_poly_car"
+material = "car_material"
+position = [0, 0, 0]
+velocity = [0, 0, 10]
+[rt_scene.targets.car.trajectory]
+points = [[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]]
+velocity = 5.0
+
+# 路径解析器参数
+[rt_scene.path_solver]
+max_depth = 1               # 最大路径交互次数
+max_num_paths_per_src = 1e6 # 每个信号源的最大路径数
+samples_per_src = 1e6       # 每个信号源的射线采样数
+los = true                  # 是否考虑LOS路径
+specular_reflection = true  # 是否考虑镜面反射
+diffuse_reflection = true   # 是否考虑漫反射
+refraction = true           # 是否考虑折射
+diffraction = true          # 是否考虑衍射
+edge_diffraction = true     # 是否考虑边缘衍射
+synthetic_array = true      # 是否使用合成阵列
+seed = 42                   # 随机种子
+
+# 感知参数
+[sensing]
+
+# 发射参考：binary（比特+QAM）| zc（Zadoff-Chu）；ZC 须 gcd(root_index, ofdm 网格 num_data_symbols)=1
+[sensing.source]
+type = "binary"
+# root_index = 1
+# normalize = true
+
+# 感知窗函数参数
+[sensing.windows]
+
+# # 时延窗函数参数
+# [sensing.windows.delay_window]
+# type = "chebwin" # 窗函数类型
+# at = 60          # 窗函数衰减(dB)
+
+# # 多普勒窗函数参数
+# [sensing.windows.doppler_window]
+# type = "chebwin" # 窗函数类型
+# at = 50          # 窗函数衰减(dB)
+
+# CFAR 参数
+[sensing.cfar]
+type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/processing.py）
+# k = 24               # 仅 type=os 时需要：有序统计索引
+guard = 2           # 保护单元
+trailing = 20       # 参考单元
+pfa = 1e-4          # 虚警率
+detector = "linear" # 检测器: linear | squarelaw
+# offset = 0.0         # 阈值缩放；不设置则按 pfa 自动计算
