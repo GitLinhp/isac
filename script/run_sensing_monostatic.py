@@ -14,10 +14,7 @@ import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import get_logger, select_peak_and_log_radial_rmse, set_random_seed
-
-
-logger = get_logger(__name__)
+from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
@@ -128,7 +125,6 @@ def main() -> None:
     )
 
     select_peak_and_log_radial_rmse(
-        logger,
         est_ranges=est_ranges,
         est_velocities=est_velocities,
         true_ranges=true_ranges,

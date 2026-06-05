@@ -21,10 +21,7 @@ from isac.sensing.localization import (
     position_rmse_xy,
 )
 from isac.system import System
-from isac.utils import get_logger, select_peak_and_log_radial_rmse, set_random_seed
-
-
-logger = get_logger(__name__)
+from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
 
 
 def _slug_tx_name(tx_name: str) -> str:
@@ -155,7 +152,7 @@ def main() -> None:
             metric_mode=args.metric_mode,
             backend="matplotlib",
         )
-        logger.info("协同感知 — 已保存 %s 时延–多普勒谱", tx_name)
+        print(f"协同感知 — 已保存 {tx_name} 时延–多普勒谱")
 
         spectra_stack.append(h_dd_tx)
         panel_labels.append(tx_name)
@@ -178,7 +175,6 @@ def main() -> None:
             velocity_label = "径向速度"
 
         _, _, est_range_m, est_velocity_mps, _ = select_peak_and_log_radial_rmse(
-            logger,
             est_ranges=est_ranges,
             est_velocities=est_velocities,
             true_ranges=true_range,
@@ -224,7 +220,7 @@ def main() -> None:
     )
 
     if mono_tx_name is None or bistatic_tx_name is None:
-        logger.warning(
+        print(
             "协同感知定位跳过：需要各 1 条单基地与双基地距离量测，"
             f"当前 mono_tx={mono_tx_name!r}, bistatic_tx={bistatic_tx_name!r}"
         )
@@ -256,24 +252,17 @@ def main() -> None:
         tx_pos=mono_tx_pos,
     )
     rmse_truth_ranges = position_rmse_xy(xy_truth_ranges, true_xy)
-    logger.info(
-        "协同感知 — z=0 平面定位 (真值距离 r_m=%.2f m, r_b=%.2f m) — "
-        "估计 (x,y)=(%.2f, %.2f) m, 真值 (%.2f, %.2f) m, 位置 RMSE: %.2f m",
-        r_m_true,
-        r_b_true,
-        xy_truth_ranges[0],
-        xy_truth_ranges[1],
-        true_xy[0],
-        true_xy[1],
-        rmse_truth_ranges,
+    print(
+        f"协同感知 — z=0 平面定位 (真值距离 r_m={r_m_true:.2f} m, r_b={r_b_true:.2f} m) — "
+        f"估计 (x,y)=({xy_truth_ranges[0]:.2f}, {xy_truth_ranges[1]:.2f}) m, "
+        f"真值 ({true_xy[0]:.2f}, {true_xy[1]:.2f}) m, 位置 RMSE: {rmse_truth_ranges:.2f} m"
     )
 
     r_leg2_est = r_b_est - r_m_est
     if r_leg2_est <= 0.0:
-        logger.warning(
-            "协同感知 — MUSIC 定位跳过：双基地折叠路径长 %.2f m 不大于单基地斜距 %.2f m",
-            r_b_est,
-            r_m_est,
+        print(
+            f"协同感知 — MUSIC 定位跳过：双基地折叠路径长 {r_b_est:.2f} m "
+            f"不大于单基地斜距 {r_m_est:.2f} m"
         )
         return
 
@@ -288,20 +277,14 @@ def main() -> None:
             tx_pos=mono_tx_pos,
         )
     except ValueError as exc:
-        logger.warning("协同感知 — MUSIC 定位跳过：%s", exc)
+        print(f"协同感知 — MUSIC 定位跳过：{exc}")
         return
 
     rmse_music = position_rmse_xy(xy_music, true_xy)
-    logger.info(
-        "协同感知 — z=0 平面定位 (MUSIC 距离 r_m=%.2f m, r_b=%.2f m) — "
-        "估计 (x,y)=(%.2f, %.2f) m, 真值 (%.2f, %.2f) m, 位置 RMSE: %.2f m",
-        r_m_est,
-        r_b_est,
-        xy_music[0],
-        xy_music[1],
-        true_xy[0],
-        true_xy[1],
-        rmse_music,
+    print(
+        f"协同感知 — z=0 平面定位 (MUSIC 距离 r_m={r_m_est:.2f} m, r_b={r_b_est:.2f} m) — "
+        f"估计 (x,y)=({xy_music[0]:.2f}, {xy_music[1]:.2f}) m, "
+        f"真值 ({true_xy[0]:.2f}, {true_xy[1]:.2f}) m, 位置 RMSE: {rmse_music:.2f} m"
     )
 
 

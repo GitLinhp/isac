@@ -9,12 +9,9 @@ from typing import Any, Dict, Optional, Tuple, Union
 import plotly.graph_objs as go
 
 from .sensing_performance import SensingPerformance
-from ..utils import convert, get_logger
+from ..utils import convert
 from ..utils.numerical import linear_to_db
 from ..utils.windows import WindowSpec, apply_window
-
-logger = get_logger(__name__)
-
 
 class DelayDopplerSpectrum:
     """时延多普勒谱处理类
@@ -338,9 +335,7 @@ class DelayDopplerSpectrum:
             )
 
         if h_abs_np.ndim == 3 and backend_to_use == "plotly":
-            logger.warning(
-                "3D 谱 (rx_num, S, F) 暂不支持 plotly 多 RX 子图，已回退为 matplotlib"
-            )
+            print("3D 谱 (rx_num, S, F) 暂不支持 plotly 多 RX 子图，已回退为 matplotlib")
             backend_to_use = "matplotlib"
 
         # ----------------------
@@ -389,7 +384,7 @@ class DelayDopplerSpectrum:
                 out_path = self._ensure_parent_and_path(file_name)
                 plt.savefig(out_path)
                 plt.close()
-                logger.info("谱图已保存: %s", out_path.resolve())
+                print(f"谱图已保存: {out_path.resolve()}")
             else:
                 plt.show()
             return
@@ -444,7 +439,7 @@ class DelayDopplerSpectrum:
             if file_name is not None:
                 out_path = self._ensure_parent_and_path(file_name)
                 fig.write_image(str(out_path))
-                logger.info("谱图已保存: %s", out_path.resolve())
+                print(f"谱图已保存: {out_path.resolve()}")
             else:
                 fig.show()
             return

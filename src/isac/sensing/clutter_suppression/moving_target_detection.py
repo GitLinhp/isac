@@ -9,10 +9,7 @@ import numpy as np
 import torch
 
 from ..sensing_performance import SensingPerformance
-from ...utils import get_logger
 from ...utils.windows import get_named_window_tensor_1d
-
-logger = get_logger(__name__)
 
 
 class MovingTargetDetection:
@@ -90,7 +87,7 @@ class MovingTargetDetection:
         plt.grid(True)
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("MTD多普勒频谱图已保存到: %s", save_path)
+            print(f"MTD多普勒频谱图已保存到: {save_path}")
         if show:
             plt.show()
         else:

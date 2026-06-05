@@ -11,9 +11,6 @@ import torch
 import torch.nn.functional as F
 
 from ..sensing_performance import SensingPerformance
-from ...utils import get_logger
-
-logger = get_logger(__name__)
 
 
 def _mti_coefficients_from_order(order: int) -> np.ndarray:
@@ -152,7 +149,7 @@ class MovingTargetIndication:
 
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("MTI频率响应图已保存到: %s", save_path)
+            print(f"MTI频率响应图已保存到: {save_path}")
 
         if show:
             plt.show()

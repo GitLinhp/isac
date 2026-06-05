@@ -26,7 +26,6 @@ from isac.sensing.utils import doppler_to_velocity
 from isac.system import System, _csv_float2_scalar
 from isac.utils import (
     compute_rmse,
-    get_logger,
     images_to_gif,
     paths_cfr_numpy,
     paths_cir_numpy,
@@ -43,9 +42,6 @@ warnings.filterwarnings(
     category=RuntimeWarning,
     module=r"drjit\.ast",
 )
-
-logger = get_logger(__name__)
-
 
 def _paths_doppler_hz_los(
     rt_scene: object,
@@ -246,9 +242,7 @@ def main() -> None:
     log_per_step_sensing_line = args.log_per_step_sensing
 
     if run_sensing and sensing_layout == "bistatic" and csv_mode == "legacy":
-        logger.warning(
-            "双基地感知 CSV 列与 legacy 固定表头不一致，已改用 csv_mode=unified"
-        )
+        print("双基地感知 CSV 列与 legacy 固定表头不一致，已改用 csv_mode=unified")
         csv_mode = "unified"
 
     def monostatic_eval(
@@ -308,7 +302,6 @@ def main() -> None:
         true_radial_velocity = los_geom.vel_tensor[0, 0, 0]
 
         _, _, est_range_t, est_velocity_t, est_power_db_t = select_peak_and_log_radial_rmse(
-            logger,
             est_ranges=est_ranges_t,
             est_velocities=est_velocities_t,
             true_ranges=true_radial_range,
@@ -375,7 +368,6 @@ def main() -> None:
         )
 
         _, _, est_path_t, est_vel_t, est_power_db_t = select_peak_and_log_radial_rmse(
-            logger,
             est_ranges=est_paths_t,
             est_velocities=est_velocities_t,
             true_ranges=true_path_m,
@@ -414,7 +406,7 @@ def main() -> None:
     )
     n_ep = int(pos_arr.shape[0])
     if n_ep == 0:
-        logger.info("无有效 Episode，结束")
+        print("无有效 Episode，结束")
         return
 
     # CSV 索引列名：轨迹用 step，蒙特卡洛用 sample_idx（与 legacy 分裂表约定一致）
@@ -474,15 +466,12 @@ def main() -> None:
                     velocity_model,
                 )
                 if log_per_step_sensing_line:
-                    logger.info(
-                        "%s=%03d 双基地感知: LoS_path=%.3f m, velocity=%.3f m/s, MUSIC_peak=%.3f dB",
-                        index_key,
-                        i,
-                        float(est_p.item()),
-                        float(est_vel.item()),
-                        float(est_db.item()),
+                    print(
+                        f"{index_key}={i:03d} 双基地感知: LoS_path={float(est_p.item()):.3f} m, "
+                        f"velocity={float(est_vel.item()):.3f} m/s, "
+                        f"MUSIC_peak={float(est_db.item()):.3f} dB"
                     )
-                    logger.info("")
+                    print()
                 rmse_p = compute_rmse(est_p.reshape(1), true_p.reshape(1))
                 rmse_v = compute_rmse(est_vel.reshape(1), true_vp.reshape(1))
                 row["true_los_path_length_m"] = _csv_float2_scalar(true_p)
@@ -497,15 +486,12 @@ def main() -> None:
                     velocity_model,
                 )
                 if log_per_step_sensing_line:
-                    logger.info(
-                        "%s=%03d 感知: range=%.3f m, velocity=%.3f m/s, MUSIC_peak=%.3f dB",
-                        index_key,
-                        i,
-                        float(est_range_t.item()),
-                        float(est_velocity_t.item()),
-                        float(est_power_db_t.item()),
+                    print(
+                        f"{index_key}={i:03d} 感知: range={float(est_range_t.item()):.3f} m, "
+                        f"velocity={float(est_velocity_t.item()):.3f} m/s, "
+                        f"MUSIC_peak={float(est_power_db_t.item()):.3f} dB"
                     )
-                    logger.info("")
+                    print()
                 rmse_range_t = compute_rmse(
                     est_range_t.reshape(1),
                     true_r.reshape(1),
@@ -590,11 +576,11 @@ def main() -> None:
             description=desc_h5,
         ).save(h5_path)
     elif save_h5:
-        logger.warning("未采集 CFR/CIR，跳过 HDF5")
+        print("未采集 CFR/CIR，跳过 HDF5")
 
     if save_gif:
         if not scene_frames:
-            logger.warning("无场景帧，跳过 GIF 导出")
+            print("无场景帧，跳过 GIF 导出")
         else:
             gif_path = (
                 script_out_dir / "scene_image_mc.gif"

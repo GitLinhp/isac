@@ -21,10 +21,7 @@ from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
 from ...data_structures.params.rt_scene_params import RtSceneParams, AntennaArrayParams
 from ...data_structures.rx_target_tx_geometric import RxTargetTxGeometric
-from ...utils import get_logger
 from ... import PROJECT_ROOT
-
-logger = get_logger(__name__)
 
 
 def _snapshot_pos_vel(role_cn: str, name: str, obj: object) -> dict[str, np.ndarray]:
@@ -67,7 +64,7 @@ def _collect_transceiver_states(
             continue
         out[ent.name] = _snapshot_pos_vel(role_cn, ent.name, ent)
     if not out:
-        logger.warning(empty_warning)
+        print(empty_warning)
         raise RuntimeError(empty_runtime_msg)
     return out
 
@@ -195,7 +192,9 @@ class RTScene(Scene):
         if camera.look_at is not None:
             self.camera = Camera(position=camera.position, look_at=camera.look_at)
         else:
-            self.camera = Camera(position=camera.position, orientation=camera.orientation)
+            self.camera = Camera(
+                position=camera.position, orientation=camera.orientation
+            )
 
     def _init_antenna_array(self) -> None:
         """初始化天线阵列"""
@@ -329,7 +328,7 @@ class RTScene(Scene):
         返回 ``rt_targets`` 中每个目标的当前 ``position`` / ``velocity``，组装为嵌套字典：
         ``{target_name: {'pos': ndarray(3,), 'vel': ndarray(3,)}}``，dtype 为 ``float64``。
         若某目标未设置 ``velocity``，则 ``vel`` 为全零向量。
-        若 ``rt_targets`` 为空：``logger.warning`` 后抛出 ``RuntimeError``（不再返回空字典）。
+        若 ``rt_targets`` 为空：打印警告后抛出 ``RuntimeError``（不再返回空字典）。
         ``pos`` / ``vel`` 均为独立副本，原地修改不会影响场景对象内部状态。
 
         Returns
@@ -338,7 +337,7 @@ class RTScene(Scene):
             Outer keys: target names. Inner keys: ``"pos"``, ``"vel"`` — each ``np.ndarray`` of shape ``(3,)``.
         """
         if not self.rt_targets:
-            logger.warning(
+            print(
                 "targets_states：rt_targets 为空，无法进行径向真值对齐；请检查 RT 目标配置。"
             )
 
@@ -355,7 +354,7 @@ class RTScene(Scene):
 
         按 ``transceivers`` 插入顺序遍历，对每个含 ``rx`` 的条目以 ``Receiver.name`` 为键写入
         ``{'pos': ndarray(3,), 'vel': ndarray(3,)}``。``velocity`` 缺失时为全零；数组均为独立副本。
-        若未找到任何接收机：``logger.warning`` 后抛出 ``RuntimeError``。
+        若未找到任何接收机：打印警告后抛出 ``RuntimeError``。
         """
         return _collect_transceiver_states(
             self,
@@ -364,7 +363,9 @@ class RTScene(Scene):
             empty_warning=(
                 "rx_states：未找到任何接收机，无法进行径向真值对齐；请检查 transceivers 配置。"
             ),
-            empty_runtime_msg=("rx_states() 为空，请在 transceivers 中配置至少一个接收机。"),
+            empty_runtime_msg=(
+                "rx_states() 为空，请在 transceivers 中配置至少一个接收机。"
+            ),
         )
 
     @property
@@ -373,14 +374,18 @@ class RTScene(Scene):
 
         按 ``transceivers`` 插入顺序遍历，对每个含 ``tx`` 的条目以 ``Transmitter.name`` 为键写入
         ``{'pos': ndarray(3,), 'vel': ndarray(3,)}``。``velocity`` 缺失时为全零；数组均为独立副本。
-        若未找到任何发射机：``logger.warning`` 后抛出 ``RuntimeError``。
+        若未找到任何发射机：打印警告后抛出 ``RuntimeError``。
         """
         return _collect_transceiver_states(
             self,
             role_attr="tx",
             role_cn="发射机",
-            empty_warning=("tx_states：未找到任何发射机；请检查 transceivers 中是否配置 tx。"),
-            empty_runtime_msg=("tx_states 为空，请在 transceivers 中配置至少一个发射机。"),
+            empty_warning=(
+                "tx_states：未找到任何发射机；请检查 transceivers 中是否配置 tx。"
+            ),
+            empty_runtime_msg=(
+                "tx_states 为空，请在 transceivers 中配置至少一个发射机。"
+            ),
         )
 
     # ==================== 几何属性 ====================

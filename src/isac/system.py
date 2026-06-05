@@ -8,14 +8,11 @@ import numpy as np
 import sionna
 
 # 自定义模块
-from .utils import get_logger, load_config
+from .utils import load_config
 from .data_structures import SystemParams, SystemComponents
 from .sensing.clutter_suppression import MovingTargetDetection, MovingTargetIndication
 from .utils import cartesian_direction_to_yaw_pitch_roll
 from . import PROJECT_ROOT
-
-logger = get_logger(__name__)
-
 
 class System:
 
@@ -190,7 +187,7 @@ class System:
     ) -> None:
         """写入 Episode CSV：统一表或 legacy 分裂文件名（与历史脚本兼容）。"""
         if not rows:
-            logger.warning("无 CSV 行，跳过写入")
+            print("无 CSV 行，跳过写入")
             return
         out_dir = output_root if output_root is not None else PROJECT_ROOT / "out"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -210,7 +207,7 @@ class System:
                 writer.writeheader()
                 for r in rows:
                     writer.writerow({k: r.get(k, "") for k in keys})
-            logger.info("统一 Episode CSV 已写入: %s", path)
+            print(f"统一 Episode CSV 已写入: {path}")
             return
 
         # legacy：文件名与列集与旧版一致
@@ -281,4 +278,4 @@ class System:
             writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(slim)
-        logger.info("CSV 已写入: %s", path)
+        print(f"CSV 已写入: {path}")

@@ -9,11 +9,9 @@ from typing import Literal, Optional, Tuple
 
 from tabulate import tabulate
 
-from ..utils import get_logger, linear_to_db
+from ..utils import linear_to_db
 from .sensing_performance import SensingPerformance
 from .utils import delay_to_range, doppler_to_velocity
-
-logger = get_logger(__name__)
 
 # 常量定义
 _MIN_SEARCH_DIMENSION = 8  # 最小搜索维度
@@ -114,9 +112,9 @@ def _noise_subspace_from_loaded_covariance(
 
         return eigenvectors[:, num_signal_sources:].to(torch.complex64)
 
-    logger.warning(
-        "MUSIC: torch.linalg.eigh 在加重对角加载后仍未收敛，跳过噪声子空间估计。末次异常: %s",
-        last_exc,
+    print(
+        f"MUSIC: torch.linalg.eigh 在加重对角加载后仍未收敛，跳过噪声子空间估计。"
+        f"末次异常: {last_exc}"
     )
     return None
 
@@ -236,7 +234,7 @@ class MUSICEstimator:
             search_region, num_doppler_bins, num_delay_bins, num_sources, threshold
         )
         if noise_subspace is None:
-            logger.warning("MUSIC算法：协方差特征分解失败，本次无谱峰输出")
+            print("MUSIC算法：协方差特征分解失败，本次无谱峰输出")
             return self._return_empty_peaks(sens_mode=sens_mode)
 
         candidate_coords = self._extract_candidate_coordinates(
@@ -272,7 +270,7 @@ class MUSICEstimator:
                 physics=(tau_s, fd_hz, range_m, v_mps),
             )
         else:
-            logger.warning("MUSIC算法未检测到谱峰")
+            print("MUSIC算法未检测到谱峰")
 
         return self._finalize_music_return(range_m, v_mps, peaks_power)
 
@@ -337,7 +335,7 @@ class MUSICEstimator:
         physics: Optional[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ) -> None:
         """将估计谱峰格式化为表格并打印。``physics`` 为 (τ_s, f_d_hz, range_m, v_mps) 时与返回值同源。"""
-        logger.info(f"使用MUSIC算法检测到 {peaks_delay.numel()} 个谱峰:")
+        print(f"使用MUSIC算法检测到 {peaks_delay.numel()} 个谱峰:")
 
         # torch.Tensor -> numpy，方便格式化为标量输出
         peaks_delay_np = peaks_delay.cpu().numpy()
@@ -410,7 +408,7 @@ class MUSICEstimator:
                 )
 
         table_str = tabulate(table_data, headers=headers, tablefmt="simple_grid")
-        logger.info(f"\n{table_str}")
+        print(f"\n{table_str}")
 
     # ==================== 辅助方法 ====================
     def _get_search_range(

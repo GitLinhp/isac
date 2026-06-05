@@ -6,10 +6,6 @@ from typing import Literal
 
 import numpy as np
 
-from .logger import get_logger
-
-logger = get_logger(__name__)
-
 # 轴对齐三维 ROI：``((x_min, x_max), (y_min, y_max), (z_min, z_max))``；每轴允许 ``min == max`` 表示固定坐标。
 RoiBox3D = tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
 
@@ -103,7 +99,7 @@ def generate_targets_from_trajectory(
     total_distance = float(trajectory.total_distance())
     velocity = float(trajectory.velocity)
     if total_distance <= 0:
-        logger.info("轨迹总长度为 0，跳过轨迹回放")
+        print("轨迹总长度为 0，跳过轨迹回放")
         return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.float64)
 
     pos_rows: list[np.ndarray] = []
@@ -176,8 +172,8 @@ def generate_monte_carlo_points(
 
     scene = rt_scene
     scene_filter = scene.build_scene_filter(safe_margin=safe_margin)
-    logger.info("蒙特卡洛采样开始: mode=%s, samples=%d", sampling_mode, num_samples)
-    logger.info("障碍物包围盒数量: %d", len(scene_filter.obstacles))
+    print(f"蒙特卡洛采样开始: mode={sampling_mode}, samples={num_samples}")
+    print(f"障碍物包围盒数量: {len(scene_filter.obstacles)}")
 
     x_low, x_high = roi_x
     y_low, y_high = roi_y
@@ -231,11 +227,9 @@ def generate_monte_carlo_points(
         )
 
     acceptance_rate = len(accepted) / max(trials, 1)
-    logger.info(
-        "蒙特卡洛采样完成: accepted=%d, trials=%d, acceptance_rate=%.2f%%",
-        len(accepted),
-        trials,
-        acceptance_rate * 100.0,
+    print(
+        f"蒙特卡洛采样完成: accepted={len(accepted)}, trials={trials}, "
+        f"acceptance_rate={acceptance_rate * 100.0:.2f}%"
     )
     return np.asarray(accepted, dtype=np.float64)
 
