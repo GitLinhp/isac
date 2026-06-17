@@ -408,7 +408,7 @@ class MUSICEstimator:
                 )
 
         table_str = tabulate(table_data, headers=headers, tablefmt="simple_grid")
-        print(f"\n{table_str}")
+        print(table_str)
 
     # ==================== 辅助方法 ====================
     def _get_search_range(
