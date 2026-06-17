@@ -23,7 +23,7 @@ import argparse
 import torch
 
 from isac import PROJECT_ROOT
-from isac.channel import Channel, StaticTargetParams, static_target_simulator
+from isac.channel import StaticTargetParams, static_target_simulator
 from isac.system import System
 from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
 
@@ -100,7 +100,7 @@ def argument_parser() -> argparse.Namespace:
 
 def main() -> None:
     """构建系统、跑静态目标时域信道感知链，并将估计与 CLI 真值对比后写入日志。"""
-    args = argument_parser()
+    args: argparse.Namespace = argument_parser()
     set_random_seed(args.seed)
     system = System(args)
 
@@ -143,10 +143,8 @@ def main() -> None:
 
     # 点目标：多普勒 chirp × FFT 分数时延（距离 + 方位）× 可选自耦合
     y_time_clean = static_target_simulator(x_time, params)
-    # 接收端 SNR 定标：先测回波功率，再按 TOML snr_db 生成 AWGN
-    sig_p = Channel.mean_power(y_time_clean)
-    no_rx = Channel.noise_power_from_rx_snr(sig_p, snr_db)
-    y_time = ch._awgn(y_time_clean, no_rx)
+    # 接收端 SNR 定标 AWGN（内部按 E[|y_clean|²] 与 snr_db 计算 no）
+    y_time = ch._awgn(y_time_clean, snr_db)
     y_rg = system.components.demodulator(y_time).squeeze()
 
     # LS 信道估计：h ≈ Y/X（与单基地脚本后续感知链相同）

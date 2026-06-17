@@ -10,10 +10,11 @@ from sionna.phy.channel import (
     cir_to_time_channel,
     ApplyOFDMChannel,
     ApplyTimeChannel,
-    AWGN,
 )
 from sionna.phy.utils import ebnodb2no
 from sionna.rt import Paths
+
+from .awgn import AWGN, snr_db_to_noise_power
 
 
 class Channel:
@@ -164,9 +165,7 @@ class Channel:
     @staticmethod
     def noise_power_from_rx_snr(signal_power: float, snr_db: float) -> float:
         """按接收端信号功率与目标 SNR (dB) 计算 AWGN 方差 ``no``。"""
-        if signal_power <= 0.0:
-            raise ValueError("接收端信号功率须为正，无法按 snr_db 定标噪声。")
-        return signal_power / (10.0 ** (snr_db / 10.0))
+        return float(snr_db_to_noise_power(signal_power, snr_db))
 
     @staticmethod
     def print_rx_power_report(
@@ -227,14 +226,10 @@ class Channel:
             y_clean = self.channel_time(inputs, self.h_time, None)
             if snr_db is None:
                 return y_clean
-            sig_p = self.mean_power(y_clean)
-            no = self.noise_power_from_rx_snr(sig_p, snr_db)
-            return self._awgn(y_clean, no)
+            return self._awgn(y_clean, snr_db)
         if domain == "frequency":
             y_clean = self.channel_freq(inputs, self.h_freq, None)
             if snr_db is None:
                 return y_clean
-            sig_p = self.mean_power(y_clean)
-            no = self.noise_power_from_rx_snr(sig_p, snr_db)
-            return self._awgn(y_clean, no)
+            return self._awgn(y_clean, snr_db)
         raise ValueError(f"不支持的域: {domain}。支持的值: 'time', 'frequency'")
