@@ -11,7 +11,7 @@
 ----
 - 几何真值与感知评估默认取 ``RxTargetTxGeometric`` 的 ``[0, 0, 0]`` 切片（单 RX × 单目标 × 单 TX）。
 - ``--run_sensing`` 时谱图固定覆盖写入 ``sensing_monostatic_delay_doppler_spectrum.png``，便于查看最新一步。
-- CSV 中逐步 RMSE 为「本 episode 估计 vs 真值」；``select_peak_and_log_radial_rmse`` 打印的是匈牙利跨峰 RMSE。
+- CSV 中逐步 RMSE 为「本 episode 估计 vs 真值」；``match_peaks_and_compute_radial_rmse`` 打印的是匈牙利跨峰 RMSE。
 - 蒙特卡洛 ROI：CLI 为 ``--roi XMIN XMAX YMIN YMAX`` 四元组，``z`` 固定为 ``0``（即 ``(0, 0)``）。
 - HDF5 根属性 ``has_cir`` 标记是否包含 ``channel_impulse_response_*`` 数据集。
 - HDF5 另含 ``collection_*`` 根属性（ROI、seed、source、采样参数等），见 ``CollectionMetadata``。
@@ -49,7 +49,7 @@ from isac.utils import (
     paths_cfr_numpy,
     paths_cir_numpy,
     scene_slug_from_rt_scene,
-    select_peak_and_log_radial_rmse,
+    match_peaks_and_compute_radial_rmse,
     set_random_seed,
     stack_ragged_cir_samples,
 )
@@ -287,12 +287,12 @@ def monostatic_sensing_eval(
     scene = system.components.rt_scene
     true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
 
-    _, _, est_range, est_velocity, est_power_db = select_peak_and_log_radial_rmse(
+    _, _, est_range, est_velocity, est_power_db = match_peaks_and_compute_radial_rmse(
         est_ranges=est_ranges,
         est_velocities=est_velocities,
         true_ranges=true_range,
         true_velocities=true_velocity,
-        log_prefix="单基地感知",
+        label="单基地感知",
     )
     return est_range, est_velocity, est_power_db
 
@@ -329,12 +329,12 @@ def bistatic_sensing_eval(
         "bistatic",
     )
 
-    _, _, est_path, est_vel, est_power_db = select_peak_and_log_radial_rmse(
+    _, _, est_path, est_vel, est_power_db = match_peaks_and_compute_radial_rmse(
         est_ranges=est_paths,
         est_velocities=est_velocities,
         true_ranges=true_path_m,
         true_velocities=true_velocity,
-        log_prefix="双基地数据集感知（LoS路径+paths.doppler）",
+        label="双基地数据集感知（LoS路径+paths.doppler）",
         distance_axis_label="LoS路径长度",
         velocity_axis_label="标量速度",
     )

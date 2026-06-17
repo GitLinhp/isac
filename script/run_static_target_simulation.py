@@ -6,7 +6,7 @@
 2. 用 ``static_target_simulator`` 施加点目标散射（替代 RT 射线追踪信道）。
 3. 按接收端 SNR 叠加 AWGN，``demodulator`` 回频域后经 ``estimate_channel`` 得 CFR 估计。
 4. 计算时延–多普勒谱并导出 ``out/static_target_simulation/static_target_delay_doppler_spectrum.png``。
-5. MUSIC 提取峰；真值来自 CLI ``--range_m`` / ``--velocity_mps``，``select_peak_and_log_radial_rmse`` 做匈牙利匹配并记录 RMSE。
+5. MUSIC 提取峰；真值来自 CLI ``--range_m`` / ``--velocity_mps``，``match_peaks_and_compute_radial_rmse`` 做匈牙利匹配并计算 RMSE。
 
 与 ``run_sensing_monostatic.py`` 的区别
 ---------------------------------------
@@ -25,7 +25,7 @@ import torch
 from isac import PROJECT_ROOT
 from isac.channel import StaticTargetParams, static_target_simulator
 from isac.system import System
-from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
+from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
@@ -174,12 +174,12 @@ def main() -> None:
         metric_mode=args.metric_mode,
     )
 
-    select_peak_and_log_radial_rmse(
+    match_peaks_and_compute_radial_rmse(
         est_ranges=est_ranges,
         est_velocities=est_velocities,
         true_ranges=true_ranges,
         true_velocities=true_velocities,
-        log_prefix="静态目标仿真",
+        label="静态目标仿真",
     )
 
 

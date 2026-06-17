@@ -21,7 +21,7 @@ from isac.sensing.localization import (
     position_rmse_xy,
 )
 from isac.system import System
-from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
+from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
 
 def _slug_tx_name(tx_name: str) -> str:
@@ -174,12 +174,12 @@ def main() -> None:
             distance_label = "径向距离"
             velocity_label = "径向速度"
 
-        _, _, est_range_m, est_velocity_mps, _ = select_peak_and_log_radial_rmse(
+        _, _, est_range_m, est_velocity_mps, _ = match_peaks_and_compute_radial_rmse(
             est_ranges=est_ranges,
             est_velocities=est_velocities,
             true_ranges=true_range,
             true_velocities=true_velocity,
-            log_prefix=(
+            label=(
                 f"协同感知 — RX {rx_name} / TX {tx_name} "
                 f"({path_label}, sens_mode={sens_mode})"
             ),

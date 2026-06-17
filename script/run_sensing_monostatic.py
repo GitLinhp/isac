@@ -5,7 +5,7 @@
 1. 按 ``--domain`` 在频域或时域施加信道，经 ``estimate_channel`` 得到 CFR 相关估计。
 2. 计算时延–多普勒谱并导出 ``out/sensing_monostatic/sensing_monostatic_delay_doppler_spectrum.png``。
 3. MUSIC 提取峰；``music_estimator`` 返回径向距离 (m)、径向速度 (m/s) 与伪谱功率；``--metric_mode`` 仅影响 MUSIC 日志与谱图坐标展示。
-4. 用 ``RTScene.rx_target_tx_geometric`` 的 ``range_tensor`` / ``vel_tensor``（形状 ``(n_rx, n_target, n_tx)``，展平为格点）；``select_peak_and_log_radial_rmse`` 以匈牙利算法将 MUSIC 峰与真值一对一匹配并记录聚合 RMSE。
+4. 用 ``RTScene.rx_target_tx_geometric`` 的 ``range_tensor`` / ``vel_tensor``（形状 ``(n_rx, n_target, n_tx)``，展平为格点）；``match_peaks_and_compute_radial_rmse`` 以匈牙利算法将 MUSIC 峰与真值一对一匹配并计算聚合 RMSE。
 
 与 ``run_dataset_collection.py``（``--run_sensing``）中的嵌套感知逻辑一致，本脚本用于单次场景、便于调参与可视化。
 """
@@ -14,7 +14,7 @@ import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
+from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
@@ -124,12 +124,12 @@ def main() -> None:
         metric_mode=args.metric_mode,
     )
 
-    select_peak_and_log_radial_rmse(
+    match_peaks_and_compute_radial_rmse(
         est_ranges=est_ranges,
         est_velocities=est_velocities,
         true_ranges=true_ranges,
         true_velocities=true_velocities,
-        log_prefix="单基地感知",
+        label="单基地感知",
     )
 
 

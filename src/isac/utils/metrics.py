@@ -4,17 +4,17 @@ from scipy.optimize import linear_sum_assignment
 from .type_converter import convert
 
 
-def select_peak_and_log_radial_rmse(
+def match_peaks_and_compute_radial_rmse(
     *,
     est_ranges: torch.Tensor,
     est_velocities: torch.Tensor,
     true_ranges: torch.Tensor,
     true_velocities: torch.Tensor,
-    log_prefix: str = "单基地感知",
+    label: str = "单基地感知",
     distance_axis_label: str = "径向距离",
     velocity_axis_label: str = "径向速度",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """用匈牙利算法在 MUSIC 峰与真值格点间做一对一最小代价匹配，按匹配对聚合 RMSE 并打印结果。
+    """用匈牙利算法在 MUSIC 峰与真值格点间做一对一最小代价匹配，并计算径向 RMSE。
 
     代价 ``C[i,j] = (er_i-tr_j)^2 + (ev_i-tv_j)^2``（联合平方误差）。``N!=M`` 时 SciPy 给出
     ``min(N,M)`` 条最优部分匹配；输出中会说明峰数、真值点数与匹配条数。
@@ -53,7 +53,7 @@ def select_peak_and_log_radial_rmse(
     row_ind, col_ind = linear_sum_assignment(cost_np)
     k = int(row_ind.shape[0])
     print(
-        f"{log_prefix} — 匈牙利匹配: MUSIC 峰数 N={n}, 真值点数 M={m}, 匹配条数 K={k}"
+        f"{label} — 匈牙利匹配: MUSIC 峰数 N={n}, 真值点数 M={m}, 匹配条数 K={k}"
     )
 
     if k == 0:
@@ -78,11 +78,11 @@ def select_peak_and_log_radial_rmse(
     music_peak_db = torch.tensor(float("nan"), dtype=dtype, device=device)
 
     print(
-        f"{log_prefix} — {distance_axis_label} 真值: {convert(true_r_show, 'float'):.2f} m, "
+        f"{label} — {distance_axis_label} 真值: {convert(true_r_show, 'float'):.2f} m, "
         f"估计: {convert(est_range_m, 'float'):.2f} m, RMSE: {convert(rmse_range, 'float'):.2f} m"
     )
     print(
-        f"{log_prefix} — {velocity_axis_label} 真值: {convert(true_v_show, 'float'):.2f} m/s, "
+        f"{label} — {velocity_axis_label} 真值: {convert(true_v_show, 'float'):.2f} m/s, "
         f"估计: {convert(est_velocity_mps, 'float'):.2f} m/s, "
         f"RMSE: {convert(rmse_velocity, 'float'):.2f} m/s"
     )

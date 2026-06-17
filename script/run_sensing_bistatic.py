@@ -5,7 +5,7 @@
 1. 按 ``--domain`` 在频域或时域施加信道，经 ``estimate_channel`` 得到 CFR 相关估计。
 2. 计算时延–多普勒谱；再沿多普勒维（``dim=0``）对谱施加 **MTI**（``system.moving_target_indication``），并导出 ``out/sensing_bistatic/sensing_bistatic_delay_doppler_spectrum.png``。
 3. MUSIC 提取峰；须传入 ``sens_mode='bistatic'``，使 bin→物理量与折叠路径 ``||T-X||+||R-T||`` 及配套多普勒尺度一致（勿沿用默认单基地的 ``τ·c/2``、``v∝f_d/(2f_c)``）。
-4. 用 ``RTScene.rx_target_tx_geometric`` 的 ``range_tensor`` / ``vel_tensor`` 作真值；``select_peak_and_log_radial_rmse`` 做匈牙利匹配并记录 RMSE。
+4. 用 ``RTScene.rx_target_tx_geometric`` 的 ``range_tensor`` / ``vel_tensor`` 作真值；``match_peaks_and_compute_radial_rmse`` 做匈牙利匹配并计算 RMSE。
 
 与 ``run_dataset_collection.py`` 中 ``bistatic_eval`` 的 ``sens_mode`` 用法一致。
 """
@@ -14,7 +14,7 @@ import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import select_peak_and_log_radial_rmse, set_random_seed
+from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
@@ -125,12 +125,12 @@ def main() -> None:
         sens_mode="bistatic",
     )
 
-    select_peak_and_log_radial_rmse(
+    match_peaks_and_compute_radial_rmse(
         est_ranges=est_ranges,
         est_velocities=est_velocities,
         true_ranges=true_ranges,
         true_velocities=true_velocities,
-        log_prefix="双基地感知",
+        label="双基地感知",
     )
 
 
