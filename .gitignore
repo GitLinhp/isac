@@ -26,4 +26,4 @@ SkySense-ISAC-Dataset-Generator-for-UAV-Localization-with-Sionna/
 labview/
 ISAC-Intelligent-Transportation-/
 out/
-test/
+tests/
