@@ -184,7 +184,7 @@ def _geometry_bins(
     delay_bin = int(round(float(true_range_m) / sp.range_resolution))
     delay_bin = int(np.clip(delay_bin, 0, sp.rg.fft_size - 1))
 
-    fd_hz = -float(true_velocity_mps) * 2.0 * sp.carrier_frequency / c
+    fd_hz = float(true_velocity_mps) * 2.0 * sp.carrier_frequency / c
     doppler_bins = sp.doppler_bins
     doppler_bin = int(np.argmin(np.abs(doppler_bins - fd_hz)))
     doppler_bin = int(np.clip(doppler_bin, 0, sp.rg.num_ofdm_symbols - 1))

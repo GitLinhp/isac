@@ -133,9 +133,9 @@ class SensingPerformance:
         """与 ``doppler_to_velocity`` 一致的逐 bin 速度轴 (m/s)。"""
         fd_hz = self.doppler_bins
         if sens_mode == "monostatic":
-            return -(fd_hz * c) / (2.0 * self.carrier_frequency)
+            return (fd_hz * c) / (2.0 * self.carrier_frequency)
         if sens_mode == "bistatic":
-            return -(fd_hz * c) / self.carrier_frequency
+            return (fd_hz * c) / self.carrier_frequency
         raise ValueError(f"不支持的 sens_mode: {sens_mode!r}")
 
     @property

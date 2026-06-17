@@ -86,7 +86,7 @@ def main() -> int:
     half = OFDM_SYMBOLS // 2
     dop_bin_raw = OFDM_SYMBOLS - 1 - dop_bin
     fd_hz = (dop_bin_raw - half) * dop_res
-    v_phys = -(fd_hz * C) / (2.0 * CENTER_FREQ)
+    v_phys = (fd_hz * C) / (2.0 * CENTER_FREQ)
     r_phys = delay_bin * range_res
 
     v_max = effective.v_max
@@ -114,10 +114,9 @@ def main() -> int:
     )
 
     err_r = abs(r_phys - TARGET_RANGE_M)
-    # gr-radar 正多普勒相位 → Sionna 物理速度 v_phys ≈ -target_velocity
-    err_v = abs(v_phys + TARGET_VELOCITY_MPS)
+    err_v = abs(v_phys - TARGET_VELOCITY_MPS)
     err_v_old = abs(v_old - TARGET_VELOCITY_MPS)
-    err_v_new = abs(v_new + TARGET_VELOCITY_MPS)
+    err_v_new = abs(v_new - TARGET_VELOCITY_MPS)
 
     ok_phys = err_r <= 10 * range_res and abs(err_v) <= 2 * float(sp.velocity_resolution)
     ok_axis = err_v_new <= 2 * float(sp.velocity_resolution) and err_v_new < err_v_old

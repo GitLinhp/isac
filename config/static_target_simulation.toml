@@ -1,0 +1,32 @@
+carrier_frequency = 6e9 # 载波频率(Hz)
+num_bits_per_symbol = 2 # QAM调制每个符号的比特数
+snr_db = 10             # 信噪比(dB)
+
+# OFDM参数
+[ofdm]
+num_symbols = 512            # 符号数
+num_subcarriers = 2048       # 子载波数
+num_valid_subcarriers = 2048 # 有效子载波数
+subcarrier_spacing = 15000.0 # 子载波间隔(Hz)
+num_cyclic_prefix = 512      # 循环前缀长度
+l_min = 0                    # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
+# 感知参数
+[sensing]
+
+# 发射参考：binary（比特+QAM）| zc（Zadoff-Chu）；ZC 须 gcd(root_index, ofdm 网格 num_data_symbols)=1
+[sensing.source]
+type = "zc"
+root_index = 1
+normalize = true
+
+# 感知窗函数参数
+[sensing.windows]
+
+# CFAR 参数
+[sensing.cfar]
+type = "ca"         # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/processing.py）
+guard = 2           # 保护单元
+trailing = 20       # 参考单元
+pfa = 1e-4          # 虚警率
+detector = "linear" # 检测器: linear | squarelaw
