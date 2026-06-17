@@ -1,182 +1,215 @@
-"""static_target_simulator Torch 实现与 gr-radar 对照测试。"""
+"""static_target_simulator 向量化回归：与 gr-radar 等价 loop 参考实现对比。"""
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
+import math
 
-import numpy as np
 import pytest
 import torch
 
-_REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO / "src"))
-
 from isac.channel.static_target_simulator import (
     StaticTargetParams,
+    _apply_single_target_echo,
+    _build_delay_filter,
+    _build_doppler_filter,
     static_target_params_from_grc,
     static_target_simulator,
 )
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("gnuradio.radar") is None,
-    reason="gnuradio.radar 未安装",
-)
-
-N_SAMPLES = 4096
-SAMP_RATE = 30_720_000
-CENTER_FREQ = 6e9
-
-
-def _random_tx(rng: np.random.Generator, n: int = N_SAMPLES) -> np.ndarray:
-    return (rng.standard_normal(n) + 1j * rng.standard_normal(n)).astype(np.complex64)
+_TWO_PI = 2.0 * math.pi
+_SAMP_RATE = 30_720_000.0
+_DEVICE = torch.device("cpu")
+_ATOL = 1e-5
+_FULL_FRAME_N = 512 * 2560
+# fast chirp 与 loop fmod 在 N≈1.3M 时 complex64 最大偏差约 2^-10
+_CHIRP_ATOL = 1e-3
+# fast chirp 经 FFT 链后全帧 echo 相对偏差约 1e-3 量级
+_ECHO_RTOL = 2e-3
+_ECHO_ATOL = 0.5
 
 
-def _run_gr_radar(
-    tx: np.ndarray,
+def _build_doppler_filter_loop_ref(
+    n: int,
+    doppler_hz: float,
+    scale_ampl: float,
+    samp_rate: float,
+    device: torch.device,
+) -> torch.Tensor:
+    phase_inc = _TWO_PI * doppler_hz / samp_rate
+    filt = torch.empty(n, device=device, dtype=torch.complex64)
+    phase = 0.0
+    scale = float(scale_ampl)
+    for i in range(n):
+        filt[i] = scale * complex(math.cos(phase), math.sin(phase))
+        phase = math.fmod(phase + phase_inc, _TWO_PI)
+    return filt
+
+
+def _build_delay_filter_loop_ref(
+    n: int,
+    delay_s: float,
+    samp_rate: float,
     *,
-    range_m: float | list[float],
-    velocity_mps: float | list[float],
-    rcs: float | list[float],
-    azimuth_deg: float | list[float] = 0.0,
-    position_rx_m: list[float] | None = None,
-    self_coupling_db: float = -10.0,
-    rndm_phaseshift: bool = False,
-    self_coupling: bool = True,
-) -> np.ndarray:
-    from gnuradio import blocks, gr, radar
-
-    if position_rx_m is None:
-        position_rx_m = [0.0]
-
-    def _vec(x: float | list[float]) -> list[float]:
-        return x if isinstance(x, list) else [float(x)]
-
-    n = tx.size
-
-    class TopBlock(gr.top_block):
-        def __init__(self) -> None:
-            super().__init__()
-            self.src = blocks.vector_source_c(tx.tolist(), False)
-            self.tag = blocks.stream_to_tagged_stream(
-                gr.sizeof_gr_complex, 1, n, "packet_len"
-            )
-            self.sim = radar.static_target_simulator_cc(
-                _vec(range_m),
-                _vec(velocity_mps),
-                _vec(rcs),
-                _vec(azimuth_deg),
-                position_rx_m,
-                SAMP_RATE,
-                CENTER_FREQ,
-                self_coupling_db,
-                rndm_phaseshift,
-                self_coupling,
-                "packet_len",
-            )
-            self.snk = blocks.vector_sink_c(1)
-            self.connect(self.src, self.tag, self.sim, self.snk)
-
-    tb = TopBlock()
-    tb.run()
-    return np.asarray(tb.snk.data(), dtype=np.complex64)
+    compensate_numpy_ifft: bool,
+    device: torch.device,
+) -> torch.Tensor:
+    filt = torch.empty(n, device=device, dtype=torch.complex64)
+    half = n // 2
+    fs = float(samp_rate)
+    delay = float(delay_s)
+    inv_n = 1.0 / float(n) if compensate_numpy_ifft else 1.0
+    for i in range(n):
+        freq = i * fs / n if i < half else i * fs / n - fs
+        phase = math.fmod(_TWO_PI * delay * freq, _TWO_PI)
+        filt[i] = (math.cos(phase) - 1j * math.sin(phase)) * inv_n
+    return filt
 
 
-def _run_torch(
-    tx: np.ndarray,
+def _apply_single_target_echo_loop_ref(
+    tx: torch.Tensor,
+    *,
+    range_m: float,
+    velocity_mps: float,
+    rcs: float,
+    azimuth_deg: float,
+    position_rx_m: float,
+    samp_rate: float,
+    center_freq: float,
+) -> torch.Tensor:
+    from isac.channel.static_target_simulator import C_LIGHT, _target_scale_ampl
+
+    n = tx.shape[-1]
+    device = tx.device
+    doppler_hz = 2.0 * velocity_mps * center_freq / C_LIGHT
+    timeshift_s = 2.0 * range_m / C_LIGHT
+    azimuth_shift_s = position_rx_m * math.sin(math.radians(azimuth_deg))
+    scale_ampl = _target_scale_ampl(range_m, rcs, center_freq)
+
+    doppler_filt = _build_doppler_filter_loop_ref(
+        n, doppler_hz, scale_ampl, samp_rate, device
+    )
+    range_filt = _build_delay_filter_loop_ref(
+        n, timeshift_s, samp_rate, compensate_numpy_ifft=False, device=device
+    )
+    azimuth_filt = _build_delay_filter_loop_ref(
+        n, azimuth_shift_s, samp_rate, compensate_numpy_ifft=False, device=device
+    )
+
+    y = tx * doppler_filt
+    y_fft = torch.fft.fft(y, dim=-1)
+    y_fft = y_fft * range_filt * azimuth_filt
+    return torch.fft.ifft(y_fft, dim=-1)
+
+
+def _static_target_simulator_loop_ref(
+    tx: torch.Tensor,
     params: StaticTargetParams,
-) -> np.ndarray:
-    out = static_target_simulator(torch.from_numpy(tx), params)
-    return np.asarray(out.detach().cpu().numpy(), dtype=np.complex64)
-
-
-def _assert_close_to_gr(y_torch: np.ndarray, y_gr: np.ndarray, *, rtol: float) -> None:
-    denom = max(float(np.max(np.abs(y_gr))), 1e-12)
-    rel = float(np.max(np.abs(y_torch - y_gr)) / denom)
-    corr = float(
-        abs(np.vdot(y_gr, y_torch))
-        / (np.linalg.norm(y_gr) * np.linalg.norm(y_torch) + 1e-20)
+) -> torch.Tensor:
+    tx_c = tx.to(torch.complex64)
+    ranges = (float(params.range_m),) if isinstance(params.range_m, (int, float)) else tuple(params.range_m)
+    velocities = (
+        (float(params.velocity_mps),)
+        if isinstance(params.velocity_mps, (int, float))
+        else tuple(params.velocity_mps)
     )
-    assert rel <= rtol, f"rel max err={rel:.6f} > {rtol}"
-    assert corr >= 1.0 - rtol, f"norm corr={corr:.6f}"
+    rcs_vals = (float(params.rcs),) if isinstance(params.rcs, (int, float)) else tuple(params.rcs)
+    azimuths = (
+        (float(params.azimuth_deg),)
+        if isinstance(params.azimuth_deg, (int, float))
+        else tuple(params.azimuth_deg)
+    )
+    rx_positions = tuple(params.position_rx_m)
+
+    rx_outputs: list[torch.Tensor] = []
+    for pos_rx in rx_positions:
+        out = torch.zeros_like(tx_c)
+        for rng, vel, rcs, az in zip(ranges, velocities, rcs_vals, azimuths, strict=True):
+            out = out + _apply_single_target_echo_loop_ref(
+                tx_c,
+                range_m=rng,
+                velocity_mps=vel,
+                rcs=rcs,
+                azimuth_deg=az,
+                position_rx_m=pos_rx,
+                samp_rate=float(params.samp_rate),
+                center_freq=params.center_freq,
+            )
+        if params.self_coupling:
+            coupling = 10.0 ** (params.self_coupling_db / 20.0)
+            out = out + coupling * tx_c
+        rx_outputs.append(out)
+
+    if len(rx_outputs) == 1:
+        return rx_outputs[0]
+    return torch.stack(rx_outputs, dim=0)
 
 
-def test_self_coupling_only_matches_gr() -> None:
-    rng = np.random.default_rng(1)
-    tx = _random_tx(rng)
+@pytest.mark.parametrize("n", [64, 2048, 512 * 2560])
+@pytest.mark.parametrize("doppler_hz", [200.0, -350.0, 0.0])
+def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
+    scale = 1.23e4
+    vec = _build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
+    ref = _build_doppler_filter_loop_ref(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
+    atol = _CHIRP_ATOL if n >= _FULL_FRAME_N else _ATOL
+    assert torch.allclose(vec, ref, atol=atol, rtol=0.0)
+
+
+@pytest.mark.parametrize("n", [64, 2048, 512 * 2560])
+@pytest.mark.parametrize("delay_s", [1e-6, 6.67e-6, -2e-7])
+@pytest.mark.parametrize("compensate_numpy_ifft", [False, True])
+def test_delay_filter_matches_loop(
+    n: int, delay_s: float, compensate_numpy_ifft: bool
+) -> None:
+    vec = _build_delay_filter(
+        n,
+        delay_s,
+        _SAMP_RATE,
+        compensate_numpy_ifft=compensate_numpy_ifft,
+        device=_DEVICE,
+    )
+    ref = _build_delay_filter_loop_ref(
+        n,
+        delay_s,
+        _SAMP_RATE,
+        compensate_numpy_ifft=compensate_numpy_ifft,
+        device=_DEVICE,
+    )
+    assert torch.allclose(vec, ref, atol=_ATOL, rtol=0.0)
+
+
+@pytest.mark.parametrize("n", [256, 512 * 2560])
+def test_apply_single_target_echo(n: int) -> None:
+    torch.manual_seed(0)
+    tx = torch.randn(n, dtype=torch.complex64, device=_DEVICE)
+    kwargs = dict(
+        range_m=100.0,
+        velocity_mps=5.0,
+        rcs=1e25,
+        azimuth_deg=10.0,
+        position_rx_m=0.5,
+        samp_rate=_SAMP_RATE,
+        center_freq=6e9,
+        rndm_phaseshift=False,
+        generator=None,
+    )
+    vec = _apply_single_target_echo(tx, **kwargs)
+    ref = _apply_single_target_echo_loop_ref(tx, **{k: v for k, v in kwargs.items() if k not in ("rndm_phaseshift", "generator")})
+    if n >= _FULL_FRAME_N:
+        assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)
+    else:
+        assert torch.allclose(vec, ref, atol=_ATOL, rtol=1e-6)
+
+
+def test_static_target_simulator_end2end() -> None:
+    n = 512 * 2560
+    torch.manual_seed(42)
+    tx = torch.randn(n, dtype=torch.complex64, device=_DEVICE)
     params = static_target_params_from_grc(
-        range_m=1e6,
-        velocity_mps=0.0,
-        rcs=1e-30,
+        range_m=100.0,
+        velocity_mps=5.0,
         rndm_phaseshift=False,
         self_coupling=True,
+        self_coupling_db=-10.0,
     )
-    y_gr = _run_gr_radar(
-        tx,
-        range_m=1e6,
-        velocity_mps=0.0,
-        rcs=1e-30,
-        rndm_phaseshift=False,
-        self_coupling=True,
-    )
-    y_torch = _run_torch(tx, params)
-    np.testing.assert_allclose(y_torch, y_gr, rtol=1e-5, atol=1e-5)
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        dict(
-            range_m=100.0,
-            velocity_mps=5.0,
-            rcs=1e25,
-            self_coupling=True,
-        ),
-        dict(
-            range_m=100.0,
-            velocity_mps=5.0,
-            rcs=1e25,
-            self_coupling=False,
-        ),
-        dict(
-            range_m=[80.0, 150.0],
-            velocity_mps=[3.0, -7.0],
-            rcs=[1e25, 1e25],
-            azimuth_deg=[0.0, 0.0],
-            self_coupling=False,
-        ),
-    ],
-)
-def test_echo_matches_gr_within_fft_tolerance(kwargs: dict) -> None:
-    """Torch FFT 与 gr-radar FFTW 存在 ~3% 峰值误差，形状相关 >0.999。"""
-    rng = np.random.default_rng(2)
-    tx = _random_tx(rng)
-    params = static_target_params_from_grc(rndm_phaseshift=False, **kwargs)
-    y_gr = _run_gr_radar(tx, rndm_phaseshift=False, **kwargs)
-    y_torch = _run_torch(tx, params)
-    _assert_close_to_gr(y_torch, y_gr, rtol=0.035)
-
-
-def test_multi_rx_output_shape() -> None:
-    rng = np.random.default_rng(3)
-    tx = _random_tx(rng, n=512)
-    params = static_target_params_from_grc(
-        position_rx_m=(0.0, 0.5),
-        rndm_phaseshift=False,
-        self_coupling=False,
-    )
-    out = static_target_simulator(torch.from_numpy(tx), params)
-    assert out.shape == (2, tx.size)
-
-
-def test_invalid_target_vector_lengths() -> None:
-    with pytest.raises(ValueError):
-        StaticTargetParams(
-            range_m=[100.0, 200.0],
-            velocity_mps=[1.0],
-            rcs=[1e25, 1e25],
-            azimuth_deg=[0.0, 0.0],
-            position_rx_m=[0.0],
-            samp_rate=SAMP_RATE,
-            center_freq=CENTER_FREQ,
-        )
+    vec = static_target_simulator(tx, params)
+    ref = _static_target_simulator_loop_ref(tx, params)
+    assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)

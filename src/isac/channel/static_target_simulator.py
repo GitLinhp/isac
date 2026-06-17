@@ -89,6 +89,30 @@ def static_target_params_from_grc(
 
 
 
+_TWO_PI = 2.0 * math.pi
+
+
+def _fft_freq_bins(n: int, samp_rate: float, device: torch.device) -> torch.Tensor:
+    """FFT 频域 bin 频率 (Hz)，与 gr-radar range/azimuth 滤波器索引一致。"""
+    i = torch.arange(n, device=device, dtype=torch.float64)
+    half = n // 2
+    fs = float(samp_rate)
+    return torch.where(i < half, i * fs / n, i * fs / n - fs)
+
+
+def _build_delay_filter_from_freq(
+    freq: torch.Tensor,
+    delay_s: float,
+    *,
+    compensate_numpy_ifft: bool,
+) -> torch.Tensor:
+    """由预计算的频域 bin 构建分数时延滤波器。"""
+    delay = float(delay_s)
+    phase = torch.fmod(_TWO_PI * delay * freq, _TWO_PI)
+    inv_n = 1.0 / float(freq.numel()) if compensate_numpy_ifft else 1.0
+    return (inv_n * (torch.cos(phase) - 1j * torch.sin(phase))).to(torch.complex64)
+
+
 def _build_doppler_filter(
     n: int,
     doppler_hz: float,
@@ -96,15 +120,16 @@ def _build_doppler_filter(
     samp_rate: float,
     device: torch.device,
 ) -> torch.Tensor:
-    """逐样点相位累加（fmod），与 gr-radar d_filt_doppler 一致。"""
-    phase_inc = 2.0 * math.pi * doppler_hz / samp_rate
-    filt = torch.empty(n, device=device, dtype=torch.complex64)
-    phase = 0.0
+    """多普勒时域 chirp：scale · exp(j·2π·f_d·i/f_s)，与 gr-radar 逐步 fmod 相位等价。
+
+    复指数 2π 周期，故 exp(j·i·Δφ) 与「fmod 累加再 cos/sin」物理一致；整段向量化替代分块 Python 循环。
+    """
+    phase_inc = _TWO_PI * doppler_hz / samp_rate
     scale = float(scale_ampl)
-    for i in range(n):
-        filt[i] = scale * complex(math.cos(phase), math.sin(phase))
-        phase = math.fmod(phase + phase_inc, 2.0 * math.pi)
-    return filt
+    if n == 0:
+        return torch.empty(0, device=device, dtype=torch.complex64)
+    i = torch.arange(n, device=device, dtype=torch.float64)
+    return (scale * torch.exp(1j * i * phase_inc)).to(torch.complex64)
 
 
 def _build_delay_filter(
@@ -120,16 +145,10 @@ def _build_delay_filter(
     gr-radar (FFTW) 在 range 滤波器内除以 N 以补偿无归一化 IFFT。
     ``torch.fft.ifft`` 默认含 1/N，故 ``compensate_numpy_ifft=False`` 时不除 N。
     """
-    filt = torch.empty(n, device=device, dtype=torch.complex64)
-    half = n // 2
-    fs = float(samp_rate)
-    delay = float(delay_s)
-    inv_n = 1.0 / float(n) if compensate_numpy_ifft else 1.0
-    for i in range(n):
-        freq = i * fs / n if i < half else i * fs / n - fs
-        phase = math.fmod(2.0 * math.pi * delay * freq, 2.0 * math.pi)
-        filt[i] = (math.cos(phase) - 1j * math.sin(phase)) * inv_n
-    return filt
+    freq = _fft_freq_bins(n, samp_rate, device)
+    return _build_delay_filter_from_freq(
+        freq, delay_s, compensate_numpy_ifft=compensate_numpy_ifft
+    )
 
 
 def _target_scale_ampl(range_m: float, rcs: float, center_freq: float) -> float:
@@ -160,19 +179,12 @@ def _apply_single_target_echo(
     doppler_filt = _build_doppler_filter(
         n, doppler_hz, scale_ampl, samp_rate, device
     )
-    range_filt = _build_delay_filter(
-        n,
-        timeshift_s,
-        samp_rate,
-        compensate_numpy_ifft=False,
-        device=device,
+    freq_bins = _fft_freq_bins(n, samp_rate, device)
+    range_filt = _build_delay_filter_from_freq(
+        freq_bins, timeshift_s, compensate_numpy_ifft=False
     )
-    azimuth_filt = _build_delay_filter(
-        n,
-        azimuth_shift_s,
-        samp_rate,
-        compensate_numpy_ifft=False,
-        device=device,
+    azimuth_filt = _build_delay_filter_from_freq(
+        freq_bins, azimuth_shift_s, compensate_numpy_ifft=False
     )
 
     y = tx * doppler_filt
