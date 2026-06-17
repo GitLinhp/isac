@@ -25,7 +25,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="sensing_monostatic.toml",
+        default="sensing_monostatic_canyon.toml",
         help="配置文件路径",
     )
     parser.add_argument(
@@ -45,7 +45,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--domain",
         type=str,
-        default="time",
+        default="frequency",
         choices=["frequency", "time"],
         help="信道施加域：frequency 或 time",
     )

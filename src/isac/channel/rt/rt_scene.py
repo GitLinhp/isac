@@ -69,10 +69,74 @@ def _collect_transceiver_states(
     return out
 
 
+def _point_inside_aabb(
+    position: np.ndarray,
+    box_min: np.ndarray,
+    box_max: np.ndarray,
+) -> bool:
+    """点是否落在轴对齐包围盒内（含边界）。"""
+    x, y, z = np.asarray(position, dtype=np.float64).reshape(3)
+    return bool(
+        box_min[0] <= x <= box_max[0]
+        and box_min[1] <= y <= box_max[1]
+        and box_min[2] <= z <= box_max[2]
+    )
+
+
+def _collect_mesh_obstacle_boxes(
+    scene: "RTScene",
+    *,
+    safe_margin: float,
+) -> list[dict[str, np.ndarray | str]]:
+    """收集场景 mesh 障碍物 AABB（排除 ground/terrain/floor）。"""
+    obstacles: list[dict[str, np.ndarray | str]] = []
+    margin = float(safe_margin)
+    for name, obj in scene.objects.items():
+        name_lower = name.lower()
+        if "ground" in name_lower or "terrain" in name_lower or "floor" in name_lower:
+            continue
+        try:
+            if hasattr(obj, "mi_mesh") and obj.mi_mesh is not None:
+                bbox = obj.mi_mesh.bbox()
+                obstacles.append(
+                    {
+                        "name": name,
+                        "min": np.array(bbox.min, dtype=np.float64) - margin,
+                        "max": np.array(bbox.max, dtype=np.float64) + margin,
+                    }
+                )
+        except Exception:
+            continue
+    return obstacles
+
+
+def validate_transceivers_not_in_obstacles(
+    scene: "RTScene",
+    *,
+    safe_margin: float = 0.0,
+) -> None:
+    """场景初始化时校验收发机 ``position`` 未落入任何障碍物包围盒。"""
+    if not scene.transceivers:
+        return
+    boxes = _collect_mesh_obstacle_boxes(scene, safe_margin=safe_margin)
+    for tc_name, tc in scene.transceivers.items():
+        pos = np.asarray(tc.position, dtype=np.float64).reshape(3)
+        for obs in boxes:
+            box_min = np.asarray(obs["min"], dtype=np.float64)
+            box_max = np.asarray(obs["max"], dtype=np.float64)
+            if _point_inside_aabb(pos, box_min, box_max):
+                raise ValueError(
+                    f"收发机 {tc_name!r} 位置 {pos.tolist()} 落入障碍物 "
+                    f"{obs['name']!r} 的包围盒 "
+                    f"(min={box_min.tolist()}, max={box_max.tolist()})。"
+                    "请调整 [rt_scene.transceivers.*.position] 或场景布局。"
+                )
+
+
 class SceneFilter:
     """场景障碍物过滤器：基于场景对象 AABB（轴对齐包围盒）进行点有效性判定。"""
 
-    def __init__(self, scene: "RTScene", safe_margin: float = 2.0):
+    def __init__(self, scene: "RTScene", safe_margin: float = 1.0):
         """
         初始化障碍物过滤器。
 
@@ -84,34 +148,7 @@ class SceneFilter:
             包围盒外扩的安全距离，用于判定障碍物时的冗余缓冲，防止穿透边界取样。
         """
         self.safe_margin = safe_margin
-        # 存储所有障碍物的包围盒信息，每项为dict，含min/max坐标
-        self.obstacles: list[dict[str, np.ndarray]] = []
-
-        for name, obj in scene.objects.items():
-            name_lower = name.lower()
-            # 地面/地形/楼层/无人机自身不作为障碍物（排除判定）。
-            if (
-                "ground" in name_lower
-                or "terrain" in name_lower
-                or "floor" in name_lower
-                or "uav" in name_lower
-            ):
-                continue
-
-            try:
-                # 检查对象是否有 mesh（mi_mesh），并能正确获得 bbox
-                if hasattr(obj, "mi_mesh") and obj.mi_mesh is not None:
-                    bbox = obj.mi_mesh.bbox()
-                    # 障碍物包围盒外扩 safe_margin，防止边缘采样点过近
-                    self.obstacles.append(
-                        {
-                            "min": np.array(bbox.min, dtype=np.float64) - safe_margin,
-                            "max": np.array(bbox.max, dtype=np.float64) + safe_margin,
-                        }
-                    )
-            except Exception:
-                # 若对象（如部分自定义物体）无效bbox或接口异常则跳过
-                continue
+        self.obstacles = _collect_mesh_obstacle_boxes(scene, safe_margin=safe_margin)
 
     def is_valid(self, position: np.ndarray) -> bool:
         """
@@ -127,13 +164,12 @@ class SceneFilter:
         bool
             True: 点有效（未落入任意障碍物内），False: 点无效（落入某障碍物内）
         """
-        x, y, z = np.asarray(position, dtype=np.float64).reshape(-1)
+        pos = np.asarray(position, dtype=np.float64).reshape(3)
         for obs in self.obstacles:
-            # 若点坐标xyz全部同时落在某个障碍物min~max范围内，则判定为无效点
-            if (
-                obs["min"][0] <= x <= obs["max"][0]
-                and obs["min"][1] <= y <= obs["max"][1]
-                and obs["min"][2] <= z <= obs["max"][2]
+            if _point_inside_aabb(
+                pos,
+                np.asarray(obs["min"], dtype=np.float64),
+                np.asarray(obs["max"], dtype=np.float64),
             ):
                 return False
         return True
@@ -175,6 +211,7 @@ class RTScene(Scene):
         self._init_camera()  # 初始化相机
         self._init_antenna_array()  # 初始化天线阵列
         self._init_transceivers()  # 初始化收发器
+        validate_transceivers_not_in_obstacles(self)
         self._init_target_material()  # 初始化目标材料
         self._init_targets()  # 初始化目标
 

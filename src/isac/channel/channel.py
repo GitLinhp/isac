@@ -10,6 +10,7 @@ from sionna.phy.channel import (
     cir_to_time_channel,
     ApplyOFDMChannel,
     ApplyTimeChannel,
+    AWGN,
 )
 from sionna.phy.utils import ebnodb2no
 from sionna.rt import Paths
@@ -48,6 +49,7 @@ class Channel:
         self.channel_time = ApplyTimeChannel(
             self.rg.num_time_samples, l_tot=self.l_tot, add_awgn=True
         )
+        self._awgn = AWGN()
 
     def cir(
         self, num_time_steps: int, sampling_frequency: float
@@ -148,6 +150,61 @@ class Channel:
             resource_grid,
         )
 
+    @staticmethod
+    def mean_power(t: torch.Tensor) -> float:
+        """复信号平均功率 ``E[|x|^2]``。"""
+        return float(torch.mean(torch.abs(t) ** 2).item())
+
+    @staticmethod
+    def power_db(power: float) -> float:
+        if power <= 0.0:
+            return float("-inf")
+        return 10.0 * math.log10(power)
+
+    @staticmethod
+    def noise_power_from_rx_snr(signal_power: float, snr_db: float) -> float:
+        """按接收端信号功率与目标 SNR (dB) 计算 AWGN 方差 ``no``。"""
+        if signal_power <= 0.0:
+            raise ValueError("接收端信号功率须为正，无法按 snr_db 定标噪声。")
+        return signal_power / (10.0 ** (snr_db / 10.0))
+
+    @staticmethod
+    def print_rx_power_report(
+        *,
+        snr_db: float,
+        no_comm: torch.Tensor,
+        y_clean: torch.Tensor,
+        y_noisy: torch.Tensor,
+        no_rx: float,
+    ) -> None:
+        """打印接收端功率、噪声与 SNR 诊断（通信定标 vs 接收端定标）。"""
+        sig_p = Channel.mean_power(y_clean)
+        noise = y_noisy - y_clean
+        noise_p = Channel.mean_power(noise)
+        snr_linear = sig_p / noise_p if noise_p > 0.0 else float("inf")
+        snr_actual_db = Channel.power_db(snr_linear)
+
+        print("=== 接收端功率 / SNR 诊断 ===")
+        print(f"配置 snr_db (目标接收 SNR): {snr_db:.2f} dB")
+        print(
+            "ebnodb2no 噪声方差 no_comm (Es=1 通信假设): "
+            f"{float(no_comm.item()):.6e}"
+        )
+        print(f"接收端定标噪声方差 no_rx: {no_rx:.6e}")
+        print(
+            f"接收信号功率 E[|y_clean|^2]: {sig_p:.6e} "
+            f"({Channel.power_db(sig_p):.2f} dB)"
+        )
+        print(
+            f"噪声样本功率 E[|y-y_clean|^2]: {noise_p:.6e} "
+            f"({Channel.power_db(noise_p):.2f} dB)"
+        )
+        print(
+            f"实际接收 SNR: {snr_linear:.6e} ({snr_actual_db:.2f} dB) "
+            f"[目标 {snr_db:.2f} dB]"
+        )
+        print(f"噪声功率 / no_rx: {noise_p / no_rx:.4f} (理想≈1)")
+
     def __call__(
         self,
         inputs: torch.Tensor,
@@ -157,28 +214,27 @@ class Channel:
         num_bits_per_symbol: int = 2,
         coderate: float = 1.0,
     ) -> torch.Tensor:
-        """经信道并可选叠加 AWGN（与 ``MIMO_OFDM_Transmissions_over_CDL`` notebook 一致）。
+        """经信道并可选叠加 AWGN。
 
-        配置 ``snr_db`` (Es/N0 dB) 换算为 ``ebno_db`` 后
-        ``no = ebnodb2no(ebno_db, num_bits_per_symbol, coderate, self.rg)``。
-        未传 ``snr_db`` 时不加噪。
+        未传 ``snr_db`` 时不加噪。传入时按**接收端信号功率**定标噪声：
+
+        ``no = E[|y_clean|^2] / 10^(snr_db/10)``，使配置 ``snr_db`` 为实际接收 SNR (dB)。
+
+        ``noise_power_from_snr_db``（``ebnodb2no`` / Es=1 通信假设）仅用于诊断对比；
+        感知 + ZC + 射线追踪场景下该值往往与真实接收 SNR 严重不符。
         """
-        no: Optional[Union[float, torch.Tensor]] = None
-        if snr_db is not None:
-            no = self.noise_power_from_snr_db(
-                snr_db, num_bits_per_symbol, coderate, self.rg
-            )
-
-        paths = self.paths()
-        a, tau = paths.cir(
-            num_time_steps=self.rg.num_time_samples + self.l_tot - 1,
-            sampling_frequency=self.rg.bandwidth,
-            normalize_delays=False,
-            out_type="torch",
-        )
-
         if domain == "time":
-            return self.channel_time(inputs, self.h_time, 0)
+            y_clean = self.channel_time(inputs, self.h_time, None)
+            if snr_db is None:
+                return y_clean
+            sig_p = self.mean_power(y_clean)
+            no = self.noise_power_from_rx_snr(sig_p, snr_db)
+            return self._awgn(y_clean, no)
         if domain == "frequency":
-            return self.channel_freq(inputs, self.h_freq, 0)
+            y_clean = self.channel_freq(inputs, self.h_freq, None)
+            if snr_db is None:
+                return y_clean
+            sig_p = self.mean_power(y_clean)
+            no = self.noise_power_from_rx_snr(sig_p, snr_db)
+            return self._awgn(y_clean, no)
         raise ValueError(f"不支持的域: {domain}。支持的值: 'time', 'frequency'")

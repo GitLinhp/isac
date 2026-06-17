@@ -13,7 +13,7 @@ class ChannelParams:
     """信道配置：信噪比与可选射线追踪场景参数。"""
 
     snr_db: float = 10
-    """符号信噪比 Es/N0 (dB)；内部换算 Eb/N0 后调用 ``ebnodb2no``（同 Sionna OFDM notebook）。"""
+    """接收端信噪比 (dB)：`no = E[|y_clean|^2] / 10^(snr_db/10)`。"""
     coderate: float = 1.0
     """码率，传入 ``ebnodb2no``；无 LDPC 时取 1（notebook 有 FEC 时填真实码率）。"""
     rt_scene: Optional[RtSceneParams] = None

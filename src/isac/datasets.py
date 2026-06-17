@@ -27,16 +27,183 @@ _META_KEY_SUBCARRIER_SPACING = "subcarrier_spacing"
 _META_KEY_NUM_SUBCARRIERS = "num_subcarriers"
 _META_KEY_NUM_SLOTS = "num_slots"
 _META_KEY_DESCRIPTION = "description"
+_META_KEY_HAS_CIR = "has_cir"
+
+# 采集元数据根属性前缀（``collection_*``），由 ``run_dataset_collection.py`` 写入
+_META_PREFIX_COLLECTION = "collection_"
 
 
-def _require_array_dataset(f: h5py.File, key: str) -> h5py.Dataset:
-    if key not in f:
-        raise KeyError(
-            f"HDF5 缺少必选数据集 {key!r}。当前格式要求同时包含 CFR 与 CIR "
-            "（channel_frequency_response、channel_impulse_response_a、"
-            "channel_impulse_response_tau），请重新生成数据集。"
+@dataclass(frozen=True)
+class CollectionMetadata:
+    """``run_dataset_collection.py`` 一次采集运行的可复现配置摘要。"""
+
+    source: str
+    seed: int
+    config_file: str
+    scene_slug: str
+    num_samples: int | None = None
+    run_sensing: bool = False
+    save_cir: bool = False
+    roi_xmin: float | None = None
+    roi_xmax: float | None = None
+    roi_ymin: float | None = None
+    roi_ymax: float | None = None
+    roi_z: float = 0.0
+    sampling_mode: str | None = None
+    velocity_sampling: str | None = None
+    safe_margin: float | None = None
+    max_trials_factor: int | None = None
+    speed_min: float | None = None
+    speed_max: float | None = None
+    time_delta: float | None = None
+    steps: int | None = None
+    quality_filter: bool = False
+    quality_accepted: int | None = None
+    quality_rejected: int | None = None
+    quality_reject_no_valid_paths: int | None = None
+    quality_reject_weak_los: int | None = None
+    quality_reject_low_peak_prominence: int | None = None
+    quality_reject_peak_misaligned: int | None = None
+    require_los: bool | None = None
+    min_los_ratio: float | None = None
+    min_peak_prominence_db: float | None = None
+    max_bin_offset: int | None = None
+
+    def write_hdf5_attrs(self, f: h5py.File) -> None:
+        """写入 HDF5 根属性（标量/字符串；None 字段跳过）。"""
+        fields: dict[str, str | int | float | bool] = {
+            "source": self.source,
+            "seed": self.seed,
+            "config_file": self.config_file,
+            "scene_slug": self.scene_slug,
+            "run_sensing": self.run_sensing,
+            "save_cir": self.save_cir,
+            "roi_z": self.roi_z,
+        }
+        optional: dict[str, str | int | float | None] = {
+            "num_samples": self.num_samples,
+            "roi_xmin": self.roi_xmin,
+            "roi_xmax": self.roi_xmax,
+            "roi_ymin": self.roi_ymin,
+            "roi_ymax": self.roi_ymax,
+            "sampling_mode": self.sampling_mode,
+            "velocity_sampling": self.velocity_sampling,
+            "safe_margin": self.safe_margin,
+            "max_trials_factor": self.max_trials_factor,
+            "speed_min": self.speed_min,
+            "speed_max": self.speed_max,
+            "time_delta": self.time_delta,
+            "steps": self.steps,
+            "quality_filter": self.quality_filter,
+            "quality_accepted": self.quality_accepted,
+            "quality_rejected": self.quality_rejected,
+            "quality_reject_no_valid_paths": self.quality_reject_no_valid_paths,
+            "quality_reject_weak_los": self.quality_reject_weak_los,
+            "quality_reject_low_peak_prominence": self.quality_reject_low_peak_prominence,
+            "quality_reject_peak_misaligned": self.quality_reject_peak_misaligned,
+            "require_los": self.require_los,
+            "min_los_ratio": self.min_los_ratio,
+            "min_peak_prominence_db": self.min_peak_prominence_db,
+            "max_bin_offset": self.max_bin_offset,
+        }
+        for key, val in fields.items():
+            f.attrs[f"{_META_PREFIX_COLLECTION}{key}"] = val
+        for key, val in optional.items():
+            if val is not None:
+                f.attrs[f"{_META_PREFIX_COLLECTION}{key}"] = val
+
+    @classmethod
+    def read_hdf5_attrs(cls, f: h5py.File) -> CollectionMetadata | None:
+        """从 HDF5 根属性读取；旧文件无 ``collection_source`` 时返回 ``None``。"""
+        src_key = f"{_META_PREFIX_COLLECTION}source"
+        if src_key not in f.attrs:
+            return None
+
+        def _opt(name: str) -> Any:
+            key = f"{_META_PREFIX_COLLECTION}{name}"
+            return f.attrs[key] if key in f.attrs else None
+
+        return cls(
+            source=str(f.attrs[src_key]),
+            seed=int(f.attrs[f"{_META_PREFIX_COLLECTION}seed"]),
+            config_file=str(f.attrs[f"{_META_PREFIX_COLLECTION}config_file"]),
+            scene_slug=str(f.attrs[f"{_META_PREFIX_COLLECTION}scene_slug"]),
+            num_samples=int(_opt("num_samples"))
+            if _opt("num_samples") is not None
+            else None,
+            run_sensing=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}run_sensing", False)),
+            save_cir=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}save_cir", False)),
+            roi_xmin=float(_opt("roi_xmin")) if _opt("roi_xmin") is not None else None,
+            roi_xmax=float(_opt("roi_xmax")) if _opt("roi_xmax") is not None else None,
+            roi_ymin=float(_opt("roi_ymin")) if _opt("roi_ymin") is not None else None,
+            roi_ymax=float(_opt("roi_ymax")) if _opt("roi_ymax") is not None else None,
+            roi_z=float(f.attrs.get(f"{_META_PREFIX_COLLECTION}roi_z", 0.0)),
+            sampling_mode=str(_opt("sampling_mode"))
+            if _opt("sampling_mode") is not None
+            else None,
+            velocity_sampling=str(_opt("velocity_sampling"))
+            if _opt("velocity_sampling") is not None
+            else None,
+            safe_margin=float(_opt("safe_margin")) if _opt("safe_margin") is not None else None,
+            max_trials_factor=int(_opt("max_trials_factor"))
+            if _opt("max_trials_factor") is not None
+            else None,
+            speed_min=float(_opt("speed_min")) if _opt("speed_min") is not None else None,
+            speed_max=float(_opt("speed_max")) if _opt("speed_max") is not None else None,
+            time_delta=float(_opt("time_delta")) if _opt("time_delta") is not None else None,
+            steps=int(_opt("steps")) if _opt("steps") is not None else None,
+            quality_filter=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}quality_filter", False)),
+            quality_accepted=int(_opt("quality_accepted"))
+            if _opt("quality_accepted") is not None
+            else None,
+            quality_rejected=int(_opt("quality_rejected"))
+            if _opt("quality_rejected") is not None
+            else None,
+            quality_reject_no_valid_paths=int(_opt("quality_reject_no_valid_paths"))
+            if _opt("quality_reject_no_valid_paths") is not None
+            else None,
+            quality_reject_weak_los=int(_opt("quality_reject_weak_los"))
+            if _opt("quality_reject_weak_los") is not None
+            else None,
+            quality_reject_low_peak_prominence=int(_opt("quality_reject_low_peak_prominence"))
+            if _opt("quality_reject_low_peak_prominence") is not None
+            else None,
+            quality_reject_peak_misaligned=int(_opt("quality_reject_peak_misaligned"))
+            if _opt("quality_reject_peak_misaligned") is not None
+            else None,
+            require_los=bool(_opt("require_los")) if _opt("require_los") is not None else None,
+            min_los_ratio=float(_opt("min_los_ratio"))
+            if _opt("min_los_ratio") is not None
+            else None,
+            min_peak_prominence_db=float(_opt("min_peak_prominence_db"))
+            if _opt("min_peak_prominence_db") is not None
+            else None,
+            max_bin_offset=int(_opt("max_bin_offset"))
+            if _opt("max_bin_offset") is not None
+            else None,
         )
-    return f[key]
+
+    def format_roi(self) -> str:
+        if self.roi_xmin is None:
+            return "(not set)"
+        return (
+            f"x=[{self.roi_xmin:.2f}, {self.roi_xmax:.2f}], "
+            f"y=[{self.roi_ymin:.2f}, {self.roi_ymax:.2f}], z={self.roi_z:.2f}"
+        )
+
+
+def _require_cfr_dataset(f: h5py.File) -> h5py.Dataset:
+    if _DATASET_KEY_CFR not in f:
+        raise KeyError(
+            f"HDF5 缺少必选数据集 {_DATASET_KEY_CFR!r}（channel_frequency_response）。"
+        )
+    return f[_DATASET_KEY_CFR]
+
+
+def _optional_array_dataset(f: h5py.File, key: str) -> np.ndarray | None:
+    if key not in f:
+        return None
+    return f[key][:]
 
 
 def _require_dataset_any(f: h5py.File, keys: tuple[str, ...]) -> h5py.Dataset:
@@ -62,9 +229,9 @@ def _array_info(name: str, arr: np.ndarray) -> str:
 
 @dataclass
 class Dataset:
-    """ISAC HDF5 数据集的内存表示（必含 CFR + CIR）。
+    """ISAC HDF5 数据集的内存表示（必含 CFR；CIR 可选）。
 
-    蒙特卡洛等场景下射线数目可能随样本变化；``cir_a`` / ``cir_tau`` 在路径维上可能对较短样本零填充。
+    蒙特卡洛等场景下射线数目可能随样本变化；若含 CIR，``cir_a`` / ``cir_tau`` 在路径维上可能对较短样本零填充。
 
     - 构造采集结果：``Dataset.from_export_arrays(...)``
     - 落盘：``dataset.save(path)``
@@ -73,8 +240,8 @@ class Dataset:
     """
 
     cfr: np.ndarray
-    cir_a: np.ndarray
-    cir_tau: np.ndarray
+    cir_a: np.ndarray | None
+    cir_tau: np.ndarray | None
     target_position: np.ndarray
     target_velocity: np.ndarray
     bs_pos: np.ndarray
@@ -83,6 +250,7 @@ class Dataset:
     num_subcarriers: int
     num_slots: int
     description: str = ""
+    collection_meta: CollectionMetadata | None = None
 
     def __repr__(self) -> str:
         return (
@@ -94,8 +262,6 @@ class Dataset:
     def from_export_arrays(
         cls,
         dataset_cfr: np.ndarray,
-        dataset_cir_a: np.ndarray,
-        dataset_cir_tau: np.ndarray,
         dataset_pos: np.ndarray,
         dataset_vel: np.ndarray,
         bs_pos: np.ndarray,
@@ -105,13 +271,19 @@ class Dataset:
         num_valid: int,
         scene_name: str,
         *,
+        dataset_cir_a: np.ndarray | None = None,
+        dataset_cir_tau: np.ndarray | None = None,
         description: str | None = None,
+        collection_meta: CollectionMetadata | None = None,
     ) -> Dataset:
         """由 ndarray 组装数据集（与采集脚本导出字段对齐）。
 
+        ``dataset_cir_a`` / ``dataset_cir_tau`` 可省略（仅写 CFR + kinematics）。
         ``scene_name`` 仅用于在未显式给出 ``description`` 时生成默认英文描述；不单独写入 HDF5。
         ``num_valid`` 映射为属性 ``num_slots``（有效 episode / 步数）。
         """
+        if (dataset_cir_a is None) != (dataset_cir_tau is None):
+            raise ValueError("dataset_cir_a 与 dataset_cir_tau 须同时提供或同时为 None")
         desc = description or (
             f"Sionna generated ISAC dataset with car trajectory in {scene_name}"
         )
@@ -127,27 +299,35 @@ class Dataset:
             num_subcarriers=num_subcarriers,
             num_slots=num_valid,
             description=desc,
+            collection_meta=collection_meta,
         )
 
     @classmethod
     def load(cls, filepath: str | Path) -> Dataset:
-        """从 HDF5 加载（必须包含 CIR 与 CFR；不兼容旧版仅 CFR 文件）。
+        """从 HDF5 加载（必含 CFR；CIR 可选）。
 
         目标位置/速度优先读取 ``target_position`` / ``target_velocity``，否则回退 ``uav_*`` 旧键。
         """
         filepath = Path(filepath)
         with h5py.File(filepath, "r") as f:
+            cir_a = _optional_array_dataset(f, _DATASET_KEY_CIR_A)
+            cir_tau = _optional_array_dataset(f, _DATASET_KEY_CIR_TAU)
+            if (cir_a is None) != (cir_tau is None):
+                raise ValueError(
+                    "HDF5 中 CIR 数据集不完整："
+                    f"{_DATASET_KEY_CIR_A!r} 与 {_DATASET_KEY_CIR_TAU!r} 须同时存在或同时缺失"
+                )
             return cls(
-                cfr=_require_array_dataset(f, _DATASET_KEY_CFR)[:],
-                cir_a=_require_array_dataset(f, _DATASET_KEY_CIR_A)[:],
-                cir_tau=_require_array_dataset(f, _DATASET_KEY_CIR_TAU)[:],
+                cfr=_require_cfr_dataset(f)[:],
+                cir_a=cir_a,
+                cir_tau=cir_tau,
                 target_position=_require_dataset_any(
                     f, (_DATASET_KEY_TARGET_POSITION, "uav_position")
                 )[:],
                 target_velocity=_require_dataset_any(
                     f, (_DATASET_KEY_TARGET_VELOCITY, "uav_velocity")
                 )[:],
-                bs_pos=_require_array_dataset(f, _DATASET_KEY_BS_POS)[:],
+                bs_pos=f[_DATASET_KEY_BS_POS][:],
                 carrier_frequency=float(_read_meta(f, _META_KEY_CARRIER_FREQUENCY)),
                 subcarrier_spacing=float(_read_meta(f, _META_KEY_SUBCARRIER_SPACING)),
                 num_subcarriers=int(_read_meta(f, _META_KEY_NUM_SUBCARRIERS)),
@@ -155,15 +335,20 @@ class Dataset:
                 description=str(_read_meta(f, _META_KEY_DESCRIPTION))
                 if (_META_KEY_DESCRIPTION in f.attrs or _META_KEY_DESCRIPTION in f)
                 else "",
+                collection_meta=CollectionMetadata.read_hdf5_attrs(f),
             )
 
     def save(self, filepath: str | Path) -> None:
         """写入 HDF5；成功后打印保存路径。"""
         path = Path(filepath)
+        has_cir = self.cir_a is not None and self.cir_tau is not None
         with h5py.File(path, "w") as f:
             f.create_dataset(_DATASET_KEY_CFR, data=self.cfr, compression="gzip")
-            f.create_dataset(_DATASET_KEY_CIR_A, data=self.cir_a, compression="gzip")
-            f.create_dataset(_DATASET_KEY_CIR_TAU, data=self.cir_tau, compression="gzip")
+            if has_cir:
+                f.create_dataset(_DATASET_KEY_CIR_A, data=self.cir_a, compression="gzip")
+                f.create_dataset(
+                    _DATASET_KEY_CIR_TAU, data=self.cir_tau, compression="gzip"
+                )
             f.create_dataset(_DATASET_KEY_TARGET_POSITION, data=self.target_position)
             f.create_dataset(_DATASET_KEY_TARGET_VELOCITY, data=self.target_velocity)
             f.create_dataset(_DATASET_KEY_BS_POS, data=self.bs_pos)
@@ -173,6 +358,9 @@ class Dataset:
             f.attrs[_META_KEY_NUM_SUBCARRIERS] = self.num_subcarriers
             f.attrs[_META_KEY_NUM_SLOTS] = self.num_slots
             f.attrs[_META_KEY_DESCRIPTION] = self.description
+            f.attrs[_META_KEY_HAS_CIR] = has_cir
+            if self.collection_meta is not None:
+                self.collection_meta.write_hdf5_attrs(f)
 
         print(f"所有数据已成功保存至: {path}")
 
@@ -189,11 +377,25 @@ class Dataset:
             f"num_subcarriers={self.num_subcarriers}"
         )
         print(_array_info("cfr", self.cfr))
-        print(_array_info("cir_a", self.cir_a))
-        print(_array_info("cir_tau", self.cir_tau))
+        if self.cir_a is not None and self.cir_tau is not None:
+            print(_array_info("cir_a", self.cir_a))
+            print(_array_info("cir_tau", self.cir_tau))
+        else:
+            print("  cir: (not stored)")
         print(_array_info("target_position", self.target_position))
         print(_array_info("target_velocity", self.target_velocity))
         print(_array_info("bs_pos", self.bs_pos))
+        if self.collection_meta is not None:
+            m = self.collection_meta
+            print(
+                f"  collection: source={m.source}, seed={m.seed}, "
+                f"config={m.config_file}, scene={m.scene_slug}"
+            )
+            print(f"  collection ROI: {m.format_roi()}")
+            if m.num_samples is not None:
+                print(f"  collection num_samples={m.num_samples}, sampling_mode={m.sampling_mode}")
+            if m.time_delta is not None:
+                print(f"  collection time_delta={m.time_delta}, steps={m.steps}")
 
     def plot_cfr(self, slot: int = 0, *, magnitude: bool = True) -> None:
         """绘制某一 slot 的 CFR；默认显示幅度二维图（需 matplotlib、适宜交互后端）。

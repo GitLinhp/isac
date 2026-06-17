@@ -1,5 +1,6 @@
 carrier_frequency = 3.5e9 # 载波频率(Hz)
 num_bits_per_symbol = 2   # QAM调制每个符号的比特数
+snr_db = -5               # 接收端 SNR (dB)：no = E[|y_clean|^2] / 10^(snr_db/10)
 
 # OFDM参数
 [ofdm]

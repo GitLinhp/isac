@@ -2,17 +2,23 @@
 import argparse
 import csv
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
 import torch
 import numpy as np
 import sionna
 
 # 自定义模块
-from .utils import load_config
+from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
+from .utils.type_converter import convert
 from .data_structures import SystemParams, SystemComponents
 from .sensing.clutter_suppression import MovingTargetDetection, MovingTargetIndication
-from .utils import cartesian_direction_to_yaw_pitch_roll
 from . import PROJECT_ROOT
+
+
+def _csv_float2_scalar(value: object) -> str:
+    """将标量格式化为保留两位小数的 CSV 字段字符串。"""
+    return f"{convert(value, 'float'):.2f}"
+
 
 class System:
 
@@ -58,7 +64,7 @@ class System:
         *,
         snr_db: Optional[float] = None,
     ) -> torch.Tensor:
-        """经信道并加 AWGN；TOML ``snr_db`` (Es/N0) 换算 Eb/N0 后 ``ebnodb2no``（同 OFDM notebook）。"""
+        """经信道并加 AWGN；TOML ``snr_db`` 为接收端 SNR (dB)，按 ``E[|y_clean|^2]`` 定标 ``no``。"""
         snr = snr_db if snr_db is not None else self.params.channel.snr_db
         return self.components.channel(
             inputs,

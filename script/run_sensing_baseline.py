@@ -1,8 +1,10 @@
 import argparse
+import math
 
-import numpy as np
+import torch
 
 from isac import PROJECT_ROOT
+from isac.channel.channel import Channel
 from isac.system import System
 from isac.utils import set_random_seed
 
@@ -39,6 +41,41 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _print_dd_spectrum_report(
+    dd_noisy: torch.Tensor,
+    dd_clean: torch.Tensor,
+    *,
+    snr_db: float,
+) -> None:
+    """打印时延–多普勒谱峰值/底噪与处理增益诊断。"""
+    a_noisy = torch.abs(dd_noisy).flatten()
+    a_clean = torch.abs(dd_clean).flatten()
+    peak_n = float(a_noisy.max().item())
+    peak_c = float(a_clean.max().item())
+    med_n = float(a_noisy.median().item())
+    med_c = float(a_clean.median().item())
+    dr_n = 20.0 * math.log10(peak_n / med_n) if med_n > 0 else float("inf")
+    dr_c = 20.0 * math.log10(peak_c / med_c) if med_c > 0 else float("inf")
+
+    print("=== 时延–多普勒谱诊断 ===")
+    print(
+        f"无噪谱: peak={peak_c:.6f}, median={med_c:.6e}, "
+        f"峰/中值={dr_c:.1f} dB"
+    )
+    print(
+        f"加噪谱: peak={peak_n:.6f}, median={med_n:.6e}, "
+        f"峰/中值={dr_n:.1f} dB"
+    )
+    print(
+        f"底噪抬升 (median): {10 * math.log10(med_n / med_c):.1f} dB "
+        f"(配置接收 SNR={snr_db:.1f} dB，FFT 后仍可能有 ~60 dB 处理增益)"
+    )
+    print(
+        "提示: to_db=False 线性作图时，median≪peak 的底噪在 3D 图上几乎不可见；"
+        "低 SNR 建议 to_db=True。"
+    )
+
+
 def main() -> None:
     args = argument_parser()  # 解析命令行参数
     set_random_seed(args.seed)  # 设置随机种子
@@ -58,19 +95,51 @@ def main() -> None:
     system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]  # 设置基站1发射速度
 
     x_rg = system.tx_symbols_to_resource_grid()
+    ch = system.components.channel
+    snr_db = system.params.channel.snr_db
+    no_comm = ch.noise_power_from_snr_db(
+        snr_db,
+        system.params.qam.num_bits_per_symbol,
+        system.params.channel.coderate,
+        system.components.rg,
+    )
 
     if domain == "frequency":
-        y_rg = system.apply_channel(x_rg, domain=domain)  # 信道
+        y_clean = ch(x_rg, domain=domain, snr_db=None)
+        y_rg = system.apply_channel(x_rg, domain=domain)
+        sig_p = ch.mean_power(y_clean)
+        no_rx = ch.noise_power_from_rx_snr(sig_p, snr_db)
+        Channel.print_rx_power_report(
+            snr_db=snr_db,
+            no_comm=no_comm,
+            y_clean=y_clean,
+            y_noisy=y_rg,
+            no_rx=no_rx,
+        )
     elif domain == "time":
-        x_time = system.components.modulator(x_rg)  # 调制到时域
-        y_time = system.apply_channel(x_time, domain=domain)  # 时域信道
-        y_rg = system.components.demodulator(y_time)  # 解调到频域
+        x_time = system.components.modulator(x_rg)
+        y_time_clean = ch(x_time, domain=domain, snr_db=None)
+        y_time = system.apply_channel(x_time, domain=domain)
+        y_clean = system.components.demodulator(y_time_clean)
+        y_rg = system.components.demodulator(y_time)
+        sig_p = ch.mean_power(y_time_clean)
+        no_rx = ch.noise_power_from_rx_snr(sig_p, snr_db)
+        Channel.print_rx_power_report(
+            snr_db=snr_db,
+            no_comm=no_comm,
+            y_clean=y_time_clean,
+            y_noisy=y_time,
+            no_rx=no_rx,
+        )
     else:
         raise ValueError(f"不支持的域: {domain}")
 
     h = system.estimate_channel(x_rg, y_rg)
+    h_clean = system.estimate_channel(x_rg, y_clean)
 
-    h_delay_doppler = system.components.delay_doppler_spectrum(h)  # 计算时延多普勒谱
+    h_delay_doppler = system.components.delay_doppler_spectrum(h)
+    dd_clean = system.components.delay_doppler_spectrum(h_clean)
+    _print_dd_spectrum_report(h_delay_doppler, dd_clean, snr_db=snr_db)
 
     system.components.delay_doppler_spectrum.visualize(
         offset=20,

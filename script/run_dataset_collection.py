@@ -1,16 +1,30 @@
-"""ISAC 数据集采集入口：按轨迹或蒙特卡洛生成目标位姿序列，可选每步单站感知，并写出 CSV / HDF5 / GIF。
+"""ISAC 数据集采集入口：按轨迹或蒙特卡洛生成目标位姿序列，可选每步感知，并写出 CSV / HDF5 / GIF。
 
 流程概要
 --------
-1. 解析参数，设置种子；按 ``--source`` 与 ``--roi`` 等准备采样区域与 episode 数。
-2. 构建 ``System``，在 ``out/dataset_collection/`` 下落盘（与 ``--config_file`` 解耦的脚本级输出根目录）。
-3. 主循环：对每条 episode 更新 RT 目标位姿 → 记真值径向几何 →（可选）``monostatic_eval`` 或 ``bistatic_eval``（``--sensing_layout``）→ 累计 CFR/CIR/CSV 行/可选 GIF 帧。
-4. 循环结束后按 ``--csv_mode``、``--save_h5``、``--save_gif`` 写出产物；HDF5 文件名随 ``source`` 与 ``--run_sensing`` 组合变化。
+1. 解析 CLI，设置随机种子；蒙特卡洛模式下解析 ROI。
+2. 构建 ``System``，输出目录固定为 ``out/dataset_collection/``。
+3. 生成 episode 序列后进入主循环：更新 RT 目标位姿 → 记录几何真值 →（可选）感知评估 → 累计 I/O 缓冲。
+4. 循环结束后写出 CSV / HDF5 / GIF；HDF5 默认仅 CFR + kinematics，加 ``--save-cir`` 才写入 CIR。
 
-与 ``run_sensing_monostatic.py`` 的差异：本脚本将感知嵌在数据采集循环内，并承担批量 episode 的 I/O。
+约定
+----
+- 几何真值与感知评估默认取 ``RxTargetTxGeometric`` 的 ``[0, 0, 0]`` 切片（单 RX × 单目标 × 单 TX）。
+- ``--run_sensing`` 时谱图固定覆盖写入 ``sensing_monostatic_delay_doppler_spectrum.png``，便于查看最新一步。
+- CSV 中逐步 RMSE 为「本 episode 估计 vs 真值」；``select_peak_and_log_radial_rmse`` 打印的是匈牙利跨峰 RMSE。
+- 蒙特卡洛 ROI：CLI 为 ``--roi XMIN XMAX YMIN YMAX`` 四元组，``z`` 固定为 ``0``（即 ``(0, 0)``）。
+- HDF5 根属性 ``has_cir`` 标记是否包含 ``channel_impulse_response_*`` 数据集。
+- HDF5 另含 ``collection_*`` 根属性（ROI、seed、source、采样参数等），见 ``CollectionMetadata``。
+
+与 ``run_sensing_monostatic.py`` 的差异：感知嵌在数据采集循环内，并承担批量 episode 的 I/O。
 """
+
+from __future__ import annotations
+
 import argparse
 import warnings
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import matplotlib.pyplot as plt
@@ -20,8 +34,13 @@ from scipy.constants import c
 from tqdm import tqdm
 
 from isac import PROJECT_ROOT
-from isac.datasets import Dataset
+from isac.datasets import CollectionMetadata, Dataset
 from isac.data_structures.rx_target_tx_geometric import RxTargetTxGeometric
+from isac.sensing.sample_quality import (
+    QualityFilterStats,
+    SampleQualityConfig,
+    evaluate_sample_quality,
+)
 from isac.sensing.utils import doppler_to_velocity
 from isac.system import System, _csv_float2_scalar
 from isac.utils import (
@@ -36,6 +55,7 @@ from isac.utils import (
 )
 from isac.utils import target_generation as tg
 
+# Sionna/DrJit 射线追踪在大量 episode 时会触发 AST 装饰器次数告警，不影响数值结果
 warnings.filterwarnings(
     "ignore",
     message=r"The AST-transforming decorator @drjit\.syntax was called more than 1000 times.*",
@@ -43,15 +63,101 @@ warnings.filterwarnings(
     module=r"drjit\.ast",
 )
 
+# ---------------------------------------------------------------------------
+# 常量
+# ---------------------------------------------------------------------------
+
+DEFAULT_MC_ROI_XY = ((0.0, 80.0), (-40.0, 40.0))
+DEFAULT_MC_ROI_Z = (0.0, 0.0)
+SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "dataset_collection"
+SENSING_SPECTRUM_FILENAME = "sensing_monostatic_delay_doppler_spectrum.png"
+
+# 单 RX / 单目标 / 单 TX 场景下，几何张量 ``(n_rx, n_target, n_tx)`` 的默认索引
+RX_IDX = TARGET_IDX = TX_IDX = 0
+TRIPLE_SLICE = (RX_IDX, TARGET_IDX, TX_IDX)
+
+SourceKind = Literal["monte_carlo", "trajectory"]
+CsvMode = Literal["unified", "legacy"]
+SensingLayout = Literal["monostatic", "bistatic"]
+IndexKey = Literal["step", "sample_idx"]
+
+
+@dataclass(frozen=True)
+class CollectionConfig:
+    """从 CLI 解包后的采集选项，避免 ``main`` 内散落大量局部变量。"""
+
+    source: SourceKind
+    run_sensing: bool
+    save_h5: bool
+    save_cir: bool
+    save_csv: bool
+    save_gif: bool
+    csv_mode: CsvMode
+    sensing_domain: str
+    sensing_layout: SensingLayout
+    log_per_step_sensing: bool
+    quality_filter: bool
+    require_los: bool
+    min_los_ratio: float
+    min_peak_prominence_db: float
+    max_bin_offset: int
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> CollectionConfig:
+        csv_mode: CsvMode = args.csv_mode
+        if (
+            args.run_sensing
+            and args.sensing_layout == "bistatic"
+            and csv_mode == "legacy"
+        ):
+            print("双基地感知 CSV 列与 legacy 固定表头不一致，已改用 csv_mode=unified")
+            csv_mode = "unified"
+        return cls(
+            source=args.source,
+            run_sensing=args.run_sensing,
+            save_h5=args.save_h5,
+            save_cir=args.save_cir,
+            save_csv=args.save_csv,
+            save_gif=args.save_gif,
+            csv_mode=csv_mode,
+            sensing_domain=args.sensing_domain,
+            sensing_layout=args.sensing_layout,
+            log_per_step_sensing=args.log_per_step_sensing,
+            quality_filter=args.quality_filter,
+            require_los=args.require_los,
+            min_los_ratio=float(args.min_los_ratio),
+            min_peak_prominence_db=float(args.min_peak_prominence_db),
+            max_bin_offset=int(args.max_bin_offset),
+        )
+
+    def sample_quality_config(self) -> SampleQualityConfig:
+        return SampleQualityConfig(
+            require_los=self.require_los,
+            min_los_ratio=self.min_los_ratio,
+            min_peak_prominence_db=self.min_peak_prominence_db,
+            max_bin_offset=self.max_bin_offset,
+            rx_idx=RX_IDX,
+            tx_idx=TX_IDX,
+        )
+
+
+# ---------------------------------------------------------------------------
+# 路径 / 几何 / 信道 辅助函数
+# ---------------------------------------------------------------------------
+
+
 def _paths_doppler_hz_los(
     rt_scene: object,
     tau_true_s: float | torch.Tensor,
     *,
-    rx_idx: int = 0,
-    tx_idx: int = 0,
+    rx_idx: int = RX_IDX,
+    tx_idx: int = TX_IDX,
     device: torch.device | None = None,
 ) -> torch.Tensor:
-    """从 Sionna ``Paths`` 中取与几何 LoS 总时延最接近的路径的多普勒真值（Hz）。脚本内副本，与旧 ``isac.sensing.utils.paths_doppler_hz_los`` 等价。"""
+    """从 Sionna ``Paths`` 中取与几何 LoS 总时延最接近的路径的多普勒（Hz）。
+
+    用于双基地真值：几何给出路径长 → ``τ``，再在 ``paths.tau`` 中找最近路径读 ``paths.doppler``。
+    """
     paths = rt_scene.paths
     tau_np = np.asarray(paths.tau, dtype=np.float64)
     valid_np = np.asarray(paths.valid, dtype=bool)
@@ -75,6 +181,7 @@ def _paths_doppler_hz_los(
     else:
         t0 = float(tau_true_s)
 
+    # 优先 valid 且 τ≥0；逐步放宽，避免 paths 稀疏时无候选
     candidates = np.flatnonzero(valid_slice & (tau_slice >= 0.0))
     if candidates.size == 0:
         candidates = np.flatnonzero(valid_slice)
@@ -89,15 +196,494 @@ def _paths_doppler_hz_los(
     return torch.tensor(fd, dtype=torch.float64, device=dev)
 
 
+def _roi_xy_to_box3d(
+    roi_xy: tuple[tuple[float, float], tuple[float, float]],
+    *,
+    z_bounds: tuple[float, float] = DEFAULT_MC_ROI_Z,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """平面 ROI 四元组 ``((xmin,xmax),(ymin,ymax))`` → 三维 ``RoiBox3D``，``z`` 默认固定为 0。"""
+    return roi_xy[0], roi_xy[1], z_bounds
+
+
+def _resolve_roi(args: argparse.Namespace) -> tuple | None:
+    """解析蒙特卡洛 ROI（xy 四元组 + z=0）；轨迹模式返回 ``None``。"""
+    if args.roi is not None:
+        r = args.roi
+        return _roi_xy_to_box3d(((r[0], r[1]), (r[2], r[3])))
+    if args.source == "monte_carlo":
+        return _roi_xy_to_box3d(DEFAULT_MC_ROI_XY)
+    return None
+
+
+def _los_truth_at_first_triple(
+    scene: object,
+    device: str | torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """返回默认三元组 ``(range, radial_velocity)``，形状均为标量张量。"""
+    geom = RxTargetTxGeometric.from_states(
+        scene.targets_states,
+        scene.rx_states,
+        scene.tx_states,
+        device=device,
+    )
+    rx_i, tgt_i, tx_i = TRIPLE_SLICE
+    return geom.range_tensor[rx_i, tgt_i, tx_i], geom.vel_tensor[rx_i, tgt_i, tx_i]
+
+
+def _estimate_delay_doppler_spectrum(system: System, domain: str) -> torch.Tensor:
+    """OFDM 参考网格 → 信道施加 → LS 信道估计 → 时延–多普勒谱。"""
+    x_rg = system.tx_symbols_to_resource_grid()
+
+    if domain == "frequency":
+        y_rg = system.apply_channel(x_rg, domain=domain)
+    elif domain == "time":
+        x_time = system.components.modulator(x_rg)
+        y_time = system.apply_channel(x_time, domain=domain)
+        y_rg = system.components.demodulator(y_time)
+    else:
+        raise ValueError(f"不支持的域: {domain}")
+
+    h = system.estimate_channel(x_rg, y_rg)
+    return system.components.delay_doppler_spectrum(h)
+
+
+def _save_sensing_spectrum_preview(system: System, out_dir: Path) -> None:
+    """覆盖写入固定文件名，循环内每步刷新，便于查看最新一步谱图。"""
+    dd = system.components.delay_doppler_spectrum
+    dd.visualize(
+        offset=200,
+        file_name=out_dir / SENSING_SPECTRUM_FILENAME,
+        to_db=False,
+        metric_mode="delay_doppler",
+        backend="matplotlib",
+    )
+
+
+# ---------------------------------------------------------------------------
+# 感知评估（与 run_sensing_*.py 管线对齐）
+# ---------------------------------------------------------------------------
+
+
+def monostatic_sensing_eval(
+    system: System,
+    out_dir: Path,
+    domain: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """对**当前** RT 场景跑单基地感知链，写谱图并打印匈牙利 RMSE。
+
+    返回 ``(est_range, est_velocity, est_power_db)``，供 CSV 与本步诊断。
+    """
+    h_delay_doppler = _estimate_delay_doppler_spectrum(system, domain)
+    _save_sensing_spectrum_preview(system, out_dir)
+
+    est_ranges, est_velocities, _ = system.components.music_estimator(
+        spectrum_tensor=h_delay_doppler,
+        metric_mode="delay_doppler",
+        sens_mode="monostatic",
+    )
+    if est_ranges.numel() == 0:
+        raise RuntimeError("单基地感知评估：MUSIC 未检测到谱峰，无法估计距离/速度")
+
+    scene = system.components.rt_scene
+    true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
+
+    _, _, est_range, est_velocity, est_power_db = select_peak_and_log_radial_rmse(
+        est_ranges=est_ranges,
+        est_velocities=est_velocities,
+        true_ranges=true_range,
+        true_velocities=true_velocity,
+        log_prefix="单基地感知",
+    )
+    return est_range, est_velocity, est_power_db
+
+
+def bistatic_sensing_eval(
+    system: System,
+    out_dir: Path,
+    domain: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """双基地感知：几何 LoS 路径长 + ``paths.doppler`` 速度真值，MUSIC ``sens_mode=bistatic``。
+
+    返回 ``(est_path, est_velocity, est_power_db, true_path, true_velocity)``。
+    """
+    h_delay_doppler = _estimate_delay_doppler_spectrum(system, domain)
+    _save_sensing_spectrum_preview(system, out_dir)
+
+    est_paths, est_velocities, _ = system.components.music_estimator(
+        spectrum_tensor=h_delay_doppler,
+        metric_mode="delay_doppler",
+        sens_mode="bistatic",
+    )
+    if est_paths.numel() == 0:
+        raise RuntimeError("双基地感知评估：MUSIC 未检测到谱峰")
+
+    scene = system.components.rt_scene
+    true_path_m, _ = _los_truth_at_first_triple(scene, system.device)
+    tau_true_s = true_path_m / c
+    fd_true = _paths_doppler_hz_los(
+        scene, tau_true_s, rx_idx=RX_IDX, tx_idx=TX_IDX, device=system.device
+    )
+    true_velocity = doppler_to_velocity(
+        fd_true,
+        float(system.params.carrier_frequency),
+        "bistatic",
+    )
+
+    _, _, est_path, est_vel, est_power_db = select_peak_and_log_radial_rmse(
+        est_ranges=est_paths,
+        est_velocities=est_velocities,
+        true_ranges=true_path_m,
+        true_velocities=true_velocity,
+        log_prefix="双基地数据集感知（LoS路径+paths.doppler）",
+        distance_axis_label="LoS路径长度",
+        velocity_axis_label="标量速度",
+    )
+    return est_path, est_vel, est_power_db, true_path_m, true_velocity
+
+
+# ---------------------------------------------------------------------------
+# CSV 行构建
+# ---------------------------------------------------------------------------
+
+
+def _kinematics_row(
+    index_key: IndexKey,
+    episode_idx: int,
+    pos: np.ndarray,
+    vel: np.ndarray,
+    true_range: torch.Tensor,
+    true_velocity: torch.Tensor,
+) -> dict[str, str | int]:
+    """构造每条 episode 共有的 kinematics + 几何真值列。"""
+    pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
+    vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
+    return {
+        index_key: episode_idx,
+        "pos_x_m": _csv_float2_scalar(pos_row[0]),
+        "pos_y_m": _csv_float2_scalar(pos_row[1]),
+        "pos_z_m": _csv_float2_scalar(pos_row[2]),
+        "vel_x_mps": _csv_float2_scalar(vel_row[0]),
+        "vel_y_mps": _csv_float2_scalar(vel_row[1]),
+        "vel_z_mps": _csv_float2_scalar(vel_row[2]),
+        "true_range_m": _csv_float2_scalar(true_range),
+        "true_radial_velocity_mps": _csv_float2_scalar(true_velocity),
+    }
+
+
+def _append_monostatic_sensing_columns(
+    row: dict[str, str | int],
+    *,
+    est_range: torch.Tensor,
+    est_velocity: torch.Tensor,
+    true_range: torch.Tensor,
+    true_velocity: torch.Tensor,
+) -> None:
+    """追加单基地感知列；RMSE 为单 episode 估计 vs 真值（非跨 episode 统计）。"""
+    rmse_range = compute_rmse(est_range.reshape(1), true_range.reshape(1))
+    rmse_velocity = compute_rmse(est_velocity.reshape(1), true_velocity.reshape(1))
+    row["est_range_m"] = _csv_float2_scalar(est_range)
+    row["rmse_range_m"] = _csv_float2_scalar(rmse_range)
+    row["est_radial_velocity_mps"] = _csv_float2_scalar(est_velocity)
+    row["rmse_radial_velocity_mps"] = _csv_float2_scalar(rmse_velocity)
+
+
+def _append_bistatic_sensing_columns(
+    row: dict[str, str | int],
+    *,
+    est_path: torch.Tensor,
+    est_velocity: torch.Tensor,
+    true_path: torch.Tensor,
+    true_velocity: torch.Tensor,
+) -> None:
+    """追加双基地感知列。"""
+    rmse_path = compute_rmse(est_path.reshape(1), true_path.reshape(1))
+    rmse_velocity = compute_rmse(est_velocity.reshape(1), true_velocity.reshape(1))
+    row["true_los_path_length_m"] = _csv_float2_scalar(true_path)
+    row["true_velocity_paths_doppler_mps"] = _csv_float2_scalar(true_velocity)
+    row["est_los_path_length_m"] = _csv_float2_scalar(est_path)
+    row["est_velocity_paths_doppler_mps"] = _csv_float2_scalar(est_velocity)
+    row["rmse_los_path_m"] = _csv_float2_scalar(rmse_path)
+    row["rmse_velocity_paths_doppler_mps"] = _csv_float2_scalar(rmse_velocity)
+
+
+def _log_sensing_step(
+    index_key: IndexKey,
+    episode_idx: int,
+    *,
+    layout: SensingLayout,
+    est_range_or_path: torch.Tensor,
+    est_velocity: torch.Tensor,
+    est_power_db: torch.Tensor,
+) -> None:
+    if layout == "bistatic":
+        print(
+            f"{index_key}={episode_idx:03d} 双基地感知: "
+            f"LoS_path={float(est_range_or_path.item()):.3f} m, "
+            f"velocity={float(est_velocity.item()):.3f} m/s, "
+            f"MUSIC_peak={float(est_power_db.item()):.3f} dB"
+        )
+    else:
+        print(
+            f"{index_key}={episode_idx:03d} 感知: "
+            f"range={float(est_range_or_path.item()):.3f} m, "
+            f"velocity={float(est_velocity.item()):.3f} m/s, "
+            f"MUSIC_peak={float(est_power_db.item()):.3f} dB"
+        )
+    print()
+
+
+# ---------------------------------------------------------------------------
+# 后处理导出
+# ---------------------------------------------------------------------------
+
+
+def _resolve_h5_output(
+    *,
+    source: SourceKind,
+    run_sensing: bool,
+    scene_slug: str,
+    n_episodes: int,
+    n_frames: int,
+    out_dir: Path,
+) -> tuple[Path, str | None, str]:
+    """按 ``source × run_sensing`` 决定 HDF5 路径、描述与 ``scene_name`` 元数据。"""
+    if source == "trajectory":
+        if run_sensing:
+            return (
+                out_dir / f"{scene_slug}_trajectory_monostatic_sensing.h5",
+                f"Trajectory + monostatic sensing ({n_frames} steps) in {scene_slug}",
+                scene_slug,
+            )
+        return (
+            out_dir / f"{scene_slug}_sionna_dataset.h5",
+            None,
+            scene_slug,
+        )
+
+    mc_slug = f"{scene_slug}_mc"
+    if run_sensing:
+        return (
+            out_dir / f"{scene_slug}_mc_monostatic_sensing.h5",
+            f"Monte Carlo + monostatic sensing ({n_episodes} samples) in {scene_slug}",
+            mc_slug,
+        )
+    return (
+        out_dir / f"{scene_slug}_mc_sionna_dataset.h5",
+        f"Sionna generated ISAC Monte Carlo dataset ({n_episodes} samples) in {scene_slug}",
+        mc_slug,
+    )
+
+
+def _resolve_gif_path(
+    *,
+    source: SourceKind,
+    run_sensing: bool,
+    out_dir: Path,
+) -> Path:
+    if source == "monte_carlo":
+        return out_dir / "scene_image_mc.gif"
+    if run_sensing:
+        return out_dir / "scene_image_trajectory_sensing.gif"
+    return out_dir / "scene_image.gif"
+
+
+def _capture_scene_frame(scene: object) -> np.ndarray:
+    """``render()`` 可能返回 Matplotlib Figure 或 ndarray，统一为 RGB 帧。"""
+    scene_image = scene.render()
+    if hasattr(scene_image, "canvas"):
+        scene_image.canvas.draw()
+        frame = np.asarray(scene_image.canvas.buffer_rgba())[..., :3].copy()
+        plt.close(scene_image)
+        return frame
+    return scene_image
+
+
+def _build_collection_metadata(
+    args: argparse.Namespace,
+    cfg: CollectionConfig,
+    scene_slug: str,
+    roi_box3d: tuple | None,
+    *,
+    quality_stats: QualityFilterStats | None = None,
+) -> CollectionMetadata:
+    """汇总本次采集 CLI/配置，写入 HDF5 ``collection_*`` 根属性。"""
+    roi_xmin = roi_xmax = roi_ymin = roi_ymax = None
+    roi_z = DEFAULT_MC_ROI_Z[0]
+    if roi_box3d is not None:
+        (roi_xmin, roi_xmax), (roi_ymin, roi_ymax), (z_lo, _z_hi) = roi_box3d
+        roi_xmin, roi_xmax = float(roi_xmin), float(roi_xmax)
+        roi_ymin, roi_ymax = float(roi_ymin), float(roi_ymax)
+        roi_z = float(z_lo)
+
+    return CollectionMetadata(
+        source=cfg.source,
+        seed=int(args.seed),
+        config_file=str(args.config_file),
+        scene_slug=scene_slug,
+        num_samples=int(args.num_samples) if cfg.source == "monte_carlo" else None,
+        run_sensing=cfg.run_sensing,
+        save_cir=cfg.save_cir,
+        roi_xmin=roi_xmin,
+        roi_xmax=roi_xmax,
+        roi_ymin=roi_ymin,
+        roi_ymax=roi_ymax,
+        roi_z=roi_z,
+        sampling_mode=args.sampling_mode if cfg.source == "monte_carlo" else None,
+        velocity_sampling=(
+            args.velocity_sampling if cfg.source == "monte_carlo" else None
+        ),
+        safe_margin=float(args.safe_margin) if cfg.source == "monte_carlo" else None,
+        max_trials_factor=(
+            int(args.max_trials_factor) if cfg.source == "monte_carlo" else None
+        ),
+        speed_min=float(args.speed_range[0]) if cfg.source == "monte_carlo" else None,
+        speed_max=float(args.speed_range[1]) if cfg.source == "monte_carlo" else None,
+        time_delta=(
+            float(args.time_delta)
+            if cfg.source == "trajectory" and args.time_delta is not None
+            else None
+        ),
+        steps=(
+            int(args.steps)
+            if cfg.source == "trajectory" and args.steps is not None
+            else None
+        ),
+        quality_filter=cfg.quality_filter,
+        quality_accepted=quality_stats.accepted if quality_stats else None,
+        quality_rejected=quality_stats.rejected if quality_stats else None,
+        quality_reject_no_valid_paths=(
+            quality_stats.reject_counts.get("no_valid_paths") if quality_stats else None
+        ),
+        quality_reject_weak_los=(
+            quality_stats.reject_counts.get("weak_los") if quality_stats else None
+        ),
+        quality_reject_low_peak_prominence=(
+            quality_stats.reject_counts.get("low_peak_prominence")
+            if quality_stats
+            else None
+        ),
+        quality_reject_peak_misaligned=(
+            quality_stats.reject_counts.get("peak_misaligned")
+            if quality_stats
+            else None
+        ),
+        require_los=cfg.require_los if cfg.quality_filter else None,
+        min_los_ratio=cfg.min_los_ratio if cfg.quality_filter else None,
+        min_peak_prominence_db=(
+            cfg.min_peak_prominence_db if cfg.quality_filter else None
+        ),
+        max_bin_offset=cfg.max_bin_offset if cfg.quality_filter else None,
+    )
+
+
+def _export_csv(
+    system: System,
+    *,
+    scene_slug: str,
+    cfg: CollectionConfig,
+    rows: list[dict[str, str | int]],
+    out_dir: Path,
+) -> None:
+    system.save_episodes_csv(
+        scene_slug=scene_slug,
+        source=cfg.source,
+        rows=rows,
+        run_sensing=cfg.run_sensing,
+        csv_mode=cfg.csv_mode,
+        output_root=out_dir,
+    )
+
+
+def _export_h5(
+    system: System,
+    scene: object,
+    *,
+    cfg: CollectionConfig,
+    scene_slug: str,
+    n_episodes: int,
+    h_freq_list: list[np.ndarray],
+    cir_a_list: list[np.ndarray],
+    cir_tau_list: list[np.ndarray],
+    target_pos_list: list[np.ndarray],
+    target_vel_list: list[np.ndarray],
+    collection_meta: CollectionMetadata,
+    out_dir: Path,
+) -> None:
+    if not cfg.save_h5:
+        return
+    if not h_freq_list:
+        print("未采集 CFR，跳过 HDF5")
+        return
+
+    cir_a_arr: np.ndarray | None = None
+    cir_tau_arr: np.ndarray | None = None
+    if cfg.save_cir:
+        if not cir_a_list:
+            raise RuntimeError("save_cir 已启用但主循环未采集 CIR")
+        cir_a_arr, cir_tau_arr = stack_ragged_cir_samples(cir_a_list, cir_tau_list)
+
+    h5_path, desc_h5, scene_name = _resolve_h5_output(
+        source=cfg.source,
+        run_sensing=cfg.run_sensing,
+        scene_slug=scene_slug,
+        n_episodes=n_episodes,
+        n_frames=len(h_freq_list),
+        out_dir=out_dir,
+    )
+    # 发射机位置取 bs1（与 data_collection 默认场景约定一致）
+    Dataset.from_export_arrays(
+        np.array(h_freq_list),
+        np.array(target_pos_list),
+        np.array(target_vel_list),
+        np.array(scene.transceivers["bs1"].position),
+        system.params.carrier_frequency,
+        system.params.ofdm.subcarrier_spacing,
+        system.params.ofdm.num_subcarriers,
+        len(h_freq_list),
+        scene_name,
+        dataset_cir_a=cir_a_arr,
+        dataset_cir_tau=cir_tau_arr,
+        description=desc_h5,
+        collection_meta=collection_meta,
+    ).save(h5_path)
+
+
+def _export_gif(
+    *,
+    cfg: CollectionConfig,
+    scene_frames: list[np.ndarray],
+    out_dir: Path,
+) -> None:
+    if not cfg.save_gif:
+        return
+    if not scene_frames:
+        print("无场景帧，跳过 GIF 导出")
+        return
+    images_to_gif(
+        filepath=_resolve_gif_path(
+            source=cfg.source, run_sensing=cfg.run_sensing, out_dir=out_dir
+        ),
+        images=scene_frames,
+        time_slot=1,
+        speed=5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
 def argument_parser() -> argparse.Namespace:
     """构造数据集采集脚本的全部 CLI 参数（轨迹 / 蒙特卡洛、感知、导出格式）。"""
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 数据集采集主流程")
 
+    # --- 系统与随机性 ---
     parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
         "--config_file",
         type=str,
-        default="data_collection.toml",
+        default="sensing_monostatic_canyon.toml",
         help="配置文件路径（须含非空 [rt_scene]，默认使用仓库 config/data_collection.toml）",
     )
     parser.add_argument(
@@ -115,6 +701,7 @@ def argument_parser() -> argparse.Namespace:
         help="随机种子（蒙特卡洛位置/速度采样）",
     )
 
+    # --- Episode 来源与导出开关 ---
     parser.add_argument(
         "--source",
         type=str,
@@ -122,12 +709,24 @@ def argument_parser() -> argparse.Namespace:
         choices=["monte_carlo", "trajectory"],
         help="目标点来源",
     )
-    parser.add_argument("--run_sensing", action="store_true", help="每步/每样本执行单站感知")
-    parser.add_argument("--no-save-h5", dest="save_h5", action="store_false", help="不写 HDF5")
-    parser.add_argument("--no-save-csv", dest="save_csv", action="store_false", help="不写 CSV")
+    parser.add_argument(
+        "--run_sensing", action="store_true", help="每步/每样本执行单站感知"
+    )
+    parser.add_argument(
+        "--no-save-h5", dest="save_h5", action="store_false", help="不写 HDF5"
+    )
+    parser.add_argument(
+        "--no-save-csv", dest="save_csv", action="store_false", help="不写 CSV"
+    )
+    parser.add_argument(
+        "--save-cir",
+        action="store_true",
+        help="HDF5 中额外写入 CIR（channel_impulse_response_*）；默认仅 CFR + kinematics",
+    )
     parser.add_argument("--save_gif", action="store_true", help="导出场景 GIF")
     parser.set_defaults(save_h5=True, save_csv=True)
 
+    # --- 感知与 CSV 模式 ---
     parser.add_argument(
         "--csv_mode",
         type=str,
@@ -147,14 +746,14 @@ def argument_parser() -> argparse.Namespace:
         type=str,
         default="monostatic",
         choices=["monostatic", "bistatic", "bistatic_rx_radial"],
-        help="MUSIC 多普勒→标量速度换算；双基地布局下真值速度来自 paths.doppler，经同一模型换算",
+        help="保留 CLI 兼容；双基地真值速度经 paths.doppler + bistatic 换算",
     )
     parser.add_argument(
         "--sensing_layout",
         type=str,
         default="monostatic",
         choices=["monostatic", "bistatic"],
-        help="run_sensing 时：monostatic=RX 径向真值与估计；bistatic=LoS 总路径 + paths.doppler 速度（建议 csv_mode=unified）",
+        help="run_sensing 时：monostatic=RX 径向；bistatic=LoS 总路径 + paths.doppler（建议 csv_mode=unified）",
     )
     parser.add_argument(
         "--log_per_step_sensing",
@@ -162,18 +761,24 @@ def argument_parser() -> argparse.Namespace:
         help="每步打印感知一行日志",
     )
 
-    parser.add_argument("--time_delta", type=float, default=None, help="轨迹模式：步长时间间隔")
+    # --- 轨迹模式参数 ---
+    parser.add_argument(
+        "--time_delta", type=float, default=None, help="轨迹模式：步长时间间隔"
+    )
     parser.add_argument("--steps", type=int, default=None, help="轨迹模式：最大步数")
 
+    # --- 蒙特卡洛模式参数 ---
     parser.add_argument(
         "--roi",
-        nargs=6,
+        nargs=4,
         type=float,
-        metavar=("XMIN", "XMAX", "YMIN", "YMAX", "ZMIN", "ZMAX"),
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
         default=None,
-        help="蒙特卡洛：ROI 六元组",
+        help="蒙特卡洛：平面 ROI 四元组，z 固定为 0",
     )
-    parser.add_argument("--num_samples", type=int, default=5, help="蒙特卡洛：样本数")
+    parser.add_argument(
+        "--num_samples", type=int, default=10e3, help="蒙特卡洛：样本数"
+    )
     parser.add_argument(
         "--sampling_mode",
         type=str,
@@ -184,7 +789,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--safe_margin",
         type=float,
-        default=2.0,
+        default=1.0,
         help="蒙特卡洛：障碍物包围盒额外安全距离（米），位置合法性校验用",
     )
     parser.add_argument(
@@ -197,7 +802,7 @@ def argument_parser() -> argparse.Namespace:
         "--speed_range",
         nargs=2,
         type=float,
-        default=[0.1, 50.0],
+        default=[0.1, 10.0],
         metavar=("MIN", "MAX"),
         help="蒙特卡洛速度幅值范围（未提供 velocities 数组时）",
     )
@@ -209,210 +814,271 @@ def argument_parser() -> argparse.Namespace:
         help="蒙特卡洛：速度方向/分量采样方式（球面均匀或各轴独立盒式）",
     )
 
+    # --- 样本质量门控（CNN 训练推荐开启）---
+    parser.add_argument(
+        "--quality_filter",
+        action="store_true",
+        default=True,
+        help="启用 LoS + DD 谱峰质量过滤（默认开启）",
+    )
+    parser.add_argument(
+        "--no-quality-filter",
+        dest="quality_filter",
+        action="store_false",
+        help="关闭质量过滤，保留所有几何合法样本",
+    )
+    parser.add_argument(
+        "--require_los",
+        action="store_true",
+        default=True,
+        help="质量过滤：要求 RT 存在与几何时延一致的有效路径",
+    )
+    parser.add_argument(
+        "--no-require_los",
+        dest="require_los",
+        action="store_false",
+        help="质量过滤：跳过 LoS 路径检查",
+    )
+    parser.add_argument(
+        "--min_los_ratio",
+        type=float,
+        default=0.3,
+        help="质量过滤：几何最近路径幅度 / 最强路径幅度 下限",
+    )
+    parser.add_argument(
+        "--min_peak_prominence_db",
+        type=float,
+        default=6.0,
+        help="质量过滤：DD 谱峰相对全局均值的突出度下限 (dB)",
+    )
+    parser.add_argument(
+        "--max_bin_offset",
+        type=int,
+        default=3,
+        help="质量过滤：谱峰与几何 bin 的最大允许偏差 (bin)",
+    )
+    parser.add_argument(
+        "--quality_max_trials_factor",
+        type=int,
+        default=50,
+        help="蒙特卡洛+质量过滤：最大尝试次数 = num_samples × 该因子",
+    )
+
     return parser.parse_args()
 
 
+def _process_episode(
+    *,
+    system: System,
+    scene: object,
+    cfg: CollectionConfig,
+    index_key: IndexKey,
+    episode_idx: int,
+    pos: np.ndarray,
+    vel: np.ndarray,
+    h_freq_list: list[np.ndarray],
+    cir_a_list: list[np.ndarray],
+    cir_tau_list: list[np.ndarray],
+    target_pos_list: list[np.ndarray],
+    target_vel_list: list[np.ndarray],
+    scene_frames: list[np.ndarray],
+    csv_rows: list[dict[str, str | int]],
+    out_dir: Path,
+) -> None:
+    """单条 episode：真值/感知/CFR/CSV/GIF 缓冲写入。"""
+    pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
+    vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
+    if cfg.save_h5:
+        target_pos_list.append(pos_row.copy())
+        target_vel_list.append(vel_row.copy())
+
+    true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
+    row = _kinematics_row(
+        index_key, episode_idx, pos_row, vel_row, true_range, true_velocity
+    )
+
+    if cfg.run_sensing:
+        if cfg.sensing_layout == "bistatic":
+            est_path, est_vel, est_db, true_path, true_vp = bistatic_sensing_eval(
+                system, out_dir, cfg.sensing_domain
+            )
+            if cfg.log_per_step_sensing:
+                _log_sensing_step(
+                    index_key,
+                    episode_idx,
+                    layout="bistatic",
+                    est_range_or_path=est_path,
+                    est_velocity=est_vel,
+                    est_power_db=est_db,
+                )
+            _append_bistatic_sensing_columns(
+                row,
+                est_path=est_path,
+                est_velocity=est_vel,
+                true_path=true_path,
+                true_velocity=true_vp,
+            )
+        else:
+            est_range, est_vel, est_db = monostatic_sensing_eval(
+                system, out_dir, cfg.sensing_domain
+            )
+            if cfg.log_per_step_sensing:
+                _log_sensing_step(
+                    index_key,
+                    episode_idx,
+                    layout="monostatic",
+                    est_range_or_path=est_range,
+                    est_velocity=est_vel,
+                    est_power_db=est_db,
+                )
+            _append_monostatic_sensing_columns(
+                row,
+                est_range=est_range,
+                est_velocity=est_vel,
+                true_range=true_range,
+                true_velocity=true_velocity,
+            )
+
+    if cfg.save_csv:
+        csv_rows.append(row)
+
+    if cfg.save_h5:
+        h_freq_list.append(paths_cfr_numpy(system.components.rg, scene))
+        if cfg.save_cir:
+            ca, ct = paths_cir_numpy(system.components.rg, scene)
+            cir_a_list.append(ca)
+            cir_tau_list.append(ct)
+
+    if cfg.save_gif:
+        scene_frames.append(_capture_scene_frame(scene))
+
+
+def _run_monte_carlo_with_quality_filter(
+    *,
+    system: System,
+    scene: object,
+    target: object,
+    cfg: CollectionConfig,
+    args: argparse.Namespace,
+    roi_box3d: tuple,
+    index_key: IndexKey,
+    h_freq_list: list[np.ndarray],
+    cir_a_list: list[np.ndarray],
+    cir_tau_list: list[np.ndarray],
+    target_pos_list: list[np.ndarray],
+    target_vel_list: list[np.ndarray],
+    scene_frames: list[np.ndarray],
+    csv_rows: list[dict[str, str | int]],
+    out_dir: Path,
+) -> QualityFilterStats:
+    """拒绝采样直至凑满 ``num_samples`` 个可检测样本。"""
+    num_target = int(args.num_samples)
+    max_trials = num_target * int(args.quality_max_trials_factor)
+    rng = np.random.default_rng(int(args.seed))
+    quality_stats = QualityFilterStats()
+    quality_cfg = cfg.sample_quality_config()
+    sensing_perf = system.components.sensing_performance
+
+    accepted = 0
+    trials = 0
+    pbar = tqdm(total=num_target, desc="MC 数据集(质量过滤)", unit="sample")
+
+    while accepted < num_target and trials < max_trials:
+        trials += 1
+        pos_batch = tg.generate_monte_carlo_points(
+            scene,
+            roi_box3d,
+            1,
+            sampling_mode=args.sampling_mode,
+            safe_margin=args.safe_margin,
+            max_trials_factor=args.max_trials_factor,
+            rng=rng,
+        )
+        vel_batch = tg.sample_monte_carlo_velocities(
+            1,
+            rng,
+            None,
+            (float(args.speed_range[0]), float(args.speed_range[1])),
+            args.velocity_sampling,
+            None,
+            None,
+            None,
+        )
+        pos = pos_batch[0]
+        vel = vel_batch[0]
+
+        system._update_rt_target_pose_from_velocity(target, pos, vel)
+        true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
+        cfr = paths_cfr_numpy(system.components.rg, scene)
+
+        result = evaluate_sample_quality(
+            scene,
+            cfr,
+            float(true_range.item()),
+            float(true_velocity.item()),
+            sensing_perf,
+            cfg=quality_cfg,
+            device=torch.device(system.device),
+        )
+        if not result.passed:
+            quality_stats.record_reject(result.reason or "low_peak_prominence")
+            continue
+
+        quality_stats.record_accept()
+        _process_episode(
+            system=system,
+            scene=scene,
+            cfg=cfg,
+            index_key=index_key,
+            episode_idx=accepted,
+            pos=pos,
+            vel=vel,
+            h_freq_list=h_freq_list,
+            cir_a_list=cir_a_list,
+            cir_tau_list=cir_tau_list,
+            target_pos_list=target_pos_list,
+            target_vel_list=target_vel_list,
+            scene_frames=scene_frames,
+            csv_rows=csv_rows,
+            out_dir=out_dir,
+        )
+        accepted += 1
+        pbar.update(1)
+
+    pbar.close()
+    if accepted < num_target:
+        raise RuntimeError(
+            f"质量过滤后仅采集 {accepted}/{num_target} 个样本，"
+            f"尝试 {trials}/{max_trials} 次。请放宽 ROI/阈值或增大 --quality_max_trials_factor。"
+        )
+    print(quality_stats.summary_line())
+    return quality_stats
+
+
+# ---------------------------------------------------------------------------
+# 主流程
+# ---------------------------------------------------------------------------
+
+
 def main() -> None:
-    """跑通「生成 episode → 可选感知 → 写出 CSV/HDF5/GIF」的完整管线。"""
+    """生成 episode → 可选感知 → 写出 CSV / HDF5 / GIF。"""
+    # 1. 解析 CLI、固定随机种子、整理导出/感知选项
     args = argument_parser()
     set_random_seed(args.seed)
+    cfg = CollectionConfig.from_args(args)
 
-    # 蒙特卡洛用 ROI：显式 --roi 为 ((xmin,xmax),(ymin,ymax),(zmin,zmax))；未指定时采用与历史脚本一致的默认平面区域
-    roi_tuple = None
-    if args.roi is not None:
-        r = args.roi
-        roi_tuple = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
-    elif args.source == "monte_carlo":
-        roi_tuple = ((0.0, 80.0), (-40.0, 40.0), (0.0, 0.0))
-
+    # 2. 构建仿真系统，准备输出目录
     system = System(args)
+    SCRIPT_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    script_out_dir = PROJECT_ROOT / "out" / "dataset_collection"
-    script_out_dir.mkdir(parents=True, exist_ok=True)
-
-    source: Literal["monte_carlo", "trajectory"] = args.source
-    run_sensing = args.run_sensing
-    save_h5 = args.save_h5
-    save_csv = args.save_csv
-    save_gif = args.save_gif
-    csv_mode: Literal["unified", "legacy"] = args.csv_mode
-    sensing_domain = args.sensing_domain
-    velocity_model = args.velocity_model
-    sensing_layout: Literal["monostatic", "bistatic"] = args.sensing_layout
-    log_per_step_sensing_line = args.log_per_step_sensing
-
-    if run_sensing and sensing_layout == "bistatic" and csv_mode == "legacy":
-        print("双基地感知 CSV 列与 legacy 固定表头不一致，已改用 csv_mode=unified")
-        csv_mode = "unified"
-
-    def monostatic_eval(
-        domain: str,
-        vel_model: str,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """对**当前** RT 场景状态跑一条单站感知链，并写谱图、打日志。
-
-        与独立评估脚本逻辑对齐：OFDM 链 → 信道估计 → 时延–多普勒谱 → MUSIC →
-        峰转径向距离/速度 → 联合误差选峰 → RMSE 日志。返回值供 CSV 写入与本步诊断。
-        """
-        x_rg = system.tx_symbols_to_resource_grid()
-
-        if domain == "frequency":
-            y_rg = system.apply_channel(x_rg, domain=domain)
-        elif domain == "time":
-            x_time = system.components.modulator(x_rg)
-            y_time = system.apply_channel(x_time, domain=domain)
-            y_rg = system.components.demodulator(y_time)
-        else:
-            raise ValueError(f"不支持的域: {domain}")
-
-        h = system.estimate_channel(x_rg, y_rg)
-
-        h_delay_doppler = system.components.delay_doppler_spectrum(h)
-
-        # 覆盖写入固定文件名：循环中每步刷新同一张图，便于查看最新一步谱图
-        system.components.delay_doppler_spectrum.visualize(
-            offset=200,
-            file_name=script_out_dir / "sensing_monostatic_delay_doppler_spectrum.png",
-            to_db=False,
-            metric_mode="delay_doppler",
-            backend="matplotlib",
-        )
-
-        est_ranges_t, est_velocities_t, _ = system.components.music_estimator(
-            spectrum_tensor=h_delay_doppler,
-            metric_mode="delay_doppler",
-            sens_mode="monostatic",
-        )
-        if est_ranges_t.numel() == 0:
-            raise RuntimeError("单基地感知评估：MUSIC 未检测到谱峰，无法估计距离/速度")
-
-        scen = system.components.rt_scene
-
-        target_states = scen.get_targets_states
-        rx_states = scen.get_rx_states
-        tx_states = scen.get_tx_states
-
-        los_geom = RxTargetTxGeometric.from_states(
-            target_states,
-            rx_states,
-            tx_states,
-            device=system.device,
-        )
-        true_radial_range = los_geom.range_tensor[0, 0, 0]
-        true_radial_velocity = los_geom.vel_tensor[0, 0, 0]
-
-        _, _, est_range_t, est_velocity_t, est_power_db_t = select_peak_and_log_radial_rmse(
-            est_ranges=est_ranges_t,
-            est_velocities=est_velocities_t,
-            true_ranges=true_radial_range,
-            true_velocities=true_radial_velocity,
-            log_prefix="单基地感知",
-        )
-        return est_range_t, est_velocity_t, est_power_db_t
-
-    def bistatic_eval(
-        domain: str,
-        vel_model: str,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """双基地：LoS 路径长度 \(c\tau\) + ``paths.doppler`` 速度真值与联合选峰。"""
-        x_rg = system.tx_symbols_to_resource_grid()
-
-        if domain == "frequency":
-            y_rg = system.apply_channel(x_rg, domain=domain)
-        elif domain == "time":
-            x_time = system.components.modulator(x_rg)
-            y_time = system.apply_channel(x_time, domain=domain)
-            y_rg = system.components.demodulator(y_time)
-        else:
-            raise ValueError(f"不支持的域: {domain}")
-
-        h = system.estimate_channel(x_rg, y_rg)
-        h_delay_doppler = system.components.delay_doppler_spectrum(h)
-
-        system.components.delay_doppler_spectrum.visualize(
-            offset=200,
-            file_name=script_out_dir / "sensing_monostatic_delay_doppler_spectrum.png",
-            to_db=False,
-            metric_mode="delay_doppler",
-            backend="matplotlib",
-        )
-
-        est_paths_t, est_velocities_t, _ = system.components.music_estimator(
-            spectrum_tensor=h_delay_doppler,
-            metric_mode="delay_doppler",
-            sens_mode="bistatic",
-        )
-        if est_paths_t.numel() == 0:
-            raise RuntimeError("双基地感知评估：MUSIC 未检测到谱峰")
-
-        scen = system.components.rt_scene
-        target_states = scen.get_targets_states
-        rx_states = scen.get_rx_states
-        tx_states = scen.get_tx_states
-
-        los_geom = RxTargetTxGeometric.from_states(
-            target_states,
-            rx_states,
-            tx_states,
-            device=system.device,
-        )
-        true_path_m = los_geom.range_tensor[0, 0, 0]
-        tau_true_s = true_path_m / c
-        fd_true_t = _paths_doppler_hz_los(
-            scen, tau_true_s, rx_idx=0, tx_idx=0, device=system.device
-        )
-        true_velocity_paths = doppler_to_velocity(
-            fd_true_t,
-            float(system.params.carrier_frequency),
-            "bistatic",
-        )
-
-        _, _, est_path_t, est_vel_t, est_power_db_t = select_peak_and_log_radial_rmse(
-            est_ranges=est_paths_t,
-            est_velocities=est_velocities_t,
-            true_ranges=true_path_m,
-            true_velocities=true_velocity_paths,
-            log_prefix="双基地数据集感知（LoS路径+paths.doppler）",
-            distance_axis_label="LoS路径长度",
-            velocity_axis_label="标量速度",
-        )
-        return est_path_t, est_vel_t, est_power_db_t, true_path_m, true_velocity_paths
-
-    # --- 场景与 episode 序列：单脚本假设至少一个 RT 目标，取字典第一个参与采样 ---
+    # 3. 取 RT 场景与待驱动的目标（本脚本假定至少一个 rt_target）
     scene = system.components.rt_scene
     if not scene.rt_targets:
         raise RuntimeError("当前场景中没有可用的 RT 目标（scene.rt_targets 为空）")
     _, target = next(iter(scene.rt_targets.items()))
     scene_slug = scene_slug_from_rt_scene(scene)
-
-    pos_arr, vel_arr = tg.generate_target_episodes(
-        system.components.rt_scene,
-        source=source,
-        time_delta=args.time_delta,
-        steps=args.steps,
-        roi=roi_tuple,
-        num_samples=args.num_samples if source == "monte_carlo" else None,
-        sampling_mode=args.sampling_mode,
-        safe_margin=args.safe_margin,
-        max_trials_factor=args.max_trials_factor,
-        velocities=None,
-        speed_range=(float(args.speed_range[0]), float(args.speed_range[1])),
-        velocity_sampling=args.velocity_sampling,
-        velocity_roi_vx=None,
-        velocity_roi_vy=None,
-        velocity_roi_vz=None,
-        seed=args.seed,
-        rng=None,
-    )
-    n_ep = int(pos_arr.shape[0])
-    if n_ep == 0:
-        print("无有效 Episode，结束")
-        return
-
-    # CSV 索引列名：轨迹用 step，蒙特卡洛用 sample_idx（与 legacy 分裂表约定一致）
-    index_key: Literal["step", "sample_idx"] = "step" if source == "trajectory" else "sample_idx"
-    desc = "轨迹数据集" if source == "trajectory" else "MC 数据集"
-    unit = "step" if source == "trajectory" else "sample"
+    roi_box3d = _resolve_roi(args)
+    index_key: IndexKey = "step" if cfg.source == "trajectory" else "sample_idx"
 
     h_freq_list: list[np.ndarray] = []
     cir_a_list: list[np.ndarray] = []
@@ -421,182 +1087,141 @@ def main() -> None:
     target_vel_list: list[np.ndarray] = []
     scene_frames: list[np.ndarray] = []
     csv_rows: list[dict[str, str | int]] = []
+    quality_stats: QualityFilterStats | None = None
 
-    # --- 主循环：更新目标 → 真值几何 → 可选感知 → 累计 HDF5 / GIF 原材料 ---
-    for i in tqdm(range(n_ep), desc=desc, unit=unit):
-        pos = pos_arr[i]
-        vel = vel_arr[i]
-        system._update_rt_target_pose_from_velocity(target, pos, vel)
-
-        pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
-        vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
-
-        if save_h5:
-            target_pos_list.append(pos_row.copy())
-            target_vel_list.append(vel_row.copy())
-
-        _tg = scene.get_targets_states
-        _rg = scene.get_rx_states
-        _xg = scene.get_tx_states
-        los_geom_sens = RxTargetTxGeometric.from_states(
-            _tg,
-            _rg,
-            _xg,
-            device=system.device,
+    if cfg.quality_filter and cfg.source == "monte_carlo":
+        if roi_box3d is None:
+            raise RuntimeError("蒙特卡洛质量过滤需要有效 ROI")
+        quality_stats = _run_monte_carlo_with_quality_filter(
+            system=system,
+            scene=scene,
+            target=target,
+            cfg=cfg,
+            args=args,
+            roi_box3d=roi_box3d,
+            index_key=index_key,
+            h_freq_list=h_freq_list,
+            cir_a_list=cir_a_list,
+            cir_tau_list=cir_tau_list,
+            target_pos_list=target_pos_list,
+            target_vel_list=target_vel_list,
+            scene_frames=scene_frames,
+            csv_rows=csv_rows,
+            out_dir=SCRIPT_OUT_DIR,
         )
-        true_r = los_geom_sens.range_tensor[0, 0, 0]
-        true_v = los_geom_sens.vel_tensor[0, 0, 0]
+        n_ep = quality_stats.accepted
+    else:
+        pos_arr, vel_arr = tg.generate_target_episodes(
+            scene,
+            source=cfg.source,
+            time_delta=args.time_delta,
+            steps=args.steps,
+            roi=roi_box3d,
+            num_samples=args.num_samples if cfg.source == "monte_carlo" else None,
+            sampling_mode=args.sampling_mode,
+            safe_margin=args.safe_margin,
+            max_trials_factor=args.max_trials_factor,
+            velocities=None,
+            speed_range=(float(args.speed_range[0]), float(args.speed_range[1])),
+            velocity_sampling=args.velocity_sampling,
+            velocity_roi_vx=None,
+            velocity_roi_vy=None,
+            velocity_roi_vz=None,
+            seed=args.seed,
+            rng=None,
+        )
+        n_ep = int(pos_arr.shape[0])
+        if n_ep == 0:
+            print("无有效 Episode，结束")
+            return
 
-        row: dict[str, str | int] = {
-            index_key: i,
-            "pos_x_m": _csv_float2_scalar(pos_row[0]),
-            "pos_y_m": _csv_float2_scalar(pos_row[1]),
-            "pos_z_m": _csv_float2_scalar(pos_row[2]),
-            "vel_x_mps": _csv_float2_scalar(vel_row[0]),
-            "vel_y_mps": _csv_float2_scalar(vel_row[1]),
-            "vel_z_mps": _csv_float2_scalar(vel_row[2]),
-            "true_range_m": _csv_float2_scalar(true_r),
-            "true_radial_velocity_mps": _csv_float2_scalar(true_v),
-        }
+        progress_desc = "轨迹数据集" if cfg.source == "trajectory" else "MC 数据集"
+        progress_unit = "step" if cfg.source == "trajectory" else "sample"
+        quality_cfg = cfg.sample_quality_config() if cfg.quality_filter else None
+        sensing_perf = system.components.sensing_performance
+        if cfg.quality_filter:
+            quality_stats = QualityFilterStats()
 
-        if run_sensing:
-            if sensing_layout == "bistatic":
-                est_p, est_vel, est_db, true_p, true_vp = bistatic_eval(
-                    sensing_domain,
-                    velocity_model,
+        accepted_idx = 0
+        for i in tqdm(range(n_ep), desc=progress_desc, unit=progress_unit):
+            pos = pos_arr[i]
+            vel = vel_arr[i]
+            system._update_rt_target_pose_from_velocity(target, pos, vel)
+
+            if cfg.quality_filter:
+                true_range, true_velocity = _los_truth_at_first_triple(
+                    scene, system.device
                 )
-                if log_per_step_sensing_line:
-                    print(
-                        f"{index_key}={i:03d} 双基地感知: LoS_path={float(est_p.item()):.3f} m, "
-                        f"velocity={float(est_vel.item()):.3f} m/s, "
-                        f"MUSIC_peak={float(est_db.item()):.3f} dB"
-                    )
-                    print()
-                rmse_p = compute_rmse(est_p.reshape(1), true_p.reshape(1))
-                rmse_v = compute_rmse(est_vel.reshape(1), true_vp.reshape(1))
-                row["true_los_path_length_m"] = _csv_float2_scalar(true_p)
-                row["true_velocity_paths_doppler_mps"] = _csv_float2_scalar(true_vp)
-                row["est_los_path_length_m"] = _csv_float2_scalar(est_p)
-                row["est_velocity_paths_doppler_mps"] = _csv_float2_scalar(est_vel)
-                row["rmse_los_path_m"] = _csv_float2_scalar(rmse_p)
-                row["rmse_velocity_paths_doppler_mps"] = _csv_float2_scalar(rmse_v)
-            else:
-                est_range_t, est_velocity_t, est_power_db_t = monostatic_eval(
-                    sensing_domain,
-                    velocity_model,
+                cfr = paths_cfr_numpy(system.components.rg, scene)
+                result = evaluate_sample_quality(
+                    scene,
+                    cfr,
+                    float(true_range.item()),
+                    float(true_velocity.item()),
+                    sensing_perf,
+                    cfg=quality_cfg,
+                    device=torch.device(system.device),
                 )
-                if log_per_step_sensing_line:
-                    print(
-                        f"{index_key}={i:03d} 感知: range={float(est_range_t.item()):.3f} m, "
-                        f"velocity={float(est_velocity_t.item()):.3f} m/s, "
-                        f"MUSIC_peak={float(est_power_db_t.item()):.3f} dB"
-                    )
-                    print()
-                rmse_range_t = compute_rmse(
-                    est_range_t.reshape(1),
-                    true_r.reshape(1),
-                )
-                rmse_vel_t = compute_rmse(
-                    est_velocity_t.reshape(1),
-                    true_v.reshape(1),
-                )
-                row["est_range_m"] = _csv_float2_scalar(est_range_t)
-                row["rmse_range_m"] = _csv_float2_scalar(rmse_range_t)
-                row["est_radial_velocity_mps"] = _csv_float2_scalar(est_velocity_t)
-                row["rmse_radial_velocity_mps"] = _csv_float2_scalar(rmse_vel_t)
+                if not result.passed:
+                    quality_stats.record_reject(result.reason or "low_peak_prominence")
+                    continue
+                quality_stats.record_accept()
 
-        if save_csv:
-            csv_rows.append(row)
+            _process_episode(
+                system=system,
+                scene=scene,
+                cfg=cfg,
+                index_key=index_key,
+                episode_idx=accepted_idx if cfg.quality_filter else i,
+                pos=pos,
+                vel=vel,
+                h_freq_list=h_freq_list,
+                cir_a_list=cir_a_list,
+                cir_tau_list=cir_tau_list,
+                target_pos_list=target_pos_list,
+                target_vel_list=target_vel_list,
+                scene_frames=scene_frames,
+                csv_rows=csv_rows,
+                out_dir=SCRIPT_OUT_DIR,
+            )
+            accepted_idx += 1
 
-        if save_h5:
-            h_freq_list.append(paths_cfr_numpy(system.components.rg, system.components.rt_scene))
-            ca, ct = paths_cir_numpy(system.components.rg, system.components.rt_scene)
-            cir_a_list.append(ca)
-            cir_tau_list.append(ct)
+        if cfg.quality_filter:
+            print(quality_stats.summary_line())
+            n_ep = accepted_idx
+            if n_ep == 0:
+                print("质量过滤后无有效样本，结束")
+                return
 
-        if save_gif:
-            scene_image = scene.render()
-            # Matplotlib Figure 与 ndarray 图像两种返回路径
-            if hasattr(scene_image, "canvas"):
-                scene_image.canvas.draw()
-                frame = np.asarray(scene_image.canvas.buffer_rgba())[..., :3].copy()
-                scene_frames.append(frame)
-                plt.close(scene_image)
-            else:
-                scene_frames.append(scene_image)
+    collection_meta = _build_collection_metadata(
+        args, cfg, scene_slug, roi_box3d, quality_stats=quality_stats
+    )
 
-    # --- 后处理：Episode CSV、HDF5（CFR+CIR+kinematics）、GIF ---
-    if save_csv:
-        system.save_episodes_csv(
+    # 8. 落盘：Episode CSV、HDF5（CFR [+ 可选 CIR] + kinematics）、场景 GIF
+    if cfg.save_csv:
+        _export_csv(
+            system,
             scene_slug=scene_slug,
-            source=source,
+            cfg=cfg,
             rows=csv_rows,
-            run_sensing=run_sensing,
-            csv_mode=csv_mode,
-            output_root=script_out_dir,
+            out_dir=SCRIPT_OUT_DIR,
         )
 
-    if save_h5 and len(h_freq_list) > 0:
-        cir_a_arr, cir_tau_arr = stack_ragged_cir_samples(cir_a_list, cir_tau_list)
-        if source == "trajectory":
-            if run_sensing:
-                h5_path = script_out_dir / f"{scene_slug}_trajectory_monostatic_sensing.h5"
-                desc_h5 = (
-                    f"Trajectory + monostatic sensing ({len(h_freq_list)} steps) in {scene_slug}"
-                )
-                scene_name = scene_slug
-            else:
-                h5_path = script_out_dir / f"{scene_slug}_sionna_dataset.h5"
-                desc_h5 = None
-                scene_name = scene_slug
-        else:
-            mc_slug = f"{scene_slug}_mc"
-            if run_sensing:
-                h5_path = script_out_dir / f"{scene_slug}_mc_monostatic_sensing.h5"
-                desc_h5 = f"Monte Carlo + monostatic sensing ({n_ep} samples) in {scene_slug}"
-                scene_name = mc_slug
-            else:
-                h5_path = script_out_dir / f"{scene_slug}_mc_sionna_dataset.h5"
-                desc_h5 = (
-                    f"Sionna generated ISAC Monte Carlo dataset ({n_ep} samples) in {scene_slug}"
-                )
-                scene_name = mc_slug
-        Dataset.from_export_arrays(
-            np.array(h_freq_list),
-            cir_a_arr,
-            cir_tau_arr,
-            np.array(target_pos_list),
-            np.array(target_vel_list),
-            np.array(scene.transceivers["bs1"].position),
-            system.params.carrier_frequency,
-            system.params.ofdm.subcarrier_spacing,
-            system.params.ofdm.num_subcarriers,
-            len(h_freq_list),
-            scene_name,
-            description=desc_h5,
-        ).save(h5_path)
-    elif save_h5:
-        print("未采集 CFR/CIR，跳过 HDF5")
-
-    if save_gif:
-        if not scene_frames:
-            print("无场景帧，跳过 GIF 导出")
-        else:
-            gif_path = (
-                script_out_dir / "scene_image_mc.gif"
-                if source == "monte_carlo"
-                else (
-                    script_out_dir / "scene_image_trajectory_sensing.gif"
-                    if run_sensing
-                    else script_out_dir / "scene_image.gif"
-                )
-            )
-            images_to_gif(
-                filepath=gif_path,
-                images=scene_frames,
-                time_slot=1,
-                speed=5,
-            )
+    _export_h5(
+        system,
+        scene,
+        cfg=cfg,
+        scene_slug=scene_slug,
+        n_episodes=n_ep,
+        h_freq_list=h_freq_list,
+        cir_a_list=cir_a_list,
+        cir_tau_list=cir_tau_list,
+        target_pos_list=target_pos_list,
+        target_vel_list=target_vel_list,
+        collection_meta=collection_meta,
+        out_dir=SCRIPT_OUT_DIR,
+    )
+    _export_gif(cfg=cfg, scene_frames=scene_frames, out_dir=SCRIPT_OUT_DIR)
 
 
 if __name__ == "__main__":

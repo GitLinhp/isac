@@ -1,0 +1,88 @@
+# CNN 感知训练专用采集配置：较紧 ROI 建议配合 CLI --roi 10 70 -20 20
+carrier_frequency = 4.9e9
+num_bits_per_symbol = 2
+snr_db = 80
+
+[ofdm]
+num_symbols = 512
+num_subcarriers = 2048
+num_valid_subcarriers = 2048
+subcarrier_spacing = 30000.0
+num_cyclic_prefix = 512
+l_min = -6
+
+[rt_scene]
+filename = "simple_street_canyon"
+merge_shapes = false
+
+[rt_scene.camera]
+position = [0, 0, 250]
+look_at = [0, 0, 0]
+
+[rt_scene.antenna_arrays]
+[rt_scene.antenna_arrays.tx_array]
+type = "PlanarArray"
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+[rt_scene.antenna_arrays.rx_array]
+type = "PlanarArray"
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+
+[rt_scene.transceivers]
+[rt_scene.transceivers.bs1]
+position = [-10, -7.5, 30]
+look_at = [0, 0, 0]
+type = ["tx", "rx"]
+
+[rt_scene.target_materials]
+[rt_scene.target_materials.car_material]
+type = "metal"
+thickness = 0.01
+color = [0, 0.2, 0.6]
+
+[rt_scene.targets]
+[rt_scene.targets.car]
+fname = "low_poly_car"
+material = "car_material"
+position = [0, 0, 0]
+velocity = [0, 0, 0]
+[rt_scene.targets.car.trajectory]
+points = [[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]]
+velocity = 5.0
+
+[rt_scene.path_solver]
+max_depth = 1
+max_num_paths_per_src = 1e6
+samples_per_src = 1e6
+los = true
+specular_reflection = true
+diffuse_reflection = false
+refraction = false
+diffraction = false
+edge_diffraction = false
+synthetic_array = true
+seed = 42
+
+[sensing]
+[sensing.source]
+type = "zc"
+root_index = 1
+normalize = true
+
+[sensing.windows]
+
+[sensing.cfar]
+type = "ca"
+guard = 2
+trailing = 20
+pfa = 1e-4
+detector = "linear"
