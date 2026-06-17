@@ -28,11 +28,15 @@ class OFDMParams:
         """从字典创建配置对象"""
         raw_l_min = config_dict.get("l_min", -6)
         l_min = int(-6 if raw_l_min is None else raw_l_min)
+        cp = config_dict.get(
+            "cyclic_prefix_length",
+            config_dict.get("num_cyclic_prefix", 0),
+        )
         return cls(
             num_symbols=config_dict.get("num_symbols", 1024),
             num_subcarriers=config_dict.get("num_subcarriers", 1024),
             num_valid_subcarriers=config_dict.get("num_valid_subcarriers", 1024),
             subcarrier_spacing=config_dict.get("subcarrier_spacing", 30000.0),
-            cyclic_prefix_length=config_dict.get("cyclic_prefix_length", 0),
+            cyclic_prefix_length=int(cp),
             l_min=l_min,
         )

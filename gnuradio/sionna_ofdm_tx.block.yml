@@ -1,0 +1,67 @@
+id: sionna_ofdm_tx
+label: Sionna OFDM Tx
+category: '[Sionna]'
+flags: [python]
+
+parameters:
+- id: config_file
+  label: Config file
+  dtype: string
+  default: '"config/sensing_monostatic.toml"'
+- id: fft_len
+  label: FFT length
+  dtype: int
+  default: '2048'
+- id: ofdm_symbols
+  label: OFDM symbols
+  dtype: int
+  default: '512'
+- id: cp_len
+  label: CP length
+  dtype: int
+  default: '512'
+- id: subcarrier_spacing
+  label: Subcarrier spacing
+  dtype: real
+  default: '15000'
+- id: center_freq
+  label: Center frequency
+  dtype: real
+  default: '6e9'
+- id: length_tag_key
+  label: Length tag key
+  dtype: string
+  default: '"packet_len"'
+- id: seed
+  label: Seed
+  dtype: int
+  default: '42'
+- id: device
+  label: Device
+  dtype: string
+  default: '"cuda:0"'
+- id: burst_pri_sec
+  label: Burst PRI [s]
+  dtype: real
+  default: '0'
+- id: samp_rate
+  label: Sample rate
+  dtype: int
+  default: '30720000'
+- id: minoutbuf
+  label: Min output buffer
+  dtype: int
+  default: '0'
+  hide: part
+
+outputs:
+- domain: stream
+  dtype: complex
+
+templates:
+  imports: from sionna_tx import SionnaOFDMTx
+  make: SionnaOFDMTx(config_file=${config_file}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq}, length_tag_key=${length_tag_key}, seed=${seed}, device=${device}, burst_pri_sec=${burst_pri_sec}, samp_rate=${samp_rate})
+  callbacks:
+  - set_min_output_buffer(${minoutbuf})
+
+file_format: 1

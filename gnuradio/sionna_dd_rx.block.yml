@@ -1,0 +1,84 @@
+id: sionna_dd_rx
+label: Sionna DD Rx
+category: '[Sionna]'
+flags: [python]
+
+parameters:
+- id: config_file
+  label: Config file
+  dtype: string
+  default: '"config/sensing_monostatic.toml"'
+- id: fft_len
+  label: FFT length
+  dtype: int
+  default: '2048'
+- id: ofdm_symbols
+  label: OFDM symbols
+  dtype: int
+  default: '512'
+- id: cp_len
+  label: CP length
+  dtype: int
+  default: '512'
+- id: subcarrier_spacing
+  label: Subcarrier spacing
+  dtype: real
+  default: '15000'
+- id: center_freq
+  label: Center frequency
+  dtype: real
+  default: '6e9'
+- id: length_tag_key
+  label: Length tag key
+  dtype: string
+  default: '"packet_len"'
+- id: seed
+  label: Seed
+  dtype: int
+  default: '42'
+- id: device
+  label: Device
+  dtype: string
+  default: '"cuda:0"'
+- id: log_eps
+  label: Log epsilon
+  dtype: real
+  default: '1e-20'
+  hide: part
+- id: minoutbuf
+  label: Min output buffer
+  dtype: int
+  default: '0'
+  hide: part
+- id: mininbuf
+  label: Min input buffer
+  dtype: int
+  default: '0'
+  hide: part
+- id: burst_mode
+  label: Burst mode
+  dtype: bool
+  default: 'True'
+  options: ['True', 'False']
+  option_labels: ['Enabled', 'Disabled']
+
+inputs:
+- domain: stream
+  dtype: complex
+
+outputs:
+- domain: stream
+  dtype: complex
+  vlen: ${ fft_len }
+- domain: stream
+  dtype: float
+  vlen: ${ fft_len }
+
+templates:
+  imports: from sionna_rx import SionnaDelayDopplerRx
+  make: SionnaDelayDopplerRx(config_file=${config_file}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq}, length_tag_key=${length_tag_key}, seed=${seed}, device=${device}, log_eps=${log_eps}, burst_mode=${burst_mode})
+  callbacks:
+  - set_min_output_buffer(${minoutbuf})
+  - set_min_input_buffer(${mininbuf})
+
+file_format: 1

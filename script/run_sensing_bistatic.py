@@ -135,9 +135,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import sionna
-
-    sionna.phy.config.device = "cpu"
-    print(sionna.phy.config.device)
-
     main()

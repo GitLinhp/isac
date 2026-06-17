@@ -1,0 +1,44 @@
+id: sionna_bootstrap
+label: Sionna Bootstrap
+category: '[Sionna]'
+flags: [python]
+
+parameters:
+- id: config_file
+  label: Config file
+  dtype: string
+  default: '"config/sensing_monostatic.toml"'
+- id: seed
+  label: Seed
+  dtype: int
+  default: '42'
+- id: device
+  label: Device
+  dtype: string
+  default: '"cuda:0"'
+- id: fft_len
+  label: FFT length
+  dtype: int
+  default: '2048'
+- id: ofdm_symbols
+  label: OFDM symbols
+  dtype: int
+  default: '512'
+- id: cp_len
+  label: CP length
+  dtype: int
+  default: '512'
+- id: subcarrier_spacing
+  label: Subcarrier spacing
+  dtype: real
+  default: '15000'
+- id: center_freq
+  label: Center frequency
+  dtype: real
+  default: '6e9'
+
+templates:
+  imports: from sionna_tx import SionnaBootstrap
+  make: SionnaBootstrap(config_file=${config_file}, seed=${seed}, device=${device}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq})
+
+file_format: 1

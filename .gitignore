@@ -7,6 +7,11 @@
 # Python bytecode
 __pycache__/
 
+# GRC 生成（本地 grcc 后运行）
+gnuradio/simulator_ofdm.py
+gnuradio/simulator_ofdm_impl*.py
+gnuradio/*_sionna_*_0.py
+
 # Python test
 .pytest_cache/
 
@@ -19,3 +24,4 @@ radarsimnb/
 SkySense-ISAC-Dataset-Generator-for-UAV-Localization-with-Sionna/
 labview/
 ISAC-Intelligent-Transportation-/
+out/
