@@ -16,6 +16,7 @@ gnuradio/*_sionna_*_0.py
 .pytest_cache/
 
 # Project dirs (excluded from repo)
+src/radarsimpy/
 backup/
 CISSIR/
 data/
