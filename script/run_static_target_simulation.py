@@ -65,7 +65,7 @@ def argument_parser() -> argparse.Namespace:
     )
 
     # --- 点目标几何与散射（亦为 RMSE 真值来源）---
-    parser.add_argument("--range_m", type=float, default=100.0, help="目标径向距离 (m)")
+    parser.add_argument("--range_m", type=float, default=95.0, help="目标径向距离 (m)")
     parser.add_argument(
         "--velocity_mps", type=float, default=5.0, help="目标径向速度 (m/s)"
     )
