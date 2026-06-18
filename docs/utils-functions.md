@@ -10,13 +10,13 @@
 
 ### [`script/model_training/run_dataset_collection.py`](script/model_training/run_dataset_collection.py)
 
-数据集采集主入口：轨迹或蒙特卡洛生成 episode，可选逐步感知，写出 CSV / HDF5 / GIF。
+数据集采集主入口：蒙特卡洛 ROI 采样生成 episode，可选逐步感知，写出 CSV / HDF5 / GIF。
 
 | 函数 / 模块 | 在流水线中的角色 |
 | ----------- | ---------------- |
 | `set_random_seed` | CLI 解析后固定 NumPy / PyTorch / Sionna 随机性，保证可复现采集。 |
 | `scene_slug_from_rt_scene` | 从 RT 场景文件名生成输出文件 slug（HDF5、CSV、GIF 前缀）。 |
-| `target_generation.generate_target_episodes` | 按 `--source` 批量生成全部 episode 的 `(位置, 速度)` 数组（轨迹或蒙特卡洛）。 |
+| `target_generation.generate_targets_monte_carlo` | 批量生成全部 episode 的 `(位置, 速度)` 数组。 |
 | `target_generation.generate_monte_carlo_points` | 质量过滤循环中单样本 ROI 位置采样（与 `scene.is_position_valid` 配合）。 |
 | `target_generation.sample_monte_carlo_velocities` | 质量过滤循环中单样本速度采样。 |
 | `paths_cfr_numpy` | 每步从 RT `paths.cfr` 取 OFDM 网格上的 CFR，写入 HDF5 缓冲。 |
@@ -121,9 +121,7 @@ flowchart LR
 | `roi_uniform_scalar` | ROI 单轴采样：`low==high` 为定值，否则均匀。 |
 | `sample_monte_carlo_velocities` | 蒙特卡洛速度：`sphere_uniform` 或 `axis_box`，可传入预置 `velocities`。 |
 | `generate_monte_carlo_points` | ROI 内 `uniform`/`gaussian` 采样，经 `scene.is_position_valid` 剔除无效点。 |
-| `generate_targets_from_trajectory` | 沿轨迹 `time_delta` 推进 `steps` 步，返回位置/速度序列。 |
 | `generate_targets_monte_carlo` | ROI + 速度策略批量采样位置与速度。 |
-| `generate_target_episodes` | 统一入口：`source='trajectory'` 或 `monte_carlo` 分发到上两类生成器。 |
 
 ### [`metrics.py`](src/isac/utils/metrics.py)
 

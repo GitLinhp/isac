@@ -72,9 +72,6 @@ fname = "low_poly_car"
 material = "car_material"
 position = [-5, 0, 0]
 velocity = [-10, 0, -30]
-[rt_scene.targets.car.trajectory]
-points = [[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]]
-velocity = 5.0
 
 # 路径解析器参数
 [rt_scene.path_solver]

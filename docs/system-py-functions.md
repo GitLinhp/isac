@@ -41,12 +41,9 @@
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `save_dataset(...)` | 将 CFR、`cir_a`、`cir_tau`、位置/速度、基站位置及 OFDM 元数据封装为 **`Dataset`**（``isac.datasets``）并写入 HDF5（必含 CFR+CIR）。 |
 
-### 轨迹：仅数据 vs 移动+感知
+### 蒙特卡洛数据集采集（已迁至 `run_dataset_collection.py`）
 
-| 方法                                             | 功能概要                                                                                                                                                                                                                                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `test_dataset_generation(...)`                 | 沿**Trajectory** 推进，`target.update` 后采集 **CFR+CIR**；可选运动学 CSV、`{slug}_dataset_kinematics.csv`、HDF5、GIF；**不做** `run_sensing_monostatic_eval`；进度条 **tqdm**。内部局部函数：`fmt_vec3`、`csv_float2`（格式化日志与 CSV）。 |
-| `test_trajectory_with_monostatic_sensing(...)` | 同上轨迹循环，但每步**`run_sensing_monostatic_eval`**，写感知指标 CSV（估计与 RMSE）；默认 **`save_h5=False`**；可选 HDF5/GIF；**tqdm**。                                                                                                                |
+轨迹推进相关 API 已移除；批量 episode 由 `target_generation.generate_targets_monte_carlo` 与 [`script/model_training/run_dataset_collection.py`](script/model_training/run_dataset_collection.py) 完成。
 
 ### 蒙特卡洛：仅数据 vs 采样+感知
 
@@ -66,7 +63,7 @@
 
 ## 局部嵌套函数（非模块 API）
 
-在 `test_dataset_generation`、`test_trajectory_with_monostatic_sensing`、`generate_dataset_monte_carlo`、`generate_monte_carlo_with_monostatic_sensing` 中重复出现的：
+在 `generate_dataset_monte_carlo`、`generate_monte_carlo_with_monostatic_sensing` 中重复出现的：
 
 - **`fmt_vec3`**：三维向量格式化为日志字符串。
 - **`csv_float2`**：标量/`torch.Tensor` 转为保留两位小数的 CSV 字符串。

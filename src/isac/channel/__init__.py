@@ -1,6 +1,6 @@
 from .awgn import AWGN
 from .channel import Channel
-from .rt import RTScene, RTTarget, RTTransceiver, Trajectory, Paths
+from .rt import RTScene, RTTarget, RTTransceiver, Paths
 from .static_target_simulator import StaticTargetSimulator
 from ..data_structures.params.static_target import (
     StaticTargetParams,
@@ -13,7 +13,6 @@ __all__ = [
     "RTScene",
     "RTTarget",
     "RTTransceiver",
-    "Trajectory",
     "Paths",
     "StaticTargetParams",
     "StaticTargetSimulator",

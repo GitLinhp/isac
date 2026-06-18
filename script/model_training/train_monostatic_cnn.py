@@ -107,7 +107,7 @@ def main() -> None:
             "未指定 --dataset，且 "
             f"{_DEFAULT_DATASET_DIR} 下未找到 *.h5。\n"
             "请先采集数据，例如：\n"
-            "  python script/run_dataset_collection.py --source monte_carlo\n"
+            "  python script/model_training/run_dataset_collection.py\n"
             "或显式指定：\n"
             "  python script/train_monostatic_cnn.py "
             "--dataset out/dataset_collection/scene_mc_sionna_dataset.h5"

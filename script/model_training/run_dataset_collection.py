@@ -1,10 +1,10 @@
-"""ISAC 数据集采集入口：按轨迹或蒙特卡洛生成目标位姿序列，可选每步感知，并写出 CSV / HDF5 / GIF。
+"""ISAC 数据集采集入口：蒙特卡洛 ROI 采样生成目标位姿序列，可选每步感知，并写出 CSV / HDF5 / GIF。
 
 流程概要
 --------
-1. 解析 CLI，设置随机种子；蒙特卡洛模式下解析 ROI。
+1. 解析 CLI，设置随机种子，解析 ROI。
 2. 构建 ``System``，输出目录固定为 ``out/dataset_collection/``。
-3. 生成 episode 序列后进入主循环：更新 RT 目标位姿 → 记录几何真值 →（可选）感知评估 → 累计 I/O 缓冲。
+3. 蒙特卡洛生成 episode 序列后进入主循环：更新 RT 目标位姿 → 记录几何真值 →（可选）感知评估 → 累计 I/O 缓冲。
 4. 循环结束后写出 CSV / HDF5 / GIF；HDF5 默认仅 CFR + kinematics，加 ``--save-cir`` 才写入 CIR。
 
 约定
@@ -77,17 +77,14 @@ SENSING_SPECTRUM_FILENAME = "sensing_monostatic_delay_doppler_spectrum.png"
 RX_IDX = TARGET_IDX = TX_IDX = 0
 TRIPLE_SLICE = (RX_IDX, TARGET_IDX, TX_IDX)
 
-SourceKind = Literal["monte_carlo", "trajectory"]
 CsvMode = Literal["unified", "legacy"]
 SensingLayout = Literal["monostatic", "bistatic"]
-IndexKey = Literal["step", "sample_idx"]
 
 
 @dataclass(frozen=True)
 class CollectionConfig:
     """从 CLI 解包后的采集选项，避免 ``main`` 内散落大量局部变量。"""
 
-    source: SourceKind
     run_sensing: bool
     save_h5: bool
     save_cir: bool
@@ -114,7 +111,6 @@ class CollectionConfig:
             print("双基地感知 CSV 列与 legacy 固定表头不一致，已改用 csv_mode=unified")
             csv_mode = "unified"
         return cls(
-            source=args.source,
             run_sensing=args.run_sensing,
             save_h5=args.save_h5,
             save_cir=args.save_cir,
@@ -206,14 +202,12 @@ def _roi_xy_to_box3d(
     return roi_xy[0], roi_xy[1], z_bounds
 
 
-def _resolve_roi(args: argparse.Namespace) -> tuple | None:
-    """解析蒙特卡洛 ROI（xy 四元组 + z=0）；轨迹模式返回 ``None``。"""
+def _resolve_roi(args: argparse.Namespace) -> tuple:
+    """解析蒙特卡洛 ROI（xy 四元组 + z=0）。"""
     if args.roi is not None:
         r = args.roi
         return _roi_xy_to_box3d(((r[0], r[1]), (r[2], r[3])))
-    if args.source == "monte_carlo":
-        return _roi_xy_to_box3d(DEFAULT_MC_ROI_XY)
-    return None
+    return _roi_xy_to_box3d(DEFAULT_MC_ROI_XY)
 
 
 def _los_truth_at_first_triple(
@@ -347,7 +341,6 @@ def bistatic_sensing_eval(
 
 
 def _kinematics_row(
-    index_key: IndexKey,
     episode_idx: int,
     pos: np.ndarray,
     vel: np.ndarray,
@@ -358,7 +351,7 @@ def _kinematics_row(
     pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
     vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
     return {
-        index_key: episode_idx,
+        "sample_idx": episode_idx,
         "pos_x_m": csv_float2_scalar(pos_row[0]),
         "pos_y_m": csv_float2_scalar(pos_row[1]),
         "pos_z_m": csv_float2_scalar(pos_row[2]),
@@ -407,7 +400,6 @@ def _append_bistatic_sensing_columns(
 
 
 def _log_sensing_step(
-    index_key: IndexKey,
     episode_idx: int,
     *,
     layout: SensingLayout,
@@ -417,14 +409,14 @@ def _log_sensing_step(
 ) -> None:
     if layout == "bistatic":
         print(
-            f"{index_key}={episode_idx:03d} 双基地感知: "
+            f"sample_idx={episode_idx:03d} 双基地感知: "
             f"LoS_path={float(est_range_or_path.item()):.3f} m, "
             f"velocity={float(est_velocity.item()):.3f} m/s, "
             f"MUSIC_peak={float(est_power_db.item()):.3f} dB"
         )
     else:
         print(
-            f"{index_key}={episode_idx:03d} 感知: "
+            f"sample_idx={episode_idx:03d} 感知: "
             f"range={float(est_range_or_path.item()):.3f} m, "
             f"velocity={float(est_velocity.item()):.3f} m/s, "
             f"MUSIC_peak={float(est_power_db.item()):.3f} dB"
@@ -439,27 +431,12 @@ def _log_sensing_step(
 
 def _resolve_h5_output(
     *,
-    source: SourceKind,
     run_sensing: bool,
     scene_slug: str,
     n_episodes: int,
-    n_frames: int,
     out_dir: Path,
 ) -> tuple[Path, str | None, str]:
-    """按 ``source × run_sensing`` 决定 HDF5 路径、描述与 ``scene_name`` 元数据。"""
-    if source == "trajectory":
-        if run_sensing:
-            return (
-                out_dir / f"{scene_slug}_trajectory_monostatic_sensing.h5",
-                f"Trajectory + monostatic sensing ({n_frames} steps) in {scene_slug}",
-                scene_slug,
-            )
-        return (
-            out_dir / f"{scene_slug}_sionna_dataset.h5",
-            None,
-            scene_slug,
-        )
-
+    """按 ``run_sensing`` 决定 HDF5 路径、描述与 ``scene_name`` 元数据。"""
     mc_slug = f"{scene_slug}_mc"
     if run_sensing:
         return (
@@ -474,17 +451,8 @@ def _resolve_h5_output(
     )
 
 
-def _resolve_gif_path(
-    *,
-    source: SourceKind,
-    run_sensing: bool,
-    out_dir: Path,
-) -> Path:
-    if source == "monte_carlo":
-        return out_dir / "scene_image_mc.gif"
-    if run_sensing:
-        return out_dir / "scene_image_trajectory_sensing.gif"
-    return out_dir / "scene_image.gif"
+def _resolve_gif_path(out_dir: Path) -> Path:
+    return out_dir / "scene_image_mc.gif"
 
 
 def _capture_scene_frame(scene: object) -> np.ndarray:
@@ -516,11 +484,10 @@ def _build_collection_metadata(
         roi_z = float(z_lo)
 
     return CollectionMetadata(
-        source=cfg.source,
         seed=int(args.seed),
         config_file=str(args.config_file),
         scene_slug=scene_slug,
-        num_samples=int(args.num_samples) if cfg.source == "monte_carlo" else None,
+        num_samples=int(args.num_samples),
         run_sensing=cfg.run_sensing,
         save_cir=cfg.save_cir,
         roi_xmin=roi_xmin,
@@ -528,26 +495,12 @@ def _build_collection_metadata(
         roi_ymin=roi_ymin,
         roi_ymax=roi_ymax,
         roi_z=roi_z,
-        sampling_mode=args.sampling_mode if cfg.source == "monte_carlo" else None,
-        velocity_sampling=(
-            args.velocity_sampling if cfg.source == "monte_carlo" else None
-        ),
-        safe_margin=float(args.safe_margin) if cfg.source == "monte_carlo" else None,
-        max_trials_factor=(
-            int(args.max_trials_factor) if cfg.source == "monte_carlo" else None
-        ),
-        speed_min=float(args.speed_range[0]) if cfg.source == "monte_carlo" else None,
-        speed_max=float(args.speed_range[1]) if cfg.source == "monte_carlo" else None,
-        time_delta=(
-            float(args.time_delta)
-            if cfg.source == "trajectory" and args.time_delta is not None
-            else None
-        ),
-        steps=(
-            int(args.steps)
-            if cfg.source == "trajectory" and args.steps is not None
-            else None
-        ),
+        sampling_mode=args.sampling_mode,
+        velocity_sampling=args.velocity_sampling,
+        safe_margin=float(args.safe_margin),
+        max_trials_factor=int(args.max_trials_factor),
+        speed_min=float(args.speed_range[0]),
+        speed_max=float(args.speed_range[1]),
         quality_filter=cfg.quality_filter,
         quality_accepted=quality_stats.accepted if quality_stats else None,
         quality_rejected=quality_stats.rejected if quality_stats else None,
@@ -586,7 +539,6 @@ def _export_csv(
 ) -> None:
     system.save_episodes_csv(
         scene_slug=scene_slug,
-        source=cfg.source,
         rows=rows,
         run_sensing=cfg.run_sensing,
         csv_mode=cfg.csv_mode,
@@ -623,11 +575,9 @@ def _export_h5(
         cir_a_arr, cir_tau_arr = stack_ragged_cir_samples(cir_a_list, cir_tau_list)
 
     h5_path, desc_h5, scene_name = _resolve_h5_output(
-        source=cfg.source,
         run_sensing=cfg.run_sensing,
         scene_slug=scene_slug,
         n_episodes=n_episodes,
-        n_frames=len(h_freq_list),
         out_dir=out_dir,
     )
     # 发射机位置取 bs1（与 data_collection 默认场景约定一致）
@@ -660,9 +610,7 @@ def _export_gif(
         print("无场景帧，跳过 GIF 导出")
         return
     images_to_gif(
-        filepath=_resolve_gif_path(
-            source=cfg.source, run_sensing=cfg.run_sensing, out_dir=out_dir
-        ),
+        filepath=_resolve_gif_path(out_dir),
         images=scene_frames,
         time_slot=1,
         speed=5,
@@ -675,7 +623,7 @@ def _export_gif(
 
 
 def argument_parser() -> argparse.Namespace:
-    """构造数据集采集脚本的全部 CLI 参数（轨迹 / 蒙特卡洛、感知、导出格式）。"""
+    """构造数据集采集脚本的全部 CLI 参数（蒙特卡洛、感知、导出格式）。"""
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 数据集采集主流程")
 
     # --- 系统与随机性 ---
@@ -702,13 +650,6 @@ def argument_parser() -> argparse.Namespace:
     )
 
     # --- Episode 来源与导出开关 ---
-    parser.add_argument(
-        "--source",
-        type=str,
-        default="monte_carlo",
-        choices=["monte_carlo", "trajectory"],
-        help="目标点来源",
-    )
     parser.add_argument(
         "--run_sensing", action="store_true", help="每步/每样本执行单站感知"
     )
@@ -761,13 +702,7 @@ def argument_parser() -> argparse.Namespace:
         help="每步打印感知一行日志",
     )
 
-    # --- 轨迹模式参数 ---
-    parser.add_argument(
-        "--time_delta", type=float, default=None, help="轨迹模式：步长时间间隔"
-    )
-    parser.add_argument("--steps", type=int, default=None, help="轨迹模式：最大步数")
-
-    # --- 蒙特卡洛模式参数 ---
+    # --- 蒙特卡洛采样参数 ---
     parser.add_argument(
         "--roi",
         nargs=4,
@@ -872,7 +807,6 @@ def _process_episode(
     system: System,
     scene: object,
     cfg: CollectionConfig,
-    index_key: IndexKey,
     episode_idx: int,
     pos: np.ndarray,
     vel: np.ndarray,
@@ -894,7 +828,7 @@ def _process_episode(
 
     true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
     row = _kinematics_row(
-        index_key, episode_idx, pos_row, vel_row, true_range, true_velocity
+        episode_idx, pos_row, vel_row, true_range, true_velocity
     )
 
     if cfg.run_sensing:
@@ -904,7 +838,6 @@ def _process_episode(
             )
             if cfg.log_per_step_sensing:
                 _log_sensing_step(
-                    index_key,
                     episode_idx,
                     layout="bistatic",
                     est_range_or_path=est_path,
@@ -924,7 +857,6 @@ def _process_episode(
             )
             if cfg.log_per_step_sensing:
                 _log_sensing_step(
-                    index_key,
                     episode_idx,
                     layout="monostatic",
                     est_range_or_path=est_range,
@@ -961,7 +893,6 @@ def _run_monte_carlo_with_quality_filter(
     cfg: CollectionConfig,
     args: argparse.Namespace,
     roi_box3d: tuple,
-    index_key: IndexKey,
     h_freq_list: list[np.ndarray],
     cir_a_list: list[np.ndarray],
     cir_tau_list: list[np.ndarray],
@@ -1029,7 +960,6 @@ def _run_monte_carlo_with_quality_filter(
             system=system,
             scene=scene,
             cfg=cfg,
-            index_key=index_key,
             episode_idx=accepted,
             pos=pos,
             vel=vel,
@@ -1078,7 +1008,6 @@ def main() -> None:
     _, target = next(iter(scene.rt_targets.items()))
     scene_slug = scene_slug_from_rt_scene(scene)
     roi_box3d = _resolve_roi(args)
-    index_key: IndexKey = "step" if cfg.source == "trajectory" else "sample_idx"
 
     h_freq_list: list[np.ndarray] = []
     cir_a_list: list[np.ndarray] = []
@@ -1089,9 +1018,7 @@ def main() -> None:
     csv_rows: list[dict[str, str | int]] = []
     quality_stats: QualityFilterStats | None = None
 
-    if cfg.quality_filter and cfg.source == "monte_carlo":
-        if roi_box3d is None:
-            raise RuntimeError("蒙特卡洛质量过滤需要有效 ROI")
+    if cfg.quality_filter:
         quality_stats = _run_monte_carlo_with_quality_filter(
             system=system,
             scene=scene,
@@ -1099,7 +1026,6 @@ def main() -> None:
             cfg=cfg,
             args=args,
             roi_box3d=roi_box3d,
-            index_key=index_key,
             h_freq_list=h_freq_list,
             cir_a_list=cir_a_list,
             cir_tau_list=cir_tau_list,
@@ -1111,13 +1037,10 @@ def main() -> None:
         )
         n_ep = quality_stats.accepted
     else:
-        pos_arr, vel_arr = tg.generate_target_episodes(
+        pos_arr, vel_arr = tg.generate_targets_monte_carlo(
             scene,
-            source=cfg.source,
-            time_delta=args.time_delta,
-            steps=args.steps,
             roi=roi_box3d,
-            num_samples=args.num_samples if cfg.source == "monte_carlo" else None,
+            num_samples=int(args.num_samples),
             sampling_mode=args.sampling_mode,
             safe_margin=args.safe_margin,
             max_trials_factor=args.max_trials_factor,
@@ -1135,15 +1058,13 @@ def main() -> None:
             print("无有效 Episode，结束")
             return
 
-        progress_desc = "轨迹数据集" if cfg.source == "trajectory" else "MC 数据集"
-        progress_unit = "step" if cfg.source == "trajectory" else "sample"
         quality_cfg = cfg.sample_quality_config() if cfg.quality_filter else None
         sensing_perf = system.components.sensing.sensing_performance
         if cfg.quality_filter:
             quality_stats = QualityFilterStats()
 
         accepted_idx = 0
-        for i in tqdm(range(n_ep), desc=progress_desc, unit=progress_unit):
+        for i in tqdm(range(n_ep), desc="MC 数据集", unit="sample"):
             pos = pos_arr[i]
             vel = vel_arr[i]
             system._update_rt_target_pose_from_velocity(target, pos, vel)
@@ -1171,7 +1092,6 @@ def main() -> None:
                 system=system,
                 scene=scene,
                 cfg=cfg,
-                index_key=index_key,
                 episode_idx=accepted_idx if cfg.quality_filter else i,
                 pos=pos,
                 vel=vel,

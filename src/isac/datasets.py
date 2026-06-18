@@ -53,13 +53,13 @@ class CollectionMetadata:
     """``run_dataset_collection.py`` 一次采集运行的可复现配置摘要。
 
     序列化到 HDF5 根属性 ``collection_<field>``（见 ``write_hdf5_attrs``）。
-    ``source`` 为 ``monte_carlo`` 或 ``trajectory``；蒙特卡洛含 ``roi_*``、``quality_*`` 等；轨迹含 ``time_delta``、``steps``。
+    蒙特卡洛采集含 ``roi_*``、``quality_*`` 等字段。
     """
 
-    source: str
     seed: int
     config_file: str
     scene_slug: str
+    source: str = "monte_carlo"
     num_samples: int | None = None
     run_sensing: bool = False
     save_cir: bool = False
@@ -74,8 +74,6 @@ class CollectionMetadata:
     max_trials_factor: int | None = None
     speed_min: float | None = None
     speed_max: float | None = None
-    time_delta: float | None = None
-    steps: int | None = None
     quality_filter: bool = False
     quality_accepted: int | None = None
     quality_rejected: int | None = None
@@ -111,8 +109,6 @@ class CollectionMetadata:
             "max_trials_factor": self.max_trials_factor,
             "speed_min": self.speed_min,
             "speed_max": self.speed_max,
-            "time_delta": self.time_delta,
-            "steps": self.steps,
             "quality_filter": self.quality_filter,
             "quality_accepted": self.quality_accepted,
             "quality_rejected": self.quality_rejected,
@@ -348,7 +344,7 @@ class Dataset:
         if (dataset_cir_a is None) != (dataset_cir_tau is None):
             raise ValueError("dataset_cir_a 与 dataset_cir_tau 须同时提供或同时为 None")
         desc = description or (
-            f"Sionna generated ISAC dataset with car trajectory in {scene_name}"
+            f"Sionna generated ISAC Monte Carlo dataset in {scene_name}"
         )
         return cls(
             cfr=dataset_cfr,

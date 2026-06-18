@@ -5,7 +5,6 @@ from .rt_scene_params import (
     RtSceneParams,
     TargetMaterialParams,
     TargetParams,
-    TrajectoryParams,
     TransceiverParams,
 )
 
@@ -16,6 +15,5 @@ __all__ = [
     "RtSceneParams",
     "TargetMaterialParams",
     "TargetParams",
-    "TrajectoryParams",
     "TransceiverParams",
 ]

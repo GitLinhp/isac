@@ -1,4 +1,4 @@
-"""目标点生成：轨迹运动学回放、ROI 内蒙特卡洛位置采样与速度采样。"""
+"""ROI 内蒙特卡洛位置采样与速度采样。"""
 
 from __future__ import annotations
 
@@ -82,53 +82,6 @@ def sample_monte_carlo_velocities(
     else:
         raise ValueError("velocity_sampling 须为 'sphere_uniform' 或 'axis_box'")
     return vel_arr
-
-
-def generate_targets_from_trajectory(
-    rt_scene: object,
-    time_delta: float,
-    steps: int | None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """纯 Trajectory 运动学回放，得到每步位置/速度表（不调用 ``target.update``、不追射线）。"""
-    scene = rt_scene
-    if not scene.rt_targets:
-        raise RuntimeError("当前场景中没有可用的 RT 目标（scene.rt_targets 为空）")
-    _, target = next(iter(scene.rt_targets.items()))
-    trajectory = target.trajectory
-    trajectory.distance = 0.0
-    total_distance = float(trajectory.total_distance())
-    velocity = float(trajectory.velocity)
-    if total_distance <= 0:
-        print("轨迹总长度为 0，跳过轨迹回放")
-        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.float64)
-
-    pos_rows: list[np.ndarray] = []
-    vel_rows: list[np.ndarray] = []
-    step = 0
-    while True:
-        if trajectory.distance >= total_distance:
-            break
-        if steps is not None and step >= int(steps):
-            break
-        curr = trajectory.current_position_and_direction()
-        if curr is None:
-            raise RuntimeError("trajectory.current_position_and_direction 返回 None")
-        pos, direction = curr
-        velocity_vec = direction * velocity
-        trajectory.distance = min(
-            total_distance,
-            float(trajectory.distance + velocity * float(time_delta)),
-        )
-        pos_rows.append(np.asarray(pos, dtype=np.float64).reshape(-1).copy())
-        vel_rows.append(np.asarray(velocity_vec, dtype=np.float64).reshape(-1).copy())
-        step += 1
-
-    trajectory.distance = 0.0
-    if not pos_rows:
-        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.float64)
-    return np.asarray(pos_rows, dtype=np.float64), np.asarray(
-        vel_rows, dtype=np.float64
-    )
 
 
 def generate_monte_carlo_points(
@@ -283,48 +236,3 @@ def generate_targets_monte_carlo(
         velocity_roi_vz,
     )
     return pos_arr, vel_arr
-
-
-def generate_target_episodes(
-    rt_scene: object,
-    *,
-    source: Literal["monte_carlo", "trajectory"],
-    time_delta: float | None = None,
-    steps: int | None = None,
-    roi: RoiBox3D | None = None,
-    num_samples: int | None = None,
-    sampling_mode: str = "uniform",
-    safe_margin: float = 2.0,
-    max_trials_factor: int = 20,
-    velocities: np.ndarray | None = None,
-    speed_range: tuple[float, float] = (0.1, 50.0),
-    velocity_sampling: Literal["sphere_uniform", "axis_box"] = "sphere_uniform",
-    velocity_roi_vx: tuple[float, float] | None = None,
-    velocity_roi_vy: tuple[float, float] | None = None,
-    velocity_roi_vz: tuple[float, float] | None = None,
-    seed: int | None = None,
-    rng: np.random.Generator | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """按来源生成全部 Episode 的位置与速度数组。"""
-    if source == "trajectory":
-        if time_delta is None:
-            raise ValueError("source='trajectory' 时必须提供 time_delta")
-        return generate_targets_from_trajectory(rt_scene, time_delta, steps)
-    if roi is None or num_samples is None:
-        raise ValueError("source='monte_carlo' 时必须提供 roi 与 num_samples")
-    return generate_targets_monte_carlo(
-        rt_scene,
-        roi=roi,
-        num_samples=num_samples,
-        sampling_mode=sampling_mode,
-        safe_margin=safe_margin,
-        max_trials_factor=max_trials_factor,
-        velocities=velocities,
-        speed_range=speed_range,
-        velocity_sampling=velocity_sampling,
-        velocity_roi_vx=velocity_roi_vx,
-        velocity_roi_vy=velocity_roi_vy,
-        velocity_roi_vz=velocity_roi_vz,
-        seed=seed,
-        rng=rng,
-    )

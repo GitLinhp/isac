@@ -7,7 +7,6 @@ from .rt_scene import (
     RtSceneParams,
     TargetMaterialParams,
     TargetParams,
-    TrajectoryParams,
     TransceiverParams,
 )
 from .sensing import SensingCFARParams, SensingParams, SensingWindowsParams
@@ -35,6 +34,5 @@ __all__ = [
     "SystemParams",
     "TargetMaterialParams",
     "TargetParams",
-    "TrajectoryParams",
     "TransceiverParams",
 ]

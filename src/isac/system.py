@@ -258,7 +258,6 @@ class System:
         self,
         *,
         scene_slug: str,
-        source: Literal["monte_carlo", "trajectory"],
         rows: list[dict[str, str | int]],
         run_sensing: bool,
         csv_mode: Literal["unified", "legacy"] = "unified",
@@ -272,11 +271,7 @@ class System:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if csv_mode == "unified":
-            path = (
-                out_dir / f"{scene_slug}_mc_dataset_episodes.csv"
-                if source == "monte_carlo"
-                else out_dir / f"{scene_slug}_dataset_episodes.csv"
-            )
+            path = out_dir / f"{scene_slug}_mc_dataset_episodes.csv"
             keys_set: set[str] = set()
             for r in rows:
                 keys_set.update(r.keys())
@@ -289,69 +284,36 @@ class System:
             print(f"统一 Episode CSV 已写入: {path}")
             return
 
-        # legacy：文件名与列集与旧版一致
-        if source == "monte_carlo":
-            if run_sensing:
-                path = out_dir / f"{scene_slug}_mc_dataset_sensing_metrics.csv"
-                fieldnames = [
-                    "sample_idx",
-                    "pos_x_m",
-                    "pos_y_m",
-                    "pos_z_m",
-                    "vel_x_mps",
-                    "vel_y_mps",
-                    "vel_z_mps",
-                    "true_range_m",
-                    "est_range_m",
-                    "rmse_range_m",
-                    "true_radial_velocity_mps",
-                    "est_radial_velocity_mps",
-                    "rmse_radial_velocity_mps",
-                ]
-            else:
-                path = out_dir / f"{scene_slug}_mc_dataset_kinematics.csv"
-                fieldnames = [
-                    "sample_idx",
-                    "pos_x_m",
-                    "pos_y_m",
-                    "pos_z_m",
-                    "vel_x_mps",
-                    "vel_y_mps",
-                    "vel_z_mps",
-                    "true_range_m",
-                    "true_radial_velocity_mps",
-                ]
+        if run_sensing:
+            path = out_dir / f"{scene_slug}_mc_dataset_sensing_metrics.csv"
+            fieldnames = [
+                "sample_idx",
+                "pos_x_m",
+                "pos_y_m",
+                "pos_z_m",
+                "vel_x_mps",
+                "vel_y_mps",
+                "vel_z_mps",
+                "true_range_m",
+                "est_range_m",
+                "rmse_range_m",
+                "true_radial_velocity_mps",
+                "est_radial_velocity_mps",
+                "rmse_radial_velocity_mps",
+            ]
         else:
-            if run_sensing:
-                path = out_dir / f"{scene_slug}_dataset_sensing_metrics.csv"
-                fieldnames = [
-                    "step",
-                    "pos_x_m",
-                    "pos_y_m",
-                    "pos_z_m",
-                    "vel_x_mps",
-                    "vel_y_mps",
-                    "vel_z_mps",
-                    "true_range_m",
-                    "est_range_m",
-                    "rmse_range_m",
-                    "true_radial_velocity_mps",
-                    "est_radial_velocity_mps",
-                    "rmse_radial_velocity_mps",
-                ]
-            else:
-                path = out_dir / f"{scene_slug}_dataset_kinematics.csv"
-                fieldnames = [
-                    "step",
-                    "pos_x_m",
-                    "pos_y_m",
-                    "pos_z_m",
-                    "vel_x_mps",
-                    "vel_y_mps",
-                    "vel_z_mps",
-                    "true_range_m",
-                    "true_radial_velocity_mps",
-                ]
+            path = out_dir / f"{scene_slug}_mc_dataset_kinematics.csv"
+            fieldnames = [
+                "sample_idx",
+                "pos_x_m",
+                "pos_y_m",
+                "pos_z_m",
+                "vel_x_mps",
+                "vel_y_mps",
+                "vel_z_mps",
+                "true_range_m",
+                "true_radial_velocity_mps",
+            ]
         slim = [{k: r[k] for k in fieldnames if k in r} for r in rows]
         with path.open("w", newline="", encoding="utf-8") as csv_f:
             writer = csv.DictWriter(csv_f, fieldnames=fieldnames)

@@ -106,43 +106,6 @@ class TargetMaterialParams:
 
 
 @dataclass
-class TrajectoryParams:
-    """目标运动配置（trajectory-only）。"""
-
-    points: list[list[float]]
-    """轨迹控制点，至少 1 个 3D 点。"""
-    velocity: float
-    """沿轨迹移动速度，单位 m/s，必须 > 0。"""
-
-    @classmethod
-    def from_dict(cls, config_dict: dict[str, Any]) -> "TrajectoryParams":
-        """从配置字典创建运动参数"""
-        if "looping_mode" in config_dict:
-            raise ValueError("trajectory.looping_mode 已废弃，不再支持循环轨迹，请删除该字段")
-
-        points_raw = config_dict.get("points")
-        if points_raw is None:
-            raise ValueError("trajectory.points 是必选配置项，且至少包含 1 个 3D 点")
-        if not isinstance(points_raw, list) or len(points_raw) == 0:
-            raise ValueError("trajectory.points 必须为非空列表，元素为长度为 3 的坐标")
-
-        points: list[list[float]] = []
-        for idx, point in enumerate(points_raw):
-            if not isinstance(point, list) or len(point) != 3:
-                raise ValueError(f"trajectory.points[{idx}] 必须是长度为 3 的列表")
-            points.append([float(point[0]), float(point[1]), float(point[2])])
-
-        velocity = float(config_dict.get("velocity", 0.0))
-        if velocity <= 0.0:
-            raise ValueError("trajectory.velocity 必须大于 0")
-
-        return cls(
-            points=points,
-            velocity=velocity,
-        )
-
-
-@dataclass
 class TargetParams:
     """目标配置"""
 
@@ -154,18 +117,19 @@ class TargetParams:
     """目标位置"""
     velocity: list[float] = field(default_factory=lambda: [0, 0, 0])
     """目标速度"""
-    trajectory: TrajectoryParams | None = None
-    """可选轨迹参数；未配置则不启用路径生成与步进"""
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TargetParams":
         """从配置字典创建目标配置对象"""
+        if "trajectory" in config_dict:
+            raise ValueError(
+                "trajectory 已移除，请使用 position/velocity 配置目标初始位姿"
+            )
         return cls(
             fname=config_dict.get("fname", "low_poly_car"),
             material=config_dict.get("material", "car_material"),
             position=config_dict.get("position", [0, 0, 0]),
             velocity=config_dict.get("velocity", [0, 0, 0]),
-            trajectory=config_dict.get("trajectory", None),
         )
 
 

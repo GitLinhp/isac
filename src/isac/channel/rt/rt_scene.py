@@ -292,7 +292,6 @@ class RTScene(Scene):
                 name=name,
                 fname=targets_params.fname,
                 radio_material=self.target_material[targets_params.material],
-                trajectory_params=targets_params.trajectory,
             )
 
             # 先添加到场景，然后设置属性
