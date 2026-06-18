@@ -1,6 +1,4 @@
 """gnuradio 薄封装：re-export ISAC Torch static_target_simulator。"""
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -44,7 +42,7 @@ def apply_grc_default_channel(
             velocity_mps=velocity_mps,
             rcs=rcs,
             azimuth_deg=0.0,
-            position_rx_m=(0.0,),
+            position_rx_m=0.0,
             center_freq=center_freq,
             samp_rate=samp_rate,
             self_coupling_db=self_coupling_db,

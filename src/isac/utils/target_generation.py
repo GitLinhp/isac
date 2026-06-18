@@ -1,7 +1,5 @@
 """ROI 内蒙特卡洛位置采样与速度采样。"""
 
-from __future__ import annotations
-
 from typing import Literal
 
 import numpy as np

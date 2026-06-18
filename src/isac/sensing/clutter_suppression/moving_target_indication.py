@@ -1,7 +1,5 @@
 """动目标显示（Moving Target Indication）：脉冲对消，``__call__`` 仅接受 ``torch.Tensor``。"""
 
-from __future__ import annotations
-
 import math
 from typing import Optional, Tuple
 

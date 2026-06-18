@@ -1,7 +1,5 @@
 """样本质量门控单元测试。"""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import numpy as np

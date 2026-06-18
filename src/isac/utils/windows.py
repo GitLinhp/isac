@@ -6,8 +6,6 @@
   到目标 ``device``/``dtype``，避免与 CUDA 张量混乘时的设备不一致。
 """
 
-from __future__ import annotations
-
 from typing import Any, Callable, Optional
 
 import numpy as np

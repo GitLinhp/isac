@@ -5,8 +5,6 @@
 可选 CIR（``channel_impulse_response_a/tau``）与 ``collection_*`` 根属性（采集可复现配置）。
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -334,7 +332,7 @@ class Dataset:
         dataset_cir_tau: np.ndarray | None = None,
         description: str | None = None,
         collection_meta: CollectionMetadata | None = None,
-    ) -> Dataset:
+    ) -> "Dataset":
         """由 ndarray 组装数据集（与采集脚本导出字段对齐）。
 
         ``dataset_cir_a`` / ``dataset_cir_tau`` 可省略（仅写 CFR + kinematics）。
@@ -362,7 +360,7 @@ class Dataset:
         )
 
     @classmethod
-    def load(cls, filepath: str | Path) -> Dataset:
+    def load(cls, filepath: str | Path) -> "Dataset":
         """从 HDF5 加载（必含 CFR；CIR 可选）。
 
         目标位置/速度优先读取 ``target_position`` / ``target_velocity``，否则回退 ``uav_*`` 旧键。

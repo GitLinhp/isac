@@ -1,6 +1,4 @@
 """static_target_simulator 向量化回归：与 gr-radar 等价 loop 参考实现对比。"""
-from __future__ import annotations
-
 import math
 
 import pytest
@@ -97,42 +95,20 @@ def _static_target_simulator_loop_ref(
     params: StaticTargetParams,
 ) -> torch.Tensor:
     tx_c = tx.to(torch.complex64)
-    ranges = (float(params.range_m),) if isinstance(params.range_m, (int, float)) else tuple(params.range_m)
-    velocities = (
-        (float(params.velocity_mps),)
-        if isinstance(params.velocity_mps, (int, float))
-        else tuple(params.velocity_mps)
+    out = _apply_single_target_echo_loop_ref(
+        tx_c,
+        range_m=params.range_m,
+        velocity_mps=params.velocity_mps,
+        rcs=params.rcs,
+        azimuth_deg=params.azimuth_deg,
+        position_rx_m=params.position_rx_m,
+        samp_rate=float(params.samp_rate),
+        center_freq=params.center_freq,
     )
-    rcs_vals = (float(params.rcs),) if isinstance(params.rcs, (int, float)) else tuple(params.rcs)
-    azimuths = (
-        (float(params.azimuth_deg),)
-        if isinstance(params.azimuth_deg, (int, float))
-        else tuple(params.azimuth_deg)
-    )
-    rx_positions = tuple(params.position_rx_m)
-
-    rx_outputs: list[torch.Tensor] = []
-    for pos_rx in rx_positions:
-        out = torch.zeros_like(tx_c)
-        for rng, vel, rcs, az in zip(ranges, velocities, rcs_vals, azimuths, strict=True):
-            out = out + _apply_single_target_echo_loop_ref(
-                tx_c,
-                range_m=rng,
-                velocity_mps=vel,
-                rcs=rcs,
-                azimuth_deg=az,
-                position_rx_m=pos_rx,
-                samp_rate=float(params.samp_rate),
-                center_freq=params.center_freq,
-            )
-        if params.self_coupling:
-            coupling = 10.0 ** (params.self_coupling_db / 20.0)
-            out = out + coupling * tx_c
-        rx_outputs.append(out)
-
-    if len(rx_outputs) == 1:
-        return rx_outputs[0]
-    return torch.stack(rx_outputs, dim=0)
+    if params.self_coupling:
+        coupling = 10.0 ** (params.self_coupling_db / 20.0)
+        out = out + coupling * tx_c
+    return out
 
 
 @pytest.mark.parametrize("n", [64, 2048, 512 * 2560])
@@ -200,7 +176,7 @@ def test_static_target_simulator_end2end() -> None:
         velocity_mps=5.0,
         rcs=1e25,
         azimuth_deg=0.0,
-        position_rx_m=(0.0,),
+        position_rx_m=0.0,
         samp_rate=int(_SAMP_RATE),
         center_freq=6e9,
         rndm_phaseshift=False,

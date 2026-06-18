@@ -1,6 +1,4 @@
 """GRC 优先 + TOML 基线：merge 后供 Sionna 块使用的有效配置。"""
-from __future__ import annotations
-
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path

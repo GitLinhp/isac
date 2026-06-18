@@ -1,7 +1,5 @@
 """感知几何与物理量转换工具函数。"""
 
-from __future__ import annotations
-
 import numpy as np
 import torch
 from scipy.constants import c

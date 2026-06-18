@@ -9,12 +9,6 @@ from isac.system import System
 from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
 
-def _first_float(values: float | list[float] | tuple[float, ...]) -> float:
-    if isinstance(values, (list, tuple)):
-        return float(values[0])
-    return float(values)
-
-
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="ISAC 系统仿真 — 静态目标点散射信道感知评估"
@@ -68,8 +62,8 @@ def main() -> None:
     comps.delay_doppler_spectrum.device = torch.device(args.device)
 
     params = static_sim.params
-    range_m = _first_float(params.range_m)
-    velocity_mps = _first_float(params.velocity_mps)
+    range_m = params.range_m
+    velocity_mps = params.velocity_mps
 
     print(
         f"静态目标参数: range={range_m:.2f} m, velocity={velocity_mps:.2f} m/s, "

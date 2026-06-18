@@ -8,8 +8,6 @@
 4. 在 ``z=0`` 且单基地 TX 与 RX 共址时，融合单基地斜距与双基地折叠路径长求 ``(x,y)``。
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 

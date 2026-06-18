@@ -1,25 +1,26 @@
-from .system_params import (
+from .rt_scene_params import (
     AntennaArrayParams,
     CameraParams,
+    PathSolverParams,
+    RtSceneParams,
+    TargetMaterialParams,
+    TargetParams,
+    TransceiverParams,
+)
+from .system_params import (
     CFARParams,
     ChannelParams,
     MTDParams,
     MTIParams,
     MusicParams,
     OFDMParams,
-    PathSolverParams,
     QAMParams,
-    RtSceneParams,
     SensingPerformanceParams,
     SourceParams,
     StaticTargetParams,
     StreamManagementParams,
     SystemParams,
-    TargetMaterialParams,
-    TargetParams,
-    TransceiverParams,
     WindowParams,
-    _as_float_vector,
 )
 
 __all__ = [
@@ -44,7 +45,6 @@ __all__ = [
     "TargetParams",
     "TransceiverParams",
     "WindowParams",
-    "_as_float_vector",
 ]
 
 

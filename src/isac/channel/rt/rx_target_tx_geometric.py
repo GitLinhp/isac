@@ -3,8 +3,6 @@
 张量形状为 ``(n_rx, n_target, n_tx)``，由 ``compute_path_type`` / ``compute_range`` / ``compute_vel`` 直接生成。
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import numpy as np
@@ -82,7 +80,7 @@ class RxTargetTxGeometric:
         *,
         device: torch.device | None = None,
         tx_rx_colocated_eps_m: float = MONOSTATIC_TX_RX_EPS_M,
-    ) -> RxTargetTxGeometric:
+    ) -> "RxTargetTxGeometric":
         """由场景状态构造三元组几何（类型 → 长度 → 速度），张量布局为 ``(n_rx, n_target, n_tx)``。"""
         if not target_states or not rx_states or not tx_states:
             raise ValueError("target_states、rx_states 与 tx_states 须均为非空字典。")

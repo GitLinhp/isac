@@ -1,7 +1,5 @@
 """z=0 平面目标定位：由单基地斜距 + 双基地折叠路径长（TX 与单基地 RX 共址）求 (x, y)。"""
 
-from __future__ import annotations
-
 import math
 from typing import Sequence
 

@@ -1,6 +1,4 @@
 """Sionna 接收链：OFDMDemodulator + LS 信道估计 + DelayDopplerSpectrum（GPU 专用线程）。"""
-from __future__ import annotations
-
 import queue
 import sys
 import threading

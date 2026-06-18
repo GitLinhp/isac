@@ -2,8 +2,6 @@
 系统组件数据结构和配置类
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 

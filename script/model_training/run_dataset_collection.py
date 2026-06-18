@@ -19,8 +19,6 @@
 与 ``run_sensing_monostatic.py`` 的差异：感知嵌在数据采集循环内，并承担批量 episode 的 I/O。
 """
 
-from __future__ import annotations
-
 import argparse
 import warnings
 from dataclasses import dataclass
@@ -101,7 +99,7 @@ class CollectionConfig:
     max_bin_offset: int
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> CollectionConfig:
+    def from_args(cls, args: argparse.Namespace) -> "CollectionConfig":
         csv_mode: CsvMode = args.csv_mode
         if (
             args.run_sensing
@@ -827,9 +825,7 @@ def _process_episode(
         target_vel_list.append(vel_row.copy())
 
     true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
-    row = _kinematics_row(
-        episode_idx, pos_row, vel_row, true_range, true_velocity
-    )
+    row = _kinematics_row(episode_idx, pos_row, vel_row, true_range, true_velocity)
 
     if cfg.run_sensing:
         if cfg.sensing_layout == "bistatic":

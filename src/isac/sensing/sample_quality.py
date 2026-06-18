@@ -1,7 +1,5 @@
 """采集样本可检测性质量门控：LoS 路径强度 + 时延–多普勒谱峰突出度。"""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Literal
 

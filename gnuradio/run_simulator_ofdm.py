@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """simulator_ofdm 入口：启动后由 Python 根据 merge_config 刷新感知性能 UI。"""
-from __future__ import annotations
-
 import simulator_ofdm as sim
 from flowgraph_perf import apply_sensing_perf_ui
 

@@ -1,10 +1,8 @@
 """Sionna Torch 点目标信道：替代 gr-radar static_target_simulator_cc。"""
-from __future__ import annotations
-
 import sys
 from contextlib import nullcontext
 from pathlib import Path
-from typing import List, Sequence, Union
+from typing import List
 
 import numpy as np
 import pmt
@@ -26,11 +24,11 @@ class SionnaStaticTarget(gr.basic_block):
 
     def __init__(
         self,
-        range_m: Union[float, Sequence[float]] = 100.0,
-        velocity_mps: Union[float, Sequence[float]] = 5.0,
-        rcs: Union[float, Sequence[float]] = 1e25,
-        azimuth_deg: Union[float, Sequence[float]] = 0.0,
-        position_rx_m: Sequence[float] = (0.0,),
+        range_m: float = 100.0,
+        velocity_mps: float = 5.0,
+        rcs: float = 1e25,
+        azimuth_deg: float = 0.0,
+        position_rx_m: float = 0.0,
         samp_rate: int = 30_720_000,
         center_freq: float = 6e9,
         self_coupling_db: float = -10.0,
@@ -82,11 +80,11 @@ class SionnaStaticTarget(gr.basic_block):
 
     def setup_targets(
         self,
-        range_m: Union[float, Sequence[float]],
-        velocity_mps: Union[float, Sequence[float]],
-        rcs: Union[float, Sequence[float]],
-        azimuth_deg: Union[float, Sequence[float]],
-        position_rx_m: Sequence[float],
+        range_m: float,
+        velocity_mps: float,
+        rcs: float,
+        azimuth_deg: float,
+        position_rx_m: float,
         samp_rate: int,
         center_freq: float,
         self_coupling_db: float,

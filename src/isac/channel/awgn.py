@@ -1,7 +1,5 @@
 """接收端 SNR (dB) 定标的 AWGN 信道块。"""
 
-from __future__ import annotations
-
 from typing import Optional, Union
 
 import torch

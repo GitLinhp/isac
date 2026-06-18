@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """验证 DD 谱峰值与 GRC 轴标定：对比配置 range/velocity 与 Sionna 物理 bin。"""
-from __future__ import annotations
-
 import os
 import sys
 from pathlib import Path

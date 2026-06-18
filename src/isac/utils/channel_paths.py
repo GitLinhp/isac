@@ -1,7 +1,5 @@
 """射线信道路径：CFR/CIR 抽取、变长 CIR 堆叠，以及输出文件名用的场景 slug。"""
 
-from __future__ import annotations
-
 import numpy as np
 import torch
 from sionna.phy.channel import subcarrier_frequencies

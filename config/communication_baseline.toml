@@ -21,4 +21,4 @@ range_m = 100.0
 velocity_mps = 0.0
 rcs = 1.0
 azimuth_deg = 0.0
-position_rx_m = [0.0]
+position_rx_m = 0.0

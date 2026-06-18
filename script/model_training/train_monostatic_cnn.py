@@ -1,7 +1,5 @@
 """训练单基地时延–多普勒 CNN：HDF5 CFR → 距离/速度回归。"""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

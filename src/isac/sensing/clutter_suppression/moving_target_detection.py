@@ -1,7 +1,5 @@
 """动目标检测（Moving Target Detection）：沿脉冲 / 符号维多普勒 FFT；``__call__`` 仅接受 ``torch.Tensor``。"""
 
-from __future__ import annotations
-
 from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt

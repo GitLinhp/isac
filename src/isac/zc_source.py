@@ -5,8 +5,6 @@
 直接接 ``ResourceGridMapper``（不经 ``Mapper``）。
 """
 
-from __future__ import annotations
-
 import math
 from typing import Any, List, Optional, Tuple, Union
 

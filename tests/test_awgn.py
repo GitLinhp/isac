@@ -1,6 +1,4 @@
 """AWGN 块：接收端 SNR (dB) 定标与 Sionna 等价性。"""
-from __future__ import annotations
-
 import math
 
 import pytest

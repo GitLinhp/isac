@@ -1,21 +1,16 @@
 """gr-radar static_target_simulator_cc 的 Torch 复现（点目标散射 + FFT 分数时延）。
 
-处理链（单目标）：时域多普勒 chirp → FFT → 频域距离/方位分数时延滤波 → IFFT；
-多目标与多 RX 分别累加回波；可选自耦合直通与随机初相（与 gr-radar 块一致）。
+处理链：时域多普勒 chirp → FFT → 频域距离/方位分数时延滤波 → IFFT；
+可选自耦合直通与随机初相（与 gr-radar 块一致）。
 仅接受时域 IQ（末维为样点），不经 OFDM 资源网格。
 """
-
-from __future__ import annotations
 
 import math
 
 import torch
 from scipy.constants import c
 
-from ..data_structures.system_params import (
-    StaticTargetParams,
-    _as_float_vector,
-)
+from ..data_structures.system_params import StaticTargetParams
 
 # √(4π)³：雷达方程幅度标定中的 (4π)^(3/2) 因子，见 _target_scale_ampl
 _FOUR_PI_CUBED_SQRT = math.sqrt((4.0 * math.pi) ** 3)
@@ -162,45 +157,30 @@ class StaticTargetSimulator:
         Returns
         -------
         torch.Tensor
-            单 RX（``num_rx==1``）时与 ``tx`` 同 shape；多 RX 时为 ``(num_rx, *tx.shape)``。
+            与 ``tx`` 同 shape 的接收 IQ。
         """
         params = self.params
         if tx.shape[-1] == 0:
             raise ValueError("tx 末维样点数须为正")
 
         tx_c = tx.to(torch.complex64)
-        ranges = _as_float_vector(params.range_m, "range_m")
-        velocities = _as_float_vector(params.velocity_mps, "velocity_mps")
-        rcs_vals = _as_float_vector(params.rcs, "rcs")
-        azimuths = _as_float_vector(params.azimuth_deg, "azimuth_deg")
-        rx_positions = _as_float_vector(params.position_rx_m, "position_rx_m")
+        params.ensure_phy()
 
-        rx_outputs: list[torch.Tensor] = []
-        for pos_rx in rx_positions:
-            out = torch.zeros_like(tx_c)
-            for rng, vel, rcs_val, az in zip(
-                ranges, velocities, rcs_vals, azimuths, strict=True
-            ):
-                echo = self._apply_single_target_echo(
-                    tx_c,
-                    range_m=rng,
-                    velocity_mps=vel,
-                    rcs=rcs_val,
-                    azimuth_deg=az,
-                    position_rx_m=pos_rx,
-                    samp_rate=float(params.samp_rate),
-                    center_freq=params.center_freq,
-                    rndm_phaseshift=params.rndm_phaseshift,
-                    generator=generator,
-                )
-                out = out + echo
+        out = self._apply_single_target_echo(
+            tx_c,
+            range_m=params.range_m,
+            velocity_mps=params.velocity_mps,
+            rcs=params.rcs,
+            azimuth_deg=params.azimuth_deg,
+            position_rx_m=params.position_rx_m,
+            samp_rate=float(params.samp_rate),
+            center_freq=params.center_freq,
+            rndm_phaseshift=params.rndm_phaseshift,
+            generator=generator,
+        )
 
-            # 自耦合：未进入散射链的发射副本（默认 -10 dB）
-            if params.self_coupling:
-                coupling = 10.0 ** (params.self_coupling_db / 20.0)
-                out = out + coupling * tx_c
-            rx_outputs.append(out)
+        if params.self_coupling:
+            coupling = 10.0 ** (params.self_coupling_db / 20.0)
+            out = out + coupling * tx_c
 
-        if len(rx_outputs) == 1:
-            return rx_outputs[0]
-        return torch.stack(rx_outputs, dim=0)
+        return out

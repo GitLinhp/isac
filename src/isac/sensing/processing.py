@@ -11,8 +11,6 @@
   - 主输入是 numpy -> 返回 numpy
 """
 
-from __future__ import annotations
-
 from typing import List, Optional, Union
 import math
 

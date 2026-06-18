@@ -1,6 +1,4 @@
 """Sionna ZC 发端：启动时 GPU 生成一次，运行时循环输出缓存时域波形。"""
-from __future__ import annotations
-
 import os
 import sys
 import tempfile

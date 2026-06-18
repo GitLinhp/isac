@@ -4,8 +4,6 @@ CFAR 检测（CA / OS，一维 / 二维，Torch 实现）
 与历史 ``processing`` 模块函数行为一致；统一运行时入口为 ``CFARDetector.__call__``。
 """
 
-from __future__ import annotations
-
 from typing import List, Literal, Optional, Union
 from warnings import warn
 import math
