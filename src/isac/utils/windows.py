@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import torch
@@ -16,11 +16,11 @@ from scipy.signal.windows import get_window
 
 HAS_TORCH_SIGNAL_WINDOWS = hasattr(torch, "signal") and hasattr(torch.signal, "windows")
 
-WindowSpec = Union[str, Tuple[Any, ...]]
+WindowSpec = str | tuple[Any, ...]
 
-WindowConfig = Union[str, Dict[str, Any]]
+WindowConfig = str | dict[str, Any]
 
-OptionalWindowInput = Optional[Union[WindowSpec, WindowConfig]]
+OptionalWindowInput = Optional[WindowSpec | WindowConfig]
 
 
 def window_spec_from_config(spec: WindowConfig) -> WindowSpec:
@@ -41,7 +41,9 @@ def window_spec_from_config(spec: WindowConfig) -> WindowSpec:
 
     if kind == "chebwin":
         if "at" not in extras:
-            raise ValueError("chebwin window requires numeric 'at' (sidelobe attenuation dB)")
+            raise ValueError(
+                "chebwin window requires numeric 'at' (sidelobe attenuation dB)"
+            )
         return ("chebwin", float(extras["at"]))
     if kind == "kaiser":
         if "beta" not in extras:
@@ -101,7 +103,7 @@ def get_named_window_tensor_1d(
     )
     if use_torch:
         tw = torch.signal.windows
-        kw: Dict[str, Any] = dict(
+        kw: dict[str, Any] = dict(
             sym=sym,
             dtype=dtype,
             device=device,

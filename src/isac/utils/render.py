@@ -1,4 +1,3 @@
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFile
 import imageio
 
@@ -94,6 +93,4 @@ def images_to_gif(
     if time_slot <= 0:
         raise ValueError("time_slot 必须大于 0")
 
-    imageio.mimsave(
-        filepath, images, format="gif", duration=time_slot / speed, loop=0
-    )
+    imageio.mimsave(filepath, images, format="gif", duration=time_slot / speed, loop=0)

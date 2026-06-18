@@ -387,7 +387,12 @@ def to_tuple(
 # ============================================================================
 def bytes_to_bits(
     bytes_data: (
-        list | np.ndarray | torch.Tensor | builtins.bytes | builtins.bytearray | builtins.memoryview
+        list
+        | np.ndarray
+        | torch.Tensor
+        | builtins.bytes
+        | builtins.bytearray
+        | builtins.memoryview
     ),
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     output_type: str = "torch",
@@ -466,7 +471,9 @@ def bytes_to_bits(
 
     # 单个处理模式
     # 输入类型统一转换为 torch.uint8 张量（并放到指定 device）
-    bytes_data = convert(bytes_data, target_type="torch", dtype=torch.uint8, device=device)
+    bytes_data = convert(
+        bytes_data, target_type="torch", dtype=torch.uint8, device=device
+    )
 
     # 确保是2D张量 (N, 1) 以便广播
     bytes_data = bytes_data.view(-1, 1)
@@ -575,13 +582,17 @@ def bits_to_bytes(
     pad_length = byte_count * 8 - bit_count
     if pad_length > 0:
         # 用0填充不足的位
-        padded = torch.cat([bits, torch.zeros(pad_length, dtype=torch.uint8, device=device)])
+        padded = torch.cat(
+            [bits, torch.zeros(pad_length, dtype=torch.uint8, device=device)]
+        )
         reshaped = padded.view(byte_count, 8)
     else:
         reshaped = bits.view(byte_count, 8)
 
     # 创建权重张量 (小端序: 2^0, 2^1, ..., 2^7)
-    powers = torch.tensor([1, 2, 4, 8, 16, 32, 64, 128], dtype=torch.uint8, device=device)
+    powers = torch.tensor(
+        [1, 2, 4, 8, 16, 32, 64, 128], dtype=torch.uint8, device=device
+    )
 
     # 并行计算所有字节
     bytes_result = (reshaped * powers).sum(dim=1)
