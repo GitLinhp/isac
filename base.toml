@@ -1,0 +1,63 @@
+title = "仿真配置"
+
+# 系统参数配置
+carrier_frequency = 3.0e9 # 载波频率(Hz)
+snr_db = 3.0              # 信噪比(dB)
+quantization_bits = 8     # 量化比特数，用于量化压缩特征
+
+# 信源参数配置
+[source]
+dataset_name = "cifar10"  # 数据集名称
+split = "all"             # 数据集分割
+compress_type = "jpeg"    # 压缩类型
+num_images = 10000        # 图片数量
+quality = 80              # 质量
+max_size = [1920, 1080]   # 最大尺寸
+psnr_range = [35.0, 40.0] # PSNR筛选范围
+
+# LDPC参数配置
+[ldpc]
+# codelength = 256 # 码长
+# codelength = 248 # 码长
+codelength = 128 # 码长
+# codelength = 124 # 码长
+coderate = 0.5 # 码率
+
+# QAM参数配置
+[qam]
+num_bits_per_symbol = 4 # QAM每符号比特数，必须为2的幂次
+
+# OFDM参数配置
+[ofdm]
+num_symbols = 1              # 符号数
+num_subcarriers = 4096       # 子载波数
+num_valid_subcarriers = 4096 # 有效子载波数
+# num_valid_subcarriers = 3968 # 有效子载波数
+subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
+cyclic_prefix_length = 0     # 循环前缀长度
+
+# 音调保留参数配置
+[tone_reservation]
+num_tone_reservation = 0 # 音调保留数量
+# num_tone_reservation = 128            # 音调保留数量
+tone_selection_mode = "equal_spacing" # 音调选择模式
+random_seed = 43                      # 随机种子
+target_papr_db = 6.0                  # 目标峰值比(dB)
+max_iterations = 100                  # 最大迭代次数
+
+# 脉冲成形参数配置
+[pulse_shaping]
+beta = 0.22            # 滚降因子
+span_in_symbols = 32   # 滤波器span长度
+samples_per_symbol = 4 # 过采样率
+window = "blackman"    # 窗函数
+
+[aclr]
+bandwidth = 122.88e6
+adjacent_subcarrier_count = 20
+
+# 功率放大器参数配置
+[power_amplifier]
+ibo_db = 5.0         # 输入回退(dB)
+p_param = 2.0        # Rapp模型参数
+compression_db = 1.0 # 压缩点(dB)

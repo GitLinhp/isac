@@ -113,18 +113,17 @@ def prewarm_sionna_rx(
     else:
         pkt = tx_packet or get_tx_packet(config_file, seed=seed, device=device)
         raw = __import__("isac.utils", fromlist=["load_config"]).load_config(config_path)
-        from isac.data_structures.params import SystemParams
+        from isac.data_structures import SystemParams
 
         params = SystemParams.from_dict(raw)
-        ofdm = params.ofdm
         key = merge_config(
             str(config_path),
             GrcOverrides(
-                fft_len=ofdm.num_subcarriers,
-                ofdm_symbols=ofdm.num_symbols,
-                cp_len=ofdm.cyclic_prefix_length,
-                subcarrier_spacing=ofdm.subcarrier_spacing,
-                center_freq=params.ofdm.carrier_frequency,
+                fft_len=params.ofdm.num_subcarriers,
+                ofdm_symbols=params.ofdm.num_symbols,
+                cp_len=params.ofdm.cyclic_prefix_length,
+                subcarrier_spacing=params.ofdm.subcarrier_spacing,
+                center_freq=params.carrier_frequency,
                 seed=int(seed),
                 device=str(device),
             ),
@@ -159,9 +158,7 @@ def _build_rx_context_impl_from_toml(
 ) -> RxContext:
     import sionna
 
-    from isac.data_structures.components.ofdm import OFDMComponents
-    from isac.data_structures.components.sensing import SensingComponents
-    from isac.data_structures.params import SystemParams
+    from isac.data_structures import SystemComponents, SystemParams
     from isac.utils import load_config, set_random_seed
 
     config = load_config(config_path)
@@ -169,8 +166,7 @@ def _build_rx_context_impl_from_toml(
     set_random_seed(seed)
     sionna.phy.config.device = device
 
-    ofdm = OFDMComponents.build_from_params(params.ofdm, device=device)
-    sens = SensingComponents.build_from_params(params.ofdm, params.sensing, ofdm.rg, device=device)
+    comps = SystemComponents.build_from_params(params, device=device)
 
     import torch
 
@@ -181,8 +177,8 @@ def _build_rx_context_impl_from_toml(
 
     return RxContext(
         x_rg=x_rg_t,
-        demodulator=ofdm.demodulator,
-        delay_doppler=sens.delay_doppler_spectrum,
+        demodulator=comps.demodulator,
+        delay_doppler=comps.delay_doppler_spectrum,
         packet_len_time=n_sym * (fft_size + cp),
         packet_len_freq=n_sym,
         fft_len=fft_size,
@@ -194,8 +190,7 @@ def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
     import sionna
     import torch
 
-    from isac.data_structures.components.ofdm import OFDMComponents
-    from isac.data_structures.components.sensing import SensingComponents
+    from isac.data_structures import SystemComponents
     from isac.utils import set_random_seed
 
     params = effective.system_params
@@ -203,8 +198,7 @@ def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
     set_random_seed(effective.seed)
     sionna.phy.config.device = device
 
-    ofdm = OFDMComponents.build_from_params(params.ofdm, device=device)
-    sens = SensingComponents.build_from_params(params.ofdm, params.sensing, ofdm.rg, device=device)
+    comps = SystemComponents.build_from_params(params, device=device)
 
     x_rg_t = torch.from_numpy(tx_packet.x_rg).to(device=device, dtype=torch.complex64)
     cp = params.ofdm.cyclic_prefix_length
@@ -213,8 +207,8 @@ def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
 
     return RxContext(
         x_rg=x_rg_t,
-        demodulator=ofdm.demodulator,
-        delay_doppler=sens.delay_doppler_spectrum,
+        demodulator=comps.demodulator,
+        delay_doppler=comps.delay_doppler_spectrum,
         packet_len_time=n_sym * (fft_size + cp),
         packet_len_freq=n_sym,
         fft_len=fft_size,

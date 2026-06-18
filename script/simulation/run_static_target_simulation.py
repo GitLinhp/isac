@@ -57,15 +57,15 @@ def main() -> None:
     set_random_seed(args.seed)
     system = System(args)
 
-    static_sim = system.components.static_target
+    static_sim = system.components.static_target_sim
     if static_sim is None:
         raise ValueError("channel.type='rcs' 要求已构建 static_target 组件")
 
     script_out_dir = PROJECT_ROOT / "out" / "static_target_simulation"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    sensing = system.components.sensing
-    sensing.delay_doppler_spectrum.device = torch.device(args.device)
+    comps = system.components
+    comps.delay_doppler_spectrum.device = torch.device(args.device)
 
     params = static_sim.params
     range_m = _first_float(params.range_m)
@@ -86,8 +86,8 @@ def main() -> None:
     result = system.sensing(x_rg, y_time=y_time)
 
     # --- 显示感知结果 ---
-    sensing.sensing_performance.display_performance()
-    sensing.delay_doppler_spectrum.visualize(
+    comps.sensing_performance.display_performance()
+    comps.delay_doppler_spectrum.visualize(
         offset=50,
         file_name=script_out_dir / "static_target_delay_doppler_spectrum.png",
         to_db=False,
@@ -99,7 +99,7 @@ def main() -> None:
     true_ranges = torch.tensor([range_m], dtype=torch.float64, device=device)
     true_velocities = torch.tensor([velocity_mps], dtype=torch.float64, device=device)
 
-    est_ranges, est_velocities, _ = sensing.music_estimator(
+    est_ranges, est_velocities, _ = comps.music_estimator(
         spectrum_tensor=result.h_delay_doppler,
         metric_mode=args.metric_mode,
     )

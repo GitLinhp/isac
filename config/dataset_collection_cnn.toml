@@ -1,6 +1,9 @@
-[ofdm]
 carrier_frequency = 4.9e9
+
+[qam]
 num_bits_per_symbol = 2
+
+[ofdm]
 num_symbols = 512
 num_subcarriers = 2048
 num_valid_subcarriers = 2048
@@ -12,8 +15,6 @@ l_min = -6
 [channel]
 type = "rt"
 snr_db = 80
-coderate = 1.0
-
 [rt_scene]
 filename = "simple_street_canyon"
 merge_shapes = false

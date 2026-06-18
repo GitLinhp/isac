@@ -10,8 +10,7 @@ import sionna
 
 # 自定义模块
 from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
-from .data_structures.params import SystemParams
-from .data_structures.components.system_components import SystemComponents
+from .data_structures import SystemParams, SystemComponents
 from . import PROJECT_ROOT
 
 
@@ -59,31 +58,31 @@ class System:
     # 发射
     def transmit(self) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """生成发射比特 ``b``（仅 binary 源）、频域资源网格 ``x_rg`` 与时域 ``x_time``。"""
-        src_type = self.params.ofdm.source.type
+        src_type = self.params.source.type
         batch_size = self.args.batch_size
-        ofdm = self.components.ofdm
-        rg = ofdm.rg
+        comps = self.components
+        rg = comps.rg
 
         if src_type == "binary":  # 二进制源
-            b = ofdm.binary_source(
+            b = comps.binary_source(
                 [
                     batch_size,
                     1,
                     1,
-                    rg.num_data_symbols * self.params.ofdm.num_bits_per_symbol,
+                    rg.num_data_symbols * self.params.qam.num_bits_per_symbol,
                 ]
             )
-            x = ofdm.mapper(b)
+            x = comps.mapper(b)
 
         elif src_type == "zc":  # Zadoff-Chu 源
             b = None
-            x = ofdm.zc_source([batch_size, 1, 1, rg.num_data_symbols])
+            x = comps.zc_source([batch_size, 1, 1, rg.num_data_symbols])
 
         else:  # 不支持的源类型
             raise ValueError(f"unsupported ofdm.source.type: {src_type!r}")
 
-        x_rg = ofdm.rg_mapper(x)  # 频域资源网格映射
-        x_time = ofdm.modulator(x_rg)  # OFDM调制
+        x_rg = comps.rg_mapper(x)  # 频域资源网格映射
+        x_time = comps.modulator(x_rg)  # OFDM调制
         return b, x_rg, x_time
 
     # 应用信道
@@ -93,7 +92,7 @@ class System:
         domain: str = "frequency",
     ) -> torch.Tensor:
         """经信道并加 AWGN；TOML ``snr_db`` 为接收端 SNR (dB)，按 ``E[|y_clean|^2]`` 定标 ``no``。"""
-        return self.components.channel(
+        return self.components.apply_channel(
             inputs,
             domain=domain,
             snr_db=self.params.channel.snr_db,
@@ -111,21 +110,21 @@ class System:
         elif not isinstance(no, torch.Tensor):
             no = torch.tensor(no, device=self.device, dtype=torch.float32)
 
-        ofdm = self.components.ofdm
+        comps = self.components
         # OFDM 解调
-        y_rg = ofdm.demodulator(y_time)
+        y_rg = comps.demodulator(y_time)
 
         # 资源网格解映射
-        y = ofdm.rg_demapper(y_rg)
+        y = comps.rg_demapper(y_rg)
 
         # QAM 解映射
-        b_hat = ofdm.demapper(y, no=no)
+        b_hat = comps.demapper(y, no=no)
 
         return b_hat
 
     def demodulate(self, y_time: torch.Tensor) -> torch.Tensor:
         """时域 IQ → 频域资源网格（squeeze，供 ``estimate_channel`` / ``sensing`` 使用）。"""
-        return self.components.ofdm.demodulator(y_time).squeeze()
+        return self.components.demodulator(y_time).squeeze()
 
     # 信道估计
     def estimate_channel(
@@ -137,7 +136,7 @@ class System:
         ``y`` 为 ``(rx_num, num_ofdm_symbols, fft_size)``，``rx_num=1`` 时退化为 2D。
         假定 ``batch_size=1``；squeeze 后 ``y.ndim > 3`` 将报错。
         """
-        rg = self.components.ofdm.rg
+        rg = self.components.rg
         s, f = rg.num_ofdm_symbols, rg.fft_size
 
         x = x.squeeze()
@@ -189,12 +188,12 @@ class System:
         if y_time is not None:
             y_rg = self.demodulate(y_time)
 
-        sensing = self.components.sensing
+        comps = self.components
 
         h = self.estimate_channel(x_rg, y_rg)
         if apply_mti:
-            h = sensing.moving_target_indication(h, axis=mti_axis)
-        h_delay_doppler = sensing.delay_doppler_spectrum(h)
+            h = comps.moving_target_indication(h, axis=mti_axis)
+        h_delay_doppler = comps.delay_doppler_spectrum(h)
 
         h_clean: Optional[torch.Tensor] = None
         h_dd_clean: Optional[torch.Tensor] = None
@@ -204,8 +203,8 @@ class System:
         if y_rg_clean_resolved is not None:
             h_clean = self.estimate_channel(x_rg, y_rg_clean_resolved)
             if apply_mti:
-                h_clean = sensing.moving_target_indication(h_clean, axis=mti_axis)
-            h_dd_clean = sensing.delay_doppler_spectrum(h_clean)
+                h_clean = comps.moving_target_indication(h_clean, axis=mti_axis)
+            h_dd_clean = comps.delay_doppler_spectrum(h_clean)
 
         return SensingResult(
             h=h,

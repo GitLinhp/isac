@@ -18,10 +18,7 @@ for _p in (_GRC, str(_SRC)):
     if _p not in sys.path:
         sys.path.insert(0, str(_p))
 
-from isac.channel.static_target_simulator import (
-    StaticTargetSimulator,
-    static_target_params_from_grc,
-)
+from isac.channel.static_target_simulator import StaticTargetParams, StaticTargetSimulator
 
 
 class SionnaStaticTarget(gr.basic_block):
@@ -67,7 +64,7 @@ class SionnaStaticTarget(gr.basic_block):
         self._burst_armed = not self._burst_mode
 
         self._sim = StaticTargetSimulator(
-            static_target_params_from_grc(
+            StaticTargetParams(
                 range_m=range_m,
                 velocity_mps=velocity_mps,
                 rcs=rcs,
@@ -98,7 +95,7 @@ class SionnaStaticTarget(gr.basic_block):
     ) -> None:
         """GRC 滑块回调：运行时更新目标参数。"""
         self._sim = StaticTargetSimulator(
-            static_target_params_from_grc(
+            StaticTargetParams(
                 range_m=range_m,
                 velocity_mps=velocity_mps,
                 rcs=rcs,

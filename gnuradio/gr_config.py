@@ -11,7 +11,7 @@ _SRC = _REPO_ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from isac.data_structures.params import SystemParams
+from isac.data_structures import SystemParams
 from isac.sensing.sensing_performance import SensingPerformance
 from isac.utils import load_config
 
@@ -109,55 +109,61 @@ def merge_config(
     config_path = resolve_config_path(config_file)
     raw = load_config(config_path)
     params = SystemParams.from_dict(raw)
-    ofdm = params.ofdm
     messages: list[str] = []
 
     _compare_override(
-        messages, "num_subcarriers", ofdm.num_subcarriers, overrides.fft_len, int
+        messages, "num_subcarriers", params.ofdm.num_subcarriers, overrides.fft_len, int
     )
     _compare_override(
-        messages, "num_symbols", ofdm.num_symbols, overrides.ofdm_symbols, int
+        messages, "num_symbols", params.ofdm.num_symbols, overrides.ofdm_symbols, int
     )
-    cp_toml = ofdm.cyclic_prefix_length
-    _compare_override(messages, "cp", cp_toml, overrides.cp_len, int)
+    _compare_override(
+        messages, "cp", params.ofdm.cyclic_prefix_length, overrides.cp_len, int
+    )
     _compare_override(
         messages,
         "subcarrier_spacing",
-        ofdm.subcarrier_spacing,
+        params.ofdm.subcarrier_spacing,
         overrides.subcarrier_spacing,
         float,
     )
     _compare_override(
         messages,
         "carrier_frequency",
-        params.ofdm.carrier_frequency,
+        params.carrier_frequency,
         overrides.center_freq,
         float,
     )
     toml_seed = _toml_path_solver_seed(raw)
     _compare_override(messages, "seed", toml_seed, overrides.seed, int)
 
-    valid_sc = min(ofdm.num_valid_subcarriers, overrides.fft_len)
-    if overrides.fft_len != ofdm.num_subcarriers:
+    valid_sc = min(params.ofdm.num_valid_subcarriers, overrides.fft_len)
+    if overrides.fft_len != params.ofdm.num_subcarriers:
         valid_sc = overrides.fft_len
 
-    effective_ofdm = replace(
-        ofdm,
-        num_subcarriers=overrides.fft_len,
-        num_symbols=overrides.ofdm_symbols,
-        cyclic_prefix_length=overrides.cp_len,
-        subcarrier_spacing=overrides.subcarrier_spacing,
-        num_valid_subcarriers=valid_sc,
-        carrier_frequency=overrides.center_freq,
-    )
     effective_params = replace(
         params,
-        ofdm=effective_ofdm,
+        carrier_frequency=overrides.center_freq,
+        ofdm=replace(
+            params.ofdm,
+            num_subcarriers=overrides.fft_len,
+            num_symbols=overrides.ofdm_symbols,
+            cyclic_prefix_length=overrides.cp_len,
+            subcarrier_spacing=overrides.subcarrier_spacing,
+            num_valid_subcarriers=valid_sc,
+        ),
     )
+    if effective_params.static_target is not None:
+        effective_params.static_target.apply_phy(
+            effective_params.carrier_frequency,
+            effective_params.ofdm,
+        )
 
-    from isac.data_structures.components.ofdm import OFDMComponents
+    from isac.data_structures import SystemComponents
 
-    rg = OFDMComponents.build_from_params(effective_ofdm, device=overrides.device).rg
+    rg = SystemComponents.build_from_params(
+        effective_params, device=overrides.device
+    ).rg
     sp = SensingPerformance(rg, carrier_frequency=overrides.center_freq)
     samp_rate = int(overrides.fft_len * overrides.subcarrier_spacing)
     sym_dur = (overrides.fft_len + overrides.cp_len) / samp_rate if samp_rate else 0.0

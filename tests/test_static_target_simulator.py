@@ -7,11 +7,7 @@ import pytest
 import torch
 from scipy.constants import c
 
-from isac.channel.static_target_simulator import (
-    StaticTargetParams,
-    StaticTargetSimulator,
-    static_target_params_from_grc,
-)
+from isac.channel.static_target_simulator import StaticTargetParams, StaticTargetSimulator
 
 _TWO_PI = 2.0 * math.pi
 _SAMP_RATE = 30_720_000.0
@@ -199,9 +195,14 @@ def test_static_target_simulator_end2end() -> None:
     n = 512 * 2560
     torch.manual_seed(42)
     tx = torch.randn(n, dtype=torch.complex64, device=_DEVICE)
-    params = static_target_params_from_grc(
+    params = StaticTargetParams(
         range_m=100.0,
         velocity_mps=5.0,
+        rcs=1e25,
+        azimuth_deg=0.0,
+        position_rx_m=(0.0,),
+        samp_rate=int(_SAMP_RATE),
+        center_freq=6e9,
         rndm_phaseshift=False,
         self_coupling=True,
         self_coupling_db=-10.0,

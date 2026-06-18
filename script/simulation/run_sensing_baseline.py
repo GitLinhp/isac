@@ -81,8 +81,7 @@ def main() -> None:
     system = System(args)
 
     domain = args.domain
-    sensing = system.components.sensing
-    ch = system.components.channel
+    comps = system.components
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_baseline"
     script_out_dir.mkdir(parents=True, exist_ok=True)
@@ -99,11 +98,11 @@ def main() -> None:
     # --- 应用信道 ---
     if domain == "frequency":
         y_rg = system.apply_channel(x_rg, domain=domain)
-        y_rg_clean = ch(x_rg, domain=domain, snr_db=None).squeeze()
+        y_rg_clean = comps.apply_channel(x_rg, domain=domain, snr_db=None).squeeze()
         result = system.sensing(x_rg, y_rg, y_rg_clean=y_rg_clean)
     elif domain == "time":
         y_time = system.apply_channel(x_time, domain=domain)
-        y_time_clean = ch(x_time, domain=domain, snr_db=None)
+        y_time_clean = comps.apply_channel(x_time, domain=domain, snr_db=None)
         result = system.sensing(
             x_rg,
             y_time=y_time,
@@ -113,20 +112,20 @@ def main() -> None:
         raise ValueError(f"不支持的域: {domain}")
 
     # --- 显示感知结果 ---
-    sensing.sensing_performance.display_performance()
+    comps.sensing_performance.display_performance()
     _print_dd_spectrum_report(
         result.h_delay_doppler,
         result.h_delay_doppler_clean,
         snr_db=system.params.channel.snr_db,
     )
-    sensing.delay_doppler_spectrum.visualize(
+    comps.delay_doppler_spectrum.visualize(
         offset=20,
         file_name=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
         to_db=False,
         metric_mode="delay_doppler",
         backend="matplotlib",
     )
-    sensing.music_estimator(
+    comps.music_estimator(
         spectrum_tensor=result.h_delay_doppler,
         metric_mode="dd",
     )

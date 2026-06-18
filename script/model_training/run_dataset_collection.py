@@ -233,17 +233,17 @@ def _estimate_delay_doppler_spectrum(system: System, domain: str) -> torch.Tenso
         y_rg = system.apply_channel(x_rg, domain=domain)
     elif domain == "time":
         y_time = system.apply_channel(x_time, domain=domain)
-        y_rg = system.components.ofdm.demodulator(y_time)
+        y_rg = system.components.demodulator(y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")
 
     h = system.estimate_channel(x_rg, y_rg)
-    return system.components.sensing.delay_doppler_spectrum(h)
+    return system.components.delay_doppler_spectrum(h)
 
 
 def _save_sensing_spectrum_preview(system: System, out_dir: Path) -> None:
     """覆盖写入固定文件名，循环内每步刷新，便于查看最新一步谱图。"""
-    dd = system.components.sensing.delay_doppler_spectrum
+    dd = system.components.delay_doppler_spectrum
     dd.visualize(
         offset=200,
         file_name=out_dir / SENSING_SPECTRUM_FILENAME,
@@ -270,7 +270,7 @@ def monostatic_sensing_eval(
     h_delay_doppler = _estimate_delay_doppler_spectrum(system, domain)
     _save_sensing_spectrum_preview(system, out_dir)
 
-    est_ranges, est_velocities, _ = system.components.sensing.music_estimator(
+    est_ranges, est_velocities, _ = system.components.music_estimator(
         spectrum_tensor=h_delay_doppler,
         metric_mode="delay_doppler",
         sens_mode="monostatic",
@@ -303,7 +303,7 @@ def bistatic_sensing_eval(
     h_delay_doppler = _estimate_delay_doppler_spectrum(system, domain)
     _save_sensing_spectrum_preview(system, out_dir)
 
-    est_paths, est_velocities, _ = system.components.sensing.music_estimator(
+    est_paths, est_velocities, _ = system.components.music_estimator(
         spectrum_tensor=h_delay_doppler,
         metric_mode="delay_doppler",
         sens_mode="bistatic",
@@ -319,7 +319,7 @@ def bistatic_sensing_eval(
     )
     true_velocity = doppler_to_velocity(
         fd_true,
-        float(system.params.ofdm.carrier_frequency),
+        float(system.params.carrier_frequency),
         "bistatic",
     )
 
@@ -586,7 +586,7 @@ def _export_h5(
         np.array(target_pos_list),
         np.array(target_vel_list),
         np.array(scene.transceivers["bs1"].position),
-        system.params.ofdm.carrier_frequency,
+        system.params.carrier_frequency,
         system.params.ofdm.subcarrier_spacing,
         system.params.ofdm.num_subcarriers,
         len(h_freq_list),
@@ -875,9 +875,9 @@ def _process_episode(
         csv_rows.append(row)
 
     if cfg.save_h5:
-        h_freq_list.append(paths_cfr_numpy(system.components.ofdm.rg, scene))
+        h_freq_list.append(paths_cfr_numpy(system.components.rg, scene))
         if cfg.save_cir:
-            ca, ct = paths_cir_numpy(system.components.ofdm.rg, scene)
+            ca, ct = paths_cir_numpy(system.components.rg, scene)
             cir_a_list.append(ca)
             cir_tau_list.append(ct)
 
@@ -908,7 +908,7 @@ def _run_monte_carlo_with_quality_filter(
     rng = np.random.default_rng(int(args.seed))
     quality_stats = QualityFilterStats()
     quality_cfg = cfg.sample_quality_config()
-    sensing_perf = system.components.sensing.sensing_performance
+    sensing_perf = system.components.sensing_performance
 
     accepted = 0
     trials = 0
@@ -940,7 +940,7 @@ def _run_monte_carlo_with_quality_filter(
 
         system._update_rt_target_pose_from_velocity(target, pos, vel)
         true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
-        cfr = paths_cfr_numpy(system.components.ofdm.rg, scene)
+        cfr = paths_cfr_numpy(system.components.rg, scene)
 
         result = evaluate_sample_quality(
             scene,
@@ -1059,7 +1059,7 @@ def main() -> None:
             return
 
         quality_cfg = cfg.sample_quality_config() if cfg.quality_filter else None
-        sensing_perf = system.components.sensing.sensing_performance
+        sensing_perf = system.components.sensing_performance
         if cfg.quality_filter:
             quality_stats = QualityFilterStats()
 
@@ -1073,7 +1073,7 @@ def main() -> None:
                 true_range, true_velocity = _los_truth_at_first_triple(
                     scene, system.device
                 )
-                cfr = paths_cfr_numpy(system.components.ofdm.rg, scene)
+                cfr = paths_cfr_numpy(system.components.rg, scene)
                 result = evaluate_sample_quality(
                     scene,
                     cfr,

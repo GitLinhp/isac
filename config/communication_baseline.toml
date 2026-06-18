@@ -1,17 +1,20 @@
+carrier_frequency = 2.6e9    # 载波频率(Hz)
+
+[qam]
+num_bits_per_symbol = 2      # QAM调制每个符号的比特数
+
 # OFDM参数
 [ofdm]
-carrier_frequency = 2.6e9 # 载波频率(Hz)
-num_bits_per_symbol = 2   # QAM调制每个符号的比特数
 num_symbols = 512            # 符号数
 num_subcarriers = 1024       # 子载波数
 num_valid_subcarriers = 1024 # 有效子载波数
 subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
-cyclic_prefix_length = 0        # 循环前缀长度
+cyclic_prefix_length = 0     # 循环前缀长度
 l_min = 0                    # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
 [channel]
 type = "rcs"
 snr_db = 10
-coderate = 1.0
 
 [static_target]
 range_m = 100.0

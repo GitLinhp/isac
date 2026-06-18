@@ -14,16 +14,11 @@ for _p in (_GRC, str(_SRC)):
 import numpy as np
 import torch
 
-from isac.channel.static_target_simulator import (
-    StaticTargetParams,
-    StaticTargetSimulator,
-    static_target_params_from_grc,
-)
+from isac.channel.static_target_simulator import StaticTargetParams, StaticTargetSimulator
 
 __all__ = [
     "StaticTargetParams",
     "StaticTargetSimulator",
-    "static_target_params_from_grc",
     "apply_grc_default_channel",
 ]
 
@@ -44,10 +39,12 @@ def apply_grc_default_channel(
 ) -> np.ndarray:
     """用 simulator_ofdm.grc 默认参数对时域 IQ 施加 static_target 信道，返回 numpy complex64。"""
     sim = StaticTargetSimulator(
-        static_target_params_from_grc(
+        StaticTargetParams(
             range_m=range_m,
             velocity_mps=velocity_mps,
             rcs=rcs,
+            azimuth_deg=0.0,
+            position_rx_m=(0.0,),
             center_freq=center_freq,
             samp_rate=samp_rate,
             self_coupling_db=self_coupling_db,

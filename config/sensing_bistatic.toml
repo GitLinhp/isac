@@ -1,7 +1,10 @@
+carrier_frequency = 6e9 # 载波频率(Hz)
+
+[qam]
+num_bits_per_symbol = 2 # QAM调制每个符号的比特数
+
 # OFDM参数
 [ofdm]
-carrier_frequency = 6e9 # 载波频率(Hz)
-num_bits_per_symbol = 2 # QAM调制每个符号的比特数
 num_symbols = 512            # 符号数
 num_subcarriers = 2048       # 子载波数
 num_valid_subcarriers = 2048 # 有效子载波数
@@ -14,8 +17,6 @@ l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna O
 [channel]
 type = "rt"
 snr_db = 80             # 信噪比(dB)
-coderate = 1.0
-
 [rt_scene]
 filename = "None"
 merge_shapes = false # 是否合并相同材质的形状

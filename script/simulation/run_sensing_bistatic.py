@@ -53,7 +53,7 @@ def main() -> None:
 
     scene = system.components.rt_scene
     domain = args.domain
-    sensing = system.components.sensing
+    comps = system.components
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_bistatic"
     script_out_dir.mkdir(parents=True, exist_ok=True)
@@ -74,8 +74,8 @@ def main() -> None:
         raise ValueError(f"不支持的域: {domain}")
 
     # --- 显示感知结果 ---
-    sensing.sensing_performance.display_performance()
-    sensing.delay_doppler_spectrum.visualize(
+    comps.sensing_performance.display_performance()
+    comps.delay_doppler_spectrum.visualize(
         offset=100,
         file_name=script_out_dir / "sensing_bistatic_delay_doppler_spectrum.png",
         to_db=False,
@@ -86,7 +86,7 @@ def main() -> None:
     geom = scene.rx_target_tx_geometric
     geom.display()
 
-    est_ranges, est_velocities, _ = sensing.music_estimator(
+    est_ranges, est_velocities, _ = comps.music_estimator(
         spectrum_tensor=result.h_delay_doppler,
         metric_mode=args.metric_mode,
         sens_mode="bistatic",

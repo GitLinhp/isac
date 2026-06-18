@@ -36,8 +36,7 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-from isac.data_structures.components.ofdm import OFDMComponents
-from isac.data_structures.params import SystemParams
+from isac.data_structures import SystemParams
 from isac.utils import load_config, set_random_seed
 
 
@@ -131,20 +130,19 @@ def get_tx_packet(
     if overrides is None:
         raw = load_config(config_path)
         params = SystemParams.from_dict(raw)
-        ofdm = params.ofdm
         overrides = GrcOverrides(
-            fft_len=int(fft_len if fft_len is not None else ofdm.num_subcarriers),
+            fft_len=int(fft_len if fft_len is not None else params.ofdm.num_subcarriers),
             ofdm_symbols=int(
-                ofdm_symbols if ofdm_symbols is not None else ofdm.num_symbols
+                ofdm_symbols if ofdm_symbols is not None else params.ofdm.num_symbols
             ),
-            cp_len=int(cp_len if cp_len is not None else ofdm.cyclic_prefix_length),
+            cp_len=int(cp_len if cp_len is not None else params.ofdm.cyclic_prefix_length),
             subcarrier_spacing=float(
                 subcarrier_spacing
                 if subcarrier_spacing is not None
-                else ofdm.subcarrier_spacing
+                else params.ofdm.subcarrier_spacing
             ),
             center_freq=float(
-                center_freq if center_freq is not None else params.ofdm.carrier_frequency
+                center_freq if center_freq is not None else params.carrier_frequency
             ),
             seed=int(seed),
             device=str(device),
@@ -200,13 +198,12 @@ def prewarm_sionna_tx(
     elif overrides is None:
         raw = load_config(config_path)
         params = SystemParams.from_dict(raw)
-        ofdm = params.ofdm
         overrides = GrcOverrides(
-            fft_len=ofdm.num_subcarriers,
-            ofdm_symbols=ofdm.num_symbols,
-            cp_len=ofdm.cyclic_prefix_length,
-            subcarrier_spacing=ofdm.subcarrier_spacing,
-            center_freq=params.ofdm.carrier_frequency,
+            fft_len=params.ofdm.num_subcarriers,
+            ofdm_symbols=params.ofdm.num_symbols,
+            cp_len=params.ofdm.cyclic_prefix_length,
+            subcarrier_spacing=params.ofdm.subcarrier_spacing,
+            center_freq=params.carrier_frequency,
             seed=int(seed),
             device=str(device),
         )
@@ -229,29 +226,31 @@ def prewarm_sionna_tx(
 def _build_tx_packet_impl(effective: EffectiveConfig) -> TxPacket:
     import sionna
 
+    from isac.data_structures import SystemComponents
+
     params = effective.system_params
     seed = effective.seed
     device = effective.device
     set_random_seed(seed)
     sionna.phy.config.device = device
 
-    ofdm = OFDMComponents.build_from_params(params.ofdm, device=device)
-    rg = ofdm.rg
+    from isac.data_structures import SystemComponents
+    rg = comps.rg
 
-    if params.ofdm.source.type != "zc":
+    if params.source.type != "zc":
         raise ValueError(
             f"sionna_tx only supports ofdm.source.type='zc', "
-            f"got {params.ofdm.source.type!r}"
+            f"got {params.source.type!r}"
         )
-    if ofdm.zc_source is None:
+    if comps.zc_source is None:
         raise RuntimeError("zc_source missing for ZC sensing source")
 
-    x = ofdm.zc_source([1, 1, 1, rg.num_data_symbols])
-    x_rg_t = ofdm.rg_mapper(x).squeeze()
+    x = comps.zc_source([1, 1, 1, rg.num_data_symbols])
+    x_rg_t = comps.rg_mapper(x).squeeze()
     x_rg = x_rg_t.cpu().numpy().astype(np.complex64)
 
     x_batch = x_rg_t.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-    x_time = ofdm.modulator(x_batch).squeeze().cpu().numpy().astype(np.complex64)
+    x_time = comps.modulator(x_batch).squeeze().cpu().numpy().astype(np.complex64)
 
     cp = params.ofdm.cyclic_prefix_length
     n_sym = params.ofdm.num_symbols

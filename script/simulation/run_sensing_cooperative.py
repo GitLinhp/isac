@@ -81,14 +81,13 @@ def main() -> None:
     system = System(args)
 
     scene = system.components.rt_scene
-    channel = system.components.channel
-    dd = system.components.sensing.delay_doppler_spectrum
+    comps = system.components
+    dd = comps.delay_doppler_spectrum
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_cooperative"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    sensing_perf = system.components.sensing.sensing_performance
-    sensing_perf.display_performance()
+    comps.sensing_performance.display_performance()
 
     scene.render_to_file(
         filename=script_out_dir / "sensing_cooperative_scene.png"
@@ -98,7 +97,7 @@ def main() -> None:
     _, x_rg, x_time = system.transmit()
 
     device = torch.device(args.device)
-    h_per_tx = channel.cfr_per_tx(scene, device=device)
+    h_per_tx = comps.cfr_per_tx(scene, device=device)
 
     geom = scene.rx_target_tx_geometric
     geom.display()
@@ -143,7 +142,7 @@ def main() -> None:
         path_label = "双基地" if is_bistatic else "单基地"
 
         h_tx = h_per_tx[tx_name]
-        h_tx = system.components.sensing.moving_target_indication(h_tx, axis=-2)
+        h_tx = system.components.moving_target_indication(h_tx, axis=-2)
         h_dd_tx = dd(h_tx)
 
         slug = _slug_tx_name(tx_name)
@@ -160,7 +159,7 @@ def main() -> None:
         spectra_stack.append(h_dd_tx)
         panel_labels.append(tx_name)
 
-        est_ranges, est_velocities, _ = system.components.sensing.music_estimator(
+        est_ranges, est_velocities, _ = system.components.music_estimator(
             spectrum_tensor=h_dd_tx,
             metric_mode=args.metric_mode,
             sens_mode=sens_mode,
@@ -211,7 +210,7 @@ def main() -> None:
     )
 
     h_combined = sum(h_per_tx[name] for name in geom.tx_names)
-    h_combined = system.components.sensing.moving_target_indication(h_combined, axis=-2)
+    h_combined = system.components.moving_target_indication(h_combined, axis=-2)
     h_dd_combined = dd(h_combined)
     dd.h_delay_doppler = h_dd_combined
     dd.visualize(

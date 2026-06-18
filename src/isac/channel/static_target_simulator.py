@@ -12,7 +12,7 @@ import math
 import torch
 from scipy.constants import c
 
-from ..data_structures.params.static_target.static_target_params import (
+from ..data_structures.system_params import (
     StaticTargetParams,
     _as_float_vector,
 )
