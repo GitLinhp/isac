@@ -126,7 +126,9 @@ def generate_targets_from_trajectory(
     trajectory.distance = 0.0
     if not pos_rows:
         return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.float64)
-    return np.asarray(pos_rows, dtype=np.float64), np.asarray(vel_rows, dtype=np.float64)
+    return np.asarray(pos_rows, dtype=np.float64), np.asarray(
+        vel_rows, dtype=np.float64
+    )
 
 
 def generate_monte_carlo_points(
@@ -209,7 +211,9 @@ def generate_monte_carlo_points(
             )
         else:
             if rng is None:
-                point = np.random.normal(loc=roi_center, scale=roi_std).astype(np.float64)
+                point = np.random.normal(loc=roi_center, scale=roi_std).astype(
+                    np.float64
+                )
             else:
                 point = rng.normal(loc=roi_center, scale=roi_std).astype(np.float64)
             point[0] = np.clip(point[0], x_low, x_high)

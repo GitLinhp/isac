@@ -12,9 +12,7 @@
 
 import torch
 import numpy as np
-from pathlib import Path
 import sionna
-from tqdm import tqdm
 
 from .type_converter import convert
 
@@ -48,67 +46,6 @@ def set_random_seed(seed: int) -> None:
     sionna.phy.config.seed = seed
 
 
-def write_txt(arr_in: torch.Tensor | np.ndarray, path: Path | str) -> None:
-    """将数组写入文本文件。
-
-    参数:
-    -------
-    - arr_in : torch.Tensor | np.ndarray
-        输入数组，支持 ``torch.Tensor`` 或 ``numpy.ndarray``。
-    - path : Path | str
-        文件路径，支持 ``Path`` 或 ``str``。
-    """
-    if isinstance(path, str):
-        path = Path(path)
-    if path.suffix != ".txt":
-        path = path.with_suffix(".txt")
-
-    array = convert(arr_in, "numpy")
-    if array.ndim == 1:
-        array = array.reshape(1, -1)
-
-    with open(path, "w", encoding="utf-8") as fp:
-        rows, cols = array.shape
-        for i in range(rows):
-            fp.write("  ".join(str(array[i, j]) for j in range(cols)))
-            if i < rows - 1:
-                fp.write("\n")
-
-
-# ============================================================================
-# 进度条工具
-# ============================================================================
-def create_progress_bar(
-    total: int, desc: str, unit: str = "image", ncols: int = 100
-) -> tqdm:
-    """
-    创建标准化的进度条
-
-    参数:
-    ----------
-    - total : int
-        总任务数
-    - desc : str
-        进度条描述
-    - unit : str, 可选
-        单位，默认"image"
-    - ncols : int, 可选
-        进度条宽度，默认100
-
-    返回:
-    ----------
-    - tqdm
-        配置好的进度条对象
-    """
-    return tqdm(
-        total=total,
-        desc=desc,
-        unit=unit,
-        ncols=ncols,
-        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
-    )
-
-
 def cartesian_direction_to_yaw_pitch_roll(
     direction: torch.Tensor | np.ndarray,
 ) -> np.ndarray:
@@ -139,5 +76,5 @@ def cartesian_direction_to_yaw_pitch_roll(
     yaw = phi
     pitch = (np.pi / 2.0) - theta
     roll = 0.0
-    
+
     return np.array([yaw, pitch, roll], dtype=np.float64)

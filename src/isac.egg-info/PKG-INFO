@@ -6,7 +6,6 @@ Requires-Python: >=3.11
 Requires-Dist: torch
 Requires-Dist: numpy
 Requires-Dist: tqdm
-Requires-Dist: tensorflow
 Requires-Dist: pillow
 Requires-Dist: imageio
 Requires-Dist: matplotlib
