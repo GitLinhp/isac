@@ -126,7 +126,7 @@ class CollectionMetadata:
                 f.attrs[f"{_META_PREFIX_COLLECTION}{key}"] = val
 
     @classmethod
-    def read_hdf5_attrs(cls, f: h5py.File) -> CollectionMetadata | None:
+    def read_hdf5_attrs(cls, f: h5py.File) -> "CollectionMetadata | None":
         """从 HDF5 根属性读取；旧文件无 ``collection_source`` 时返回 ``None``。"""
         src_key = f"{_META_PREFIX_COLLECTION}source"
         if src_key not in f.attrs:
