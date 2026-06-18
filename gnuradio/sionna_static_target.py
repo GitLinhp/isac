@@ -19,8 +19,8 @@ for _p in (_GRC, str(_SRC)):
         sys.path.insert(0, str(_p))
 
 from isac.channel.static_target_simulator import (
+    StaticTargetSimulator,
     static_target_params_from_grc,
-    static_target_simulator,
 )
 
 
@@ -66,17 +66,19 @@ class SionnaStaticTarget(gr.basic_block):
         self._burst_mode = bool(burst_mode)
         self._burst_armed = not self._burst_mode
 
-        self._params = static_target_params_from_grc(
-            range_m=range_m,
-            velocity_mps=velocity_mps,
-            rcs=rcs,
-            azimuth_deg=azimuth_deg,
-            position_rx_m=position_rx_m,
-            samp_rate=int(samp_rate),
-            center_freq=float(center_freq),
-            self_coupling_db=float(self_coupling_db),
-            rndm_phaseshift=bool(rndm_phaseshift),
-            self_coupling=bool(self_coupling),
+        self._sim = StaticTargetSimulator(
+            static_target_params_from_grc(
+                range_m=range_m,
+                velocity_mps=velocity_mps,
+                rcs=rcs,
+                azimuth_deg=azimuth_deg,
+                position_rx_m=position_rx_m,
+                samp_rate=int(samp_rate),
+                center_freq=float(center_freq),
+                self_coupling_db=float(self_coupling_db),
+                rndm_phaseshift=bool(rndm_phaseshift),
+                self_coupling=bool(self_coupling),
+            )
         )
 
         self.set_min_output_buffer(max(4096, int(ofdm_symbols)))
@@ -95,17 +97,19 @@ class SionnaStaticTarget(gr.basic_block):
         self_coupling: bool,
     ) -> None:
         """GRC 滑块回调：运行时更新目标参数。"""
-        self._params = static_target_params_from_grc(
-            range_m=range_m,
-            velocity_mps=velocity_mps,
-            rcs=rcs,
-            azimuth_deg=azimuth_deg,
-            position_rx_m=position_rx_m,
-            samp_rate=int(samp_rate),
-            center_freq=float(center_freq),
-            self_coupling_db=float(self_coupling_db),
-            rndm_phaseshift=bool(rndm_phaseshift),
-            self_coupling=bool(self_coupling),
+        self._sim = StaticTargetSimulator(
+            static_target_params_from_grc(
+                range_m=range_m,
+                velocity_mps=velocity_mps,
+                rcs=rcs,
+                azimuth_deg=azimuth_deg,
+                position_rx_m=position_rx_m,
+                samp_rate=int(samp_rate),
+                center_freq=float(center_freq),
+                self_coupling_db=float(self_coupling_db),
+                rndm_phaseshift=bool(rndm_phaseshift),
+                self_coupling=bool(self_coupling),
+            )
         )
 
     def forecast(self, noutput_items: int, ninputs) -> List[int]:
@@ -121,7 +125,7 @@ class SionnaStaticTarget(gr.basic_block):
         )
         with ctx:
             tx_t = torch.from_numpy(tx).to(device=dev, dtype=torch.complex64)
-            rx_t = static_target_simulator(tx_t, self._params)
+            rx_t = self._sim(tx_t)
         return np.asarray(rx_t.detach().cpu().numpy(), dtype=np.complex64).reshape(-1)
 
     def _flush_input_packet(self) -> None:

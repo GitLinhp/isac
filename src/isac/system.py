@@ -2,7 +2,7 @@
 import argparse
 import csv
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 import torch
 import numpy as np
 import sionna
@@ -39,10 +39,13 @@ class System:
         self.config: dict = load_config(args.config_file)
         self.device: str = args.device
 
-        self.params = SystemParams.from_dict(self.config)
-
+        # 设置全局设备
         sionna.phy.config.device = self.device
 
+        # 加载系统参数
+        self.params = SystemParams.from_dict(self.config)
+
+        # 构建系统组件
         self.components = SystemComponents.build_from_params(
             self.params, device=self.device
         )
@@ -51,25 +54,24 @@ class System:
         self,
         inputs: torch.Tensor,
         domain: str = "frequency",
-        *,
-        snr_db: Optional[float] = None,
     ) -> torch.Tensor:
         """经信道并加 AWGN；TOML ``snr_db`` 为接收端 SNR (dB)，按 ``E[|y_clean|^2]`` 定标 ``no``。"""
-        snr = snr_db if snr_db is not None else self.params.channel.snr_db
         return self.components.channel(
             inputs,
             domain=domain,
-            snr_db=snr,
+            snr_db=self.params.channel.snr_db,
             num_bits_per_symbol=self.params.qam.num_bits_per_symbol,
             coderate=self.params.channel.coderate,
         )
 
     def tx_symbols_to_resource_grid(self) -> torch.Tensor:
         """按 ``params.sensing.source`` 生成发射侧频域资源网格 ``x_rg``（``ResourceGridMapper`` 输出）。"""
+
         src_type = self.params.sensing.source.type
         batch = self.args.batch_size
         rg = self.components.rg
-        if src_type == "binary":
+
+        if src_type == "binary":  # 二进制源
             b = self.components.binary_source(
                 [
                     batch,
@@ -79,20 +81,19 @@ class System:
                 ]
             )
             x = self.components.mapper(b)
-            return self.components.rg_mapper(x)
-        if src_type == "zc":
-            zc = self.components.zc_source
-            if zc is None:
-                raise RuntimeError(
-                    "sensing.source.type is 'zc' but components.zc_source is missing; "
-                    "check OFDMComponents wiring"
-                )
-            x = zc([batch, 1, 1, rg.num_data_symbols])
-            return self.components.rg_mapper(x)
-        raise ValueError(f"unsupported sensing.source.type: {src_type!r}")
 
-    def estimate_channel(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """估计频域信道（LS）：``h = y * conj(x) / (|x|^2 + eps)``。
+        elif src_type == "zc":  # Zadoff-Chu 源
+            x = self.components.zc_source([batch, 1, 1, rg.num_data_symbols])
+
+        else:  # 不支持的源类型
+            raise ValueError(f"unsupported sensing.source.type: {src_type!r}")
+
+        return self.components.rg_mapper(x)
+
+    def estimate_channel(
+        self, x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12
+    ) -> torch.Tensor:
+        """估计频域信道（LS）：``h = y * conj(x) / (|x|^2 + ``eps``)``。
 
         对 ``x``/``y`` 做 ``squeeze`` 后，``x`` 为 ``(num_ofdm_symbols, fft_size)``；
         ``y`` 为 ``(rx_num, num_ofdm_symbols, fft_size)``，``rx_num=1`` 时退化为 2D。
@@ -121,14 +122,8 @@ class System:
                 f"y squeeze 后须为 2D (S,F) 或 3D (rx_num,S,F)，收到 ndim={y.ndim}"
             )
 
-        eps = 1e-12
-        if y.ndim == 2:
-            denom = torch.abs(x) ** 2 + eps
-            h = y * torch.conj(x) / denom
-        else:
-            x_bc = x.unsqueeze(0)
-            denom = torch.abs(x_bc) ** 2 + eps
-            h = y * torch.conj(x_bc) / denom
+        denom = torch.abs(x) ** 2 + eps
+        h = y * torch.conj(x) / denom
 
         return h
 
@@ -154,6 +149,7 @@ class System:
         pos: np.ndarray | list[float],
         vel: np.ndarray | list[float],
     ) -> None:
+        """更新目标位置与速度"""
         pos_a = np.asarray(pos, dtype=np.float64).reshape(-1)
         vel_a = np.asarray(vel, dtype=np.float64).reshape(-1)
         if pos_a.size != 3 or vel_a.size != 3:
@@ -181,7 +177,7 @@ class System:
         csv_mode: Literal["unified", "legacy"] = "unified",
         output_root: Path | None = None,
     ) -> None:
-        """写入 Episode CSV：统一表或 legacy 分裂文件名（与历史脚本兼容）。"""
+        """写入 Episode CSV：统一表或 legacy 分裂文件名。"""
         if not rows:
             print("无 CSV 行，跳过写入")
             return

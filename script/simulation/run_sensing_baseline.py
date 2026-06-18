@@ -107,30 +107,14 @@ def main() -> None:
     if domain == "frequency":
         y_clean = ch(x_rg, domain=domain, snr_db=None)
         y_rg = system.apply_channel(x_rg, domain=domain)
-        sig_p = ch.mean_power(y_clean)
-        no_rx = ch.noise_power_from_rx_snr(sig_p, snr_db)
-        Channel.print_rx_power_report(
-            snr_db=snr_db,
-            no_comm=no_comm,
-            y_clean=y_clean,
-            y_noisy=y_rg,
-            no_rx=no_rx,
-        )
+
     elif domain == "time":
         x_time = system.components.modulator(x_rg)
         y_time_clean = ch(x_time, domain=domain, snr_db=None)
         y_time = system.apply_channel(x_time, domain=domain)
         y_clean = system.components.demodulator(y_time_clean)
         y_rg = system.components.demodulator(y_time)
-        sig_p = ch.mean_power(y_time_clean)
-        no_rx = ch.noise_power_from_rx_snr(sig_p, snr_db)
-        Channel.print_rx_power_report(
-            snr_db=snr_db,
-            no_comm=no_comm,
-            y_clean=y_time_clean,
-            y_noisy=y_time,
-            no_rx=no_rx,
-        )
+
     else:
         raise ValueError(f"不支持的域: {domain}")
 

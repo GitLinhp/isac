@@ -23,7 +23,7 @@ import argparse
 import torch
 
 from isac import PROJECT_ROOT
-from isac.channel import StaticTargetParams, static_target_simulator
+from isac.channel import StaticTargetParams, StaticTargetSimulator
 from isac.system import System
 from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
@@ -142,7 +142,7 @@ def main() -> None:
     snr_db = system.params.channel.snr_db
 
     # 点目标：多普勒 chirp × FFT 分数时延（距离 + 方位）× 可选自耦合
-    y_time_clean = static_target_simulator(x_time, params)
+    y_time_clean = StaticTargetSimulator(params)(x_time)
     # 接收端 SNR 定标 AWGN（内部按 E[|y_clean|²] 与 snr_db 计算 no）
     y_time = ch._awgn(y_time_clean, snr_db)
     y_rg = system.components.demodulator(y_time).squeeze()

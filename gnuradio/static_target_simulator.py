@@ -16,14 +16,14 @@ import torch
 
 from isac.channel.static_target_simulator import (
     StaticTargetParams,
+    StaticTargetSimulator,
     static_target_params_from_grc,
-    static_target_simulator,
 )
 
 __all__ = [
     "StaticTargetParams",
+    "StaticTargetSimulator",
     "static_target_params_from_grc",
-    "static_target_simulator",
     "apply_grc_default_channel",
 ]
 
@@ -43,20 +43,22 @@ def apply_grc_default_channel(
     generator: torch.Generator | None = None,
 ) -> np.ndarray:
     """用 simulator_ofdm.grc 默认参数对时域 IQ 施加 static_target 信道，返回 numpy complex64。"""
-    params = static_target_params_from_grc(
-        range_m=range_m,
-        velocity_mps=velocity_mps,
-        rcs=rcs,
-        center_freq=center_freq,
-        samp_rate=samp_rate,
-        self_coupling_db=self_coupling_db,
-        rndm_phaseshift=rndm_phaseshift,
-        self_coupling=self_coupling,
+    sim = StaticTargetSimulator(
+        static_target_params_from_grc(
+            range_m=range_m,
+            velocity_mps=velocity_mps,
+            rcs=rcs,
+            center_freq=center_freq,
+            samp_rate=samp_rate,
+            self_coupling_db=self_coupling_db,
+            rndm_phaseshift=rndm_phaseshift,
+            self_coupling=self_coupling,
+        )
     )
     if isinstance(tx, np.ndarray):
         tx_t = torch.from_numpy(np.asarray(tx, dtype=np.complex64)).to(device)
     else:
         tx_t = tx.to(device)
 
-    rx_t = static_target_simulator(tx_t, params, generator=generator)
+    rx_t = sim(tx_t, generator=generator)
     return np.asarray(rx_t.detach().cpu().numpy(), dtype=np.complex64)

@@ -5,14 +5,12 @@ import math
 
 import pytest
 import torch
+from scipy.constants import c
 
 from isac.channel.static_target_simulator import (
     StaticTargetParams,
-    _apply_single_target_echo,
-    _build_delay_filter,
-    _build_doppler_filter,
+    StaticTargetSimulator,
     static_target_params_from_grc,
-    static_target_simulator,
 )
 
 _TWO_PI = 2.0 * math.pi
@@ -75,14 +73,12 @@ def _apply_single_target_echo_loop_ref(
     samp_rate: float,
     center_freq: float,
 ) -> torch.Tensor:
-    from isac.channel.static_target_simulator import C_LIGHT, _target_scale_ampl
-
     n = tx.shape[-1]
     device = tx.device
-    doppler_hz = 2.0 * velocity_mps * center_freq / C_LIGHT
-    timeshift_s = 2.0 * range_m / C_LIGHT
+    doppler_hz = 2.0 * velocity_mps * center_freq / c
+    timeshift_s = 2.0 * range_m / c
     azimuth_shift_s = position_rx_m * math.sin(math.radians(azimuth_deg))
-    scale_ampl = _target_scale_ampl(range_m, rcs, center_freq)
+    scale_ampl = StaticTargetSimulator._target_scale_ampl(range_m, rcs, center_freq)
 
     doppler_filt = _build_doppler_filter_loop_ref(
         n, doppler_hz, scale_ampl, samp_rate, device
@@ -147,7 +143,7 @@ def _static_target_simulator_loop_ref(
 @pytest.mark.parametrize("doppler_hz", [200.0, -350.0, 0.0])
 def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
     scale = 1.23e4
-    vec = _build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
+    vec = StaticTargetSimulator._build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
     ref = _build_doppler_filter_loop_ref(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
     atol = _CHIRP_ATOL if n >= _FULL_FRAME_N else _ATOL
     assert torch.allclose(vec, ref, atol=atol, rtol=0.0)
@@ -159,7 +155,7 @@ def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
 def test_delay_filter_matches_loop(
     n: int, delay_s: float, compensate_numpy_ifft: bool
 ) -> None:
-    vec = _build_delay_filter(
+    vec = StaticTargetSimulator._build_delay_filter(
         n,
         delay_s,
         _SAMP_RATE,
@@ -191,7 +187,7 @@ def test_apply_single_target_echo(n: int) -> None:
         rndm_phaseshift=False,
         generator=None,
     )
-    vec = _apply_single_target_echo(tx, **kwargs)
+    vec = StaticTargetSimulator._apply_single_target_echo(tx, **kwargs)
     ref = _apply_single_target_echo_loop_ref(tx, **{k: v for k, v in kwargs.items() if k not in ("rndm_phaseshift", "generator")})
     if n >= _FULL_FRAME_N:
         assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)
@@ -210,6 +206,6 @@ def test_static_target_simulator_end2end() -> None:
         self_coupling=True,
         self_coupling_db=-10.0,
     )
-    vec = static_target_simulator(tx, params)
+    vec = StaticTargetSimulator(params)(tx)
     ref = _static_target_simulator_loop_ref(tx, params)
     assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)
