@@ -36,7 +36,7 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-from isac.data_structures.components.ofdm_components import OFDMComponents
+from isac.data_structures.components.ofdm import OFDMComponents
 from isac.data_structures.params import SystemParams
 from isac.utils import load_config, set_random_seed
 
@@ -144,7 +144,7 @@ def get_tx_packet(
                 else ofdm.subcarrier_spacing
             ),
             center_freq=float(
-                center_freq if center_freq is not None else params.carrier_frequency
+                center_freq if center_freq is not None else params.ofdm.carrier_frequency
             ),
             seed=int(seed),
             device=str(device),
@@ -206,7 +206,7 @@ def prewarm_sionna_tx(
             ofdm_symbols=ofdm.num_symbols,
             cp_len=ofdm.cyclic_prefix_length,
             subcarrier_spacing=ofdm.subcarrier_spacing,
-            center_freq=params.carrier_frequency,
+            center_freq=params.ofdm.carrier_frequency,
             seed=int(seed),
             device=str(device),
         )
@@ -235,13 +235,13 @@ def _build_tx_packet_impl(effective: EffectiveConfig) -> TxPacket:
     set_random_seed(seed)
     sionna.phy.config.device = device
 
-    ofdm = OFDMComponents.build_from_params(params, device=device)
+    ofdm = OFDMComponents.build_from_params(params.ofdm, device=device)
     rg = ofdm.rg
 
-    if params.sensing.source.type != "zc":
+    if params.ofdm.source.type != "zc":
         raise ValueError(
-            f"sionna_tx only supports sensing.source.type='zc', "
-            f"got {params.sensing.source.type!r}"
+            f"sionna_tx only supports ofdm.source.type='zc', "
+            f"got {params.ofdm.source.type!r}"
         )
     if ofdm.zc_source is None:
         raise RuntimeError("zc_source missing for ZC sensing source")

@@ -8,7 +8,7 @@ pytest.importorskip("sionna.rt")
 from isac.channel.rt.rt_target import RTTarget
 from isac.channel.rt.rt_transceiver import RTTransceiver
 from isac.channel.rt.trajectory import Trajectory
-from isac.data_structures.params.rt_scene_params import TrajectoryParams, TargetParams
+from isac.data_structures.params.rt_scene import TrajectoryParams, TargetParams
 
 
 def _trajectory_dict(

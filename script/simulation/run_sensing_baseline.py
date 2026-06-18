@@ -4,7 +4,6 @@ import math
 import torch
 
 from isac import PROJECT_ROOT
-from isac.channel.channel import Channel
 from isac.system import System
 from isac.utils import set_random_seed
 
@@ -77,11 +76,13 @@ def _print_dd_spectrum_report(
 
 
 def main() -> None:
-    args = argument_parser()  # 解析命令行参数
-    set_random_seed(args.seed)  # 设置随机种子
-    system = System(args)  # 创建系统实例
+    args = argument_parser()
+    set_random_seed(args.seed)
+    system = System(args)
 
-    system.components.sensing_performance.display_performance()
+    domain = args.domain
+    sensing = system.components.sensing
+    ch = system.components.channel
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_baseline"
     script_out_dir.mkdir(parents=True, exist_ok=True)
@@ -89,64 +90,57 @@ def main() -> None:
     system.components.rt_scene.render_to_file(
         filename=script_out_dir / "sensing_baseline_scene.png"
     )
+    system.components.rt_scene.get("reflector").velocity = [0, 0, -20]
+    system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]
 
-    domain = args.domain  # 获取域
-    system.components.rt_scene.get("reflector").velocity = [0, 0, -20]  # 设置反射器速度
-    system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]  # 设置基站1发射速度
-
+    # --- 发射 ---
     _, x_rg, x_time = system.transmit()
-    ch = system.components.channel
-    snr_db = system.params.channel.snr_db
-    no_comm = ch.noise_power_from_snr_db(
-        snr_db,
-        system.params.qam.num_bits_per_symbol,
-        system.params.channel.coderate,
-        system.components.rg,
-    )
 
+    # --- 应用信道 ---
     if domain == "frequency":
-        y_clean = ch(x_rg, domain=domain, snr_db=None)
         y_rg = system.apply_channel(x_rg, domain=domain)
-
+        y_rg_clean = ch(x_rg, domain=domain, snr_db=None).squeeze()
+        result = system.sensing(x_rg, y_rg, y_rg_clean=y_rg_clean)
     elif domain == "time":
-        y_time_clean = ch(x_time, domain=domain, snr_db=None)
         y_time = system.apply_channel(x_time, domain=domain)
-        y_clean = system.components.demodulator(y_time_clean)
-        y_rg = system.components.demodulator(y_time)
-
+        y_time_clean = ch(x_time, domain=domain, snr_db=None)
+        result = system.sensing(
+            x_rg,
+            y_time=y_time,
+            y_time_clean=y_time_clean,
+        )
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    h = system.estimate_channel(x_rg, y_rg)
-    h_clean = system.estimate_channel(x_rg, y_clean)
-
-    h_delay_doppler = system.components.delay_doppler_spectrum(h)
-    dd_clean = system.components.delay_doppler_spectrum(h_clean)
-    _print_dd_spectrum_report(h_delay_doppler, dd_clean, snr_db=snr_db)
-
-    system.components.delay_doppler_spectrum.visualize(
+    # --- 显示感知结果 ---
+    sensing.sensing_performance.display_performance()
+    _print_dd_spectrum_report(
+        result.h_delay_doppler,
+        result.h_delay_doppler_clean,
+        snr_db=system.params.channel.snr_db,
+    )
+    sensing.delay_doppler_spectrum.visualize(
         offset=20,
         file_name=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
         to_db=False,
         metric_mode="delay_doppler",
         backend="matplotlib",
     )
-
-    system.components.music_estimator(
-        spectrum_tensor=h_delay_doppler,
+    sensing.music_estimator(
+        spectrum_tensor=result.h_delay_doppler,
         metric_mode="dd",
     )
 
-    print("Delay - LoS Path (ns) :", system.components.rt_scene.paths.tau[0, 0, 0] / 1e-9)
-    print("Doppler - LoS Path (Hz) :", system.components.rt_scene.paths.doppler[0, 0, 0])
-
+    rt_scene = system.components.rt_scene
+    print("Delay - LoS Path (ns) :", rt_scene.paths.tau[0, 0, 0] / 1e-9)
+    print("Doppler - LoS Path (Hz) :", rt_scene.paths.doppler[0, 0, 0])
     print(
         "Delay - Reflected Path (ns) :",
-        system.components.rt_scene.paths.tau[0, 0, 1].numpy() / 1e-9,
+        rt_scene.paths.tau[0, 0, 1].numpy() / 1e-9,
     )
     print(
         "Doppler - Reflected Path (Hz) :",
-        system.components.rt_scene.paths.doppler[0, 0, 1],
+        rt_scene.paths.doppler[0, 0, 1],
     )
 
 

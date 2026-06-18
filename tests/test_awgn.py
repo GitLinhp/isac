@@ -7,21 +7,9 @@ import pytest
 import torch
 from sionna.phy.channel import AWGN as SionnaAWGN
 
-from isac.channel.awgn import AWGN, snr_db_to_noise_power
+from isac.channel.awgn import AWGN
 
 _DEVICE = "cpu"
-
-
-def test_snr_db_to_noise_power_matches_formula() -> None:
-    sig_p = 2.5
-    snr_db = 10.0
-    no = snr_db_to_noise_power(sig_p, snr_db)
-    assert no == pytest.approx(sig_p / 10.0)
-
-
-def test_snr_db_to_noise_power_zero_signal_raises() -> None:
-    with pytest.raises(ValueError, match="信号功率须为正"):
-        snr_db_to_noise_power(0.0, 10.0)
 
 
 def test_awgn_zero_signal_raises() -> None:
@@ -43,7 +31,7 @@ def test_awgn_noise_variance_matches_sionna() -> None:
     snr_db = 12.5
     x = torch.randn(64, 128, dtype=torch.complex64, device=_DEVICE)
     sig_p = float(torch.mean(torch.abs(x) ** 2).item())
-    no_rx = snr_db_to_noise_power(sig_p, snr_db)
+    no_rx = sig_p / (10.0 ** (snr_db / 10.0))
 
     local_awgn = AWGN(device=_DEVICE)
     sionna_awgn = SionnaAWGN(device=_DEVICE)

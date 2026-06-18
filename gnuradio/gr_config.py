@@ -130,7 +130,7 @@ def merge_config(
     _compare_override(
         messages,
         "carrier_frequency",
-        params.carrier_frequency,
+        params.ofdm.carrier_frequency,
         overrides.center_freq,
         float,
     )
@@ -148,16 +148,16 @@ def merge_config(
         cyclic_prefix_length=overrides.cp_len,
         subcarrier_spacing=overrides.subcarrier_spacing,
         num_valid_subcarriers=valid_sc,
+        carrier_frequency=overrides.center_freq,
     )
     effective_params = replace(
         params,
-        carrier_frequency=overrides.center_freq,
         ofdm=effective_ofdm,
     )
 
-    from isac.data_structures.components.ofdm_components import OFDMComponents
+    from isac.data_structures.components.ofdm import OFDMComponents
 
-    rg = OFDMComponents.build_from_params(effective_params, device=overrides.device).rg
+    rg = OFDMComponents.build_from_params(effective_ofdm, device=overrides.device).rg
     sp = SensingPerformance(rg, carrier_frequency=overrides.center_freq)
     samp_rate = int(overrides.fft_len * overrides.subcarrier_spacing)
     sym_dur = (overrides.fft_len + overrides.cp_len) / samp_rate if samp_rate else 0.0

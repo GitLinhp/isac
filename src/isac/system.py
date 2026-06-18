@@ -1,16 +1,28 @@
 # 标准库
 import argparse
 import csv
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 import torch
 import numpy as np
 import sionna
 
 # 自定义模块
 from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
-from .data_structures import SystemParams, SystemComponents
+from .data_structures.params import SystemParams
+from .data_structures.components.system_components import SystemComponents
 from . import PROJECT_ROOT
+
+
+@dataclass
+class SensingResult:
+    """``System.sensing`` 输出：LS 信道估计与时延–多普勒谱。"""
+
+    h: torch.Tensor
+    h_delay_doppler: torch.Tensor
+    h_clean: Optional[torch.Tensor] = None
+    h_delay_doppler_clean: Optional[torch.Tensor] = None
 
 
 class System:
@@ -47,30 +59,31 @@ class System:
     # 发射
     def transmit(self) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """生成发射比特 ``b``（仅 binary 源）、频域资源网格 ``x_rg`` 与时域 ``x_time``。"""
-        src_type = self.params.sensing.source.type
+        src_type = self.params.ofdm.source.type
         batch_size = self.args.batch_size
-        rg = self.components.rg
+        ofdm = self.components.ofdm
+        rg = ofdm.rg
 
         if src_type == "binary":  # 二进制源
-            b = self.components.binary_source(
+            b = ofdm.binary_source(
                 [
                     batch_size,
                     1,
                     1,
-                    rg.num_data_symbols * self.params.qam.num_bits_per_symbol,
+                    rg.num_data_symbols * self.params.ofdm.num_bits_per_symbol,
                 ]
             )
-            x = self.components.mapper(b)
+            x = ofdm.mapper(b)
 
         elif src_type == "zc":  # Zadoff-Chu 源
             b = None
-            x = self.components.zc_source([batch_size, 1, 1, rg.num_data_symbols])
+            x = ofdm.zc_source([batch_size, 1, 1, rg.num_data_symbols])
 
         else:  # 不支持的源类型
-            raise ValueError(f"unsupported sensing.source.type: {src_type!r}")
+            raise ValueError(f"unsupported ofdm.source.type: {src_type!r}")
 
-        x_rg = self.components.rg_mapper(x)  # 频域资源网格映射
-        x_time = self.components.modulator(x_rg)  # OFDM调制
+        x_rg = ofdm.rg_mapper(x)  # 频域资源网格映射
+        x_time = ofdm.modulator(x_rg)  # OFDM调制
         return b, x_rg, x_time
 
     # 应用信道
@@ -84,8 +97,6 @@ class System:
             inputs,
             domain=domain,
             snr_db=self.params.channel.snr_db,
-            num_bits_per_symbol=self.params.qam.num_bits_per_symbol,
-            coderate=self.params.channel.coderate,
         )
 
     # 接收
@@ -100,16 +111,21 @@ class System:
         elif not isinstance(no, torch.Tensor):
             no = torch.tensor(no, device=self.device, dtype=torch.float32)
 
+        ofdm = self.components.ofdm
         # OFDM 解调
-        y_rg = self.components.demodulator(y_time)
+        y_rg = ofdm.demodulator(y_time)
 
         # 资源网格解映射
-        y = self.components.rg_demapper(y_rg)
+        y = ofdm.rg_demapper(y_rg)
 
         # QAM 解映射
-        b_hat = self.components.demapper(y, no=no)
+        b_hat = ofdm.demapper(y, no=no)
 
         return b_hat
+
+    def demodulate(self, y_time: torch.Tensor) -> torch.Tensor:
+        """时域 IQ → 频域资源网格（squeeze，供 ``estimate_channel`` / ``sensing`` 使用）。"""
+        return self.components.ofdm.demodulator(y_time).squeeze()
 
     # 信道估计
     def estimate_channel(
@@ -121,7 +137,7 @@ class System:
         ``y`` 为 ``(rx_num, num_ofdm_symbols, fft_size)``，``rx_num=1`` 时退化为 2D。
         假定 ``batch_size=1``；squeeze 后 ``y.ndim > 3`` 将报错。
         """
-        rg = self.components.rg
+        rg = self.components.ofdm.rg
         s, f = rg.num_ofdm_symbols, rg.fft_size
 
         x = x.squeeze()
@@ -148,6 +164,55 @@ class System:
         h = y * torch.conj(x) / denom
 
         return h
+
+    def sensing(
+        self,
+        x_rg: torch.Tensor,
+        y_rg: Optional[torch.Tensor] = None,
+        *,
+        y_time: Optional[torch.Tensor] = None,
+        apply_mti: bool = False,
+        mti_axis: int = -2,
+        y_rg_clean: Optional[torch.Tensor] = None,
+        y_time_clean: Optional[torch.Tensor] = None,
+    ) -> SensingResult:
+        """接收端感知：LS 信道估计 → 可选 MTI → 时延–多普勒谱。
+
+        传入 ``y_time`` 时内部 ``demodulate`` 为 ``y_rg``；与 ``y_rg`` 二选一。
+        ``y_rg_clean`` / ``y_time_clean`` 用于无噪参考谱（SNR 诊断）。
+        """
+        if y_rg is not None and y_time is not None:
+            raise ValueError("y_rg 与 y_time 不可同时传入")
+        if y_rg is None and y_time is None:
+            raise ValueError("须传入 y_rg 或 y_time")
+
+        if y_time is not None:
+            y_rg = self.demodulate(y_time)
+
+        sensing = self.components.sensing
+
+        h = self.estimate_channel(x_rg, y_rg)
+        if apply_mti:
+            h = sensing.moving_target_indication(h, axis=mti_axis)
+        h_delay_doppler = sensing.delay_doppler_spectrum(h)
+
+        h_clean: Optional[torch.Tensor] = None
+        h_dd_clean: Optional[torch.Tensor] = None
+        y_rg_clean_resolved: Optional[torch.Tensor] = y_rg_clean
+        if y_time_clean is not None:
+            y_rg_clean_resolved = self.demodulate(y_time_clean)
+        if y_rg_clean_resolved is not None:
+            h_clean = self.estimate_channel(x_rg, y_rg_clean_resolved)
+            if apply_mti:
+                h_clean = sensing.moving_target_indication(h_clean, axis=mti_axis)
+            h_dd_clean = sensing.delay_doppler_spectrum(h_clean)
+
+        return SensingResult(
+            h=h,
+            h_delay_doppler=h_delay_doppler,
+            h_clean=h_clean,
+            h_delay_doppler_clean=h_dd_clean,
+        )
 
     def _reference_tx_power_dbm(self) -> float | None:
         """首个含发射机的收发机在 TOML 中配置的 ``power_dbm``；用于将归一化 ``mean(|x|^2)`` 映射为 dBm。"""

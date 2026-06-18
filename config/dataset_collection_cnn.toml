@@ -1,15 +1,18 @@
-# CNN 感知训练专用采集配置：较紧 ROI 建议配合 CLI --roi 10 70 -20 20
+[ofdm]
 carrier_frequency = 4.9e9
 num_bits_per_symbol = 2
-snr_db = 80
-
-[ofdm]
 num_symbols = 512
 num_subcarriers = 2048
 num_valid_subcarriers = 2048
 subcarrier_spacing = 30000.0
-num_cyclic_prefix = 512
+cyclic_prefix_length = 512
 l_min = -6
+
+
+[channel]
+type = "rt"
+snr_db = 80
+coderate = 1.0
 
 [rt_scene]
 filename = "simple_street_canyon"
@@ -73,7 +76,7 @@ synthetic_array = true
 seed = 42
 
 [sensing]
-[sensing.source]
+[ofdm.source]
 type = "zc"
 root_index = 1
 normalize = true

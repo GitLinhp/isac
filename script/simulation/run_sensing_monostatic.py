@@ -1,14 +1,4 @@
-"""单基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。
-
-管线概要
---------
-1. 按 ``--domain`` 在频域或时域施加信道，经 ``estimate_channel`` 得到 CFR 相关估计。
-2. 计算时延–多普勒谱并导出 ``out/sensing_monostatic/sensing_monostatic_delay_doppler_spectrum.png``。
-3. MUSIC 提取峰；``music_estimator`` 返回径向距离 (m)、径向速度 (m/s) 与伪谱功率；``--metric_mode`` 仅影响 MUSIC 日志与谱图坐标展示。
-4. 用 ``RTScene.rx_target_tx_geometric`` 的 ``range_tensor`` / ``vel_tensor``（形状 ``(n_rx, n_target, n_tx)``，展平为格点）；``match_peaks_and_compute_radial_rmse`` 以匈牙利算法将 MUSIC 峰与真值一对一匹配并计算聚合 RMSE。
-
-与 ``run_dataset_collection.py``（``--run_sensing``）中的嵌套感知逻辑一致，本脚本用于单次场景、便于调参与可视化。
-"""
+"""单基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
 
 import argparse
 
@@ -18,7 +8,6 @@ from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
-    """解析单基地感知评估所需的设备、随机种子、信道域与速度反演模型。"""
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 单基地感知评估")
 
     parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
@@ -54,56 +43,42 @@ def argument_parser() -> argparse.Namespace:
         type=str,
         default="range_velocity",
         choices=["delay_doppler", "range_velocity"],
-        help="谱图与 MUSIC 日志 metric：delay_doppler 用时延 (ns) / 多普勒 (Hz)；range_velocity 用距离 (m) / 速度 (m/s)",
+        help="谱图与 MUSIC 日志 metric",
     )
 
     return parser.parse_args()
 
 
 def main() -> None:
-    """构建系统、跑一条感知链，并将估计与 RT 场景真值对比后写入日志。"""
     args = argument_parser()
     set_random_seed(args.seed)
     system = System(args)
 
     scene = system.components.rt_scene
-
     domain = args.domain
+    sensing = system.components.sensing
 
-    # 脚本专属子目录
     script_out_dir = PROJECT_ROOT / "out" / "sensing_monostatic"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 显示感知性能
-    sensing_perf = system.components.sensing_performance
-    sensing_perf.display_performance()
+    scene.render_to_file(filename=script_out_dir / "sensing_monostatic_scene.png")
 
-    # 渲染场景到文件
-    system.components.rt_scene.render_to_file(
-        filename=script_out_dir / "sensing_monostatic_scene.png"
-    )
-
-    # --- OFDM 参考信号与信道 ---
+    # --- 发射 ---
     _, x_rg, x_time = system.transmit()
 
+    # --- 应用信道 ---
     if domain == "frequency":
         y_rg = system.apply_channel(x_rg, domain=domain)
+        result = system.sensing(x_rg, y_rg)
     elif domain == "time":
         y_time = system.apply_channel(x_time, domain=domain)
-        y_rg = system.components.demodulator(y_time)
+        result = system.sensing(x_rg, y_time=y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    y_rg = y_rg.squeeze()
-
-    # 信道估计
-    h = system.estimate_channel(x_rg, y_rg)
-
-    # 计算时延–多普勒谱
-    h_delay_doppler = system.components.delay_doppler_spectrum(h)
-
-    # 绘制时延–多普勒谱图
-    system.components.delay_doppler_spectrum.visualize(
+    # --- 显示感知结果 ---
+    sensing.sensing_performance.display_performance()
+    sensing.delay_doppler_spectrum.visualize(
         offset=50,
         file_name=script_out_dir / "sensing_monostatic_delay_doppler_spectrum.png",
         to_db=False,
@@ -111,23 +86,19 @@ def main() -> None:
         backend="matplotlib",
     )
 
-    # --- 真值：首个三元组的 LoS 路径长度与 RX 视线径向速度 ---
     geom = scene.rx_target_tx_geometric
     geom.display()
-    true_ranges = geom.range_tensor
-    true_velocities = geom.vel_tensor
 
-    # --- MUSIC：径向距离 (m)、径向速度 (m/s)、伪谱功率；metric_mode 仅影响日志 ---
-    est_ranges, est_velocities, _ = system.components.music_estimator(
-        spectrum_tensor=h_delay_doppler,
+    est_ranges, est_velocities, _ = sensing.music_estimator(
+        spectrum_tensor=result.h_delay_doppler,
         metric_mode=args.metric_mode,
     )
 
     match_peaks_and_compute_radial_rmse(
         est_ranges=est_ranges,
         est_velocities=est_velocities,
-        true_ranges=true_ranges,
-        true_velocities=true_velocities,
+        true_ranges=geom.range_tensor,
+        true_velocities=geom.vel_tensor,
         label="单基地感知",
     )
 

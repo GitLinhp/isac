@@ -4,7 +4,7 @@ import sionna.rt.scene
 from sionna.rt import ITURadioMaterial
 from sionna.rt import SceneObject
 
-from ...data_structures.params.rt_scene_params import TrajectoryParams
+from ...data_structures.params.rt_scene import TrajectoryParams
 from .trajectory import Trajectory
 
 

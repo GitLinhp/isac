@@ -1,17 +1,21 @@
-carrier_frequency = 3.5e9 # 载波频率(Hz)
-num_bits_per_symbol = 2   # QAM调制每个符号的比特数
-snr_db = -5               # 接收端 SNR (dB)：no = E[|y_clean|^2] / 10^(snr_db/10)
-
 # OFDM参数
 [ofdm]
+carrier_frequency = 3.5e9 # 载波频率(Hz)
+num_bits_per_symbol = 2   # QAM调制每个符号的比特数
 num_symbols = 1024           # 符号数
 num_subcarriers = 1024       # 子载波数
 num_valid_subcarriers = 1024 # 有效子载波数
 subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
-num_cyclic_prefix = 0        # 循环前缀长度
+cyclic_prefix_length = 0        # 循环前缀长度
 l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
 
 # 射线追踪场景参数
+
+[channel]
+type = "rt"
+snr_db = -5               # 接收端 SNR (dB)：no = E[|y_clean|^2] / 10^(snr_db/10)
+coderate = 1.0
+
 [rt_scene]
 filename = "simple_reflector" # 场景文件名
 merge_shapes = false          # 是否合并相同材质的形状
@@ -75,7 +79,7 @@ synthetic_array = true     # 是否使用合成阵列
 [sensing]
 
 # 发射参考：binary（比特+QAM）| zc（Zadoff-Chu）；ZC 须 gcd(root_index, ofdm 网格 num_data_symbols)=1
-[sensing.source]
+[ofdm.source]
 type = "zc"
 # root_index = 1
 # normalize = true

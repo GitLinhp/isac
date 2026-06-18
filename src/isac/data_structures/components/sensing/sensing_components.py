@@ -1,17 +1,18 @@
 """
-感知相关组件构建（与 ``sensing_params`` 对应）
+感知相关组件构建
 """
 
 from dataclasses import dataclass, asdict
 
 from sionna.phy.ofdm import ResourceGrid
 
-from ..params import SystemParams
-from ...sensing.sensing_performance import SensingPerformance
-from ...sensing.music_estimator import MUSICEstimator
-from ...sensing.delay_doppler_spectrum import DelayDopplerSpectrum
-from ...sensing.cfar import CFARDetector
-from ...sensing.clutter_suppression import MovingTargetIndication, MovingTargetDetection
+from ...params.ofdm import OFDMParams
+from ...params.sensing import SensingParams
+from ....sensing.sensing_performance import SensingPerformance
+from ....sensing.music_estimator import MUSICEstimator
+from ....sensing.delay_doppler_spectrum import DelayDopplerSpectrum
+from ....sensing.cfar import CFARDetector
+from ....sensing.clutter_suppression import MovingTargetIndication, MovingTargetDetection
 
 
 @dataclass
@@ -28,14 +29,14 @@ class SensingComponents:
     @classmethod
     def build_from_params(
         cls,
-        system_params: SystemParams,
+        ofdm_params: OFDMParams,
+        sensing_params: SensingParams,
         rg: ResourceGrid,
         device: str,
     ) -> "SensingComponents":
-        """根据 ``SystemParams`` 构建感知性能、时延多普勒谱、MUSIC、CFAR 与 MTI/MTD 运行时实例。"""
         sensing_performance = SensingPerformance(
             resource_grid=rg,
-            carrier_frequency=system_params.carrier_frequency,
+            carrier_frequency=ofdm_params.carrier_frequency,
         )
         moving_target_indication = MovingTargetIndication(
             sensing_performance,
@@ -43,17 +44,17 @@ class SensingComponents:
         )
         moving_target_detection = MovingTargetDetection(
             sensing_performance,
-            system_params.carrier_frequency,
+            ofdm_params.carrier_frequency,
         )
         delay_doppler_spectrum = DelayDopplerSpectrum(
             sensing_performance=sensing_performance,
-            delay_window=system_params.sensing.windows.delay_window,
-            doppler_window=system_params.sensing.windows.doppler_window,
+            delay_window=sensing_params.windows.delay_window,
+            doppler_window=sensing_params.windows.doppler_window,
         )
         music_estimator = MUSICEstimator(
             device=device, sensing_performance=sensing_performance
         )
-        cfar_inst = CFARDetector(**asdict(system_params.sensing.cfar))
+        cfar_inst = CFARDetector(**asdict(sensing_params.cfar))
 
         return cls(
             sensing_performance=sensing_performance,

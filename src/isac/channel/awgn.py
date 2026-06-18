@@ -1,4 +1,5 @@
 """接收端 SNR (dB) 定标的 AWGN 信道块。"""
+
 from __future__ import annotations
 
 from typing import Optional, Union
@@ -7,33 +8,6 @@ import torch
 from sionna.phy import Block
 from sionna.phy.config import Precision
 from sionna.phy.utils import complex_normal, expand_to_rank
-
-__all__ = ["AWGN", "snr_db_to_noise_power"]
-
-
-def snr_db_to_noise_power(
-    signal_power: Union[float, torch.Tensor],
-    snr_db: Union[float, torch.Tensor],
-) -> Union[float, torch.Tensor]:
-    """按接收端信号功率与目标 SNR (dB) 计算 AWGN 方差 ``no``。
-
-    ``no = E[|x|²] / 10^(snr_db/10)``，与 Sionna ``AWGN(x, no)`` 的 ``no`` 语义一致。
-    """
-    if isinstance(signal_power, torch.Tensor):
-        sig_p = signal_power
-        if torch.any(sig_p <= 0):
-            raise ValueError("接收端信号功率须为正，无法按 snr_db 定标噪声。")
-    elif signal_power <= 0.0:
-        raise ValueError("接收端信号功率须为正，无法按 snr_db 定标噪声。")
-    else:
-        sig_p = signal_power
-
-    if isinstance(snr_db, torch.Tensor):
-        snr_linear = 10.0 ** (snr_db / 10.0)
-    else:
-        snr_linear = 10.0 ** (float(snr_db) / 10.0)
-
-    return sig_p / snr_linear
 
 
 class AWGN(Block):
