@@ -1,3 +1,10 @@
+"""ISAC 仿真采集结果的 HDF5 数据集读写与元数据封装。
+
+由 ``run_dataset_collection.py`` 写入；``learning/torch_dataset.py`` 等通过 ``Dataset.load`` 消费。
+文件布局：必选数据集 ``channel_frequency_response`` + 目标运动学 + OFDM 网格元属性；
+可选 CIR（``channel_impulse_response_a/tau``）与 ``collection_*`` 根属性（采集可复现配置）。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,16 +25,24 @@ _DATASET_KEY_CIR_TAU = "channel_impulse_response_tau"
 """路径时延 τ（秒，float64）。"""
 
 _DATASET_KEY_TARGET_POSITION = "target_position"
+"""目标位置 (m)，shape ``(num_slots, 3)``。"""
 _DATASET_KEY_TARGET_VELOCITY = "target_velocity"
+"""目标速度 (m/s)，shape ``(num_slots, 3)``。"""
 # 新文件写入上述键名；Dataset.load 仍兼容旧键 uav_position / uav_velocity。
 _DATASET_KEY_BS_POS = "bs_pos"
+"""参考发射机/基站位置 (m)，shape ``(3,)``（采集脚本取 ``bs1``）。"""
 
 _META_KEY_CARRIER_FREQUENCY = "carrier_frequency"
+"""载频 (Hz)，与 RT / 感知真值一致。"""
 _META_KEY_SUBCARRIER_SPACING = "subcarrier_spacing"
+"""子载波间隔 (Hz)。"""
 _META_KEY_NUM_SUBCARRIERS = "num_subcarriers"
+"""OFDM 有效子载波数（与 CFR 频域维对齐）。"""
 _META_KEY_NUM_SLOTS = "num_slots"
+"""有效 episode / 轨迹步数（与 CFR 第一维一致）。"""
 _META_KEY_DESCRIPTION = "description"
 _META_KEY_HAS_CIR = "has_cir"
+"""是否写入 CIR 数据集（与 cir_a/cir_tau 是否存在一致）。"""
 
 # 采集元数据根属性前缀（``collection_*``），由 ``run_dataset_collection.py`` 写入
 _META_PREFIX_COLLECTION = "collection_"
@@ -35,7 +50,11 @@ _META_PREFIX_COLLECTION = "collection_"
 
 @dataclass(frozen=True)
 class CollectionMetadata:
-    """``run_dataset_collection.py`` 一次采集运行的可复现配置摘要。"""
+    """``run_dataset_collection.py`` 一次采集运行的可复现配置摘要。
+
+    序列化到 HDF5 根属性 ``collection_<field>``（见 ``write_hdf5_attrs``）。
+    ``source`` 为 ``monte_carlo`` 或 ``trajectory``；蒙特卡洛含 ``roi_*``、``quality_*`` 等；轨迹含 ``time_delta``、``steps``。
+    """
 
     source: str
     seed: int
@@ -128,59 +147,97 @@ class CollectionMetadata:
             seed=int(f.attrs[f"{_META_PREFIX_COLLECTION}seed"]),
             config_file=str(f.attrs[f"{_META_PREFIX_COLLECTION}config_file"]),
             scene_slug=str(f.attrs[f"{_META_PREFIX_COLLECTION}scene_slug"]),
-            num_samples=int(_opt("num_samples"))
-            if _opt("num_samples") is not None
-            else None,
-            run_sensing=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}run_sensing", False)),
+            num_samples=(
+                int(_opt("num_samples")) if _opt("num_samples") is not None else None
+            ),
+            run_sensing=bool(
+                f.attrs.get(f"{_META_PREFIX_COLLECTION}run_sensing", False)
+            ),
             save_cir=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}save_cir", False)),
             roi_xmin=float(_opt("roi_xmin")) if _opt("roi_xmin") is not None else None,
             roi_xmax=float(_opt("roi_xmax")) if _opt("roi_xmax") is not None else None,
             roi_ymin=float(_opt("roi_ymin")) if _opt("roi_ymin") is not None else None,
             roi_ymax=float(_opt("roi_ymax")) if _opt("roi_ymax") is not None else None,
             roi_z=float(f.attrs.get(f"{_META_PREFIX_COLLECTION}roi_z", 0.0)),
-            sampling_mode=str(_opt("sampling_mode"))
-            if _opt("sampling_mode") is not None
-            else None,
-            velocity_sampling=str(_opt("velocity_sampling"))
-            if _opt("velocity_sampling") is not None
-            else None,
-            safe_margin=float(_opt("safe_margin")) if _opt("safe_margin") is not None else None,
-            max_trials_factor=int(_opt("max_trials_factor"))
-            if _opt("max_trials_factor") is not None
-            else None,
-            speed_min=float(_opt("speed_min")) if _opt("speed_min") is not None else None,
-            speed_max=float(_opt("speed_max")) if _opt("speed_max") is not None else None,
-            time_delta=float(_opt("time_delta")) if _opt("time_delta") is not None else None,
+            sampling_mode=(
+                str(_opt("sampling_mode"))
+                if _opt("sampling_mode") is not None
+                else None
+            ),
+            velocity_sampling=(
+                str(_opt("velocity_sampling"))
+                if _opt("velocity_sampling") is not None
+                else None
+            ),
+            safe_margin=(
+                float(_opt("safe_margin")) if _opt("safe_margin") is not None else None
+            ),
+            max_trials_factor=(
+                int(_opt("max_trials_factor"))
+                if _opt("max_trials_factor") is not None
+                else None
+            ),
+            speed_min=(
+                float(_opt("speed_min")) if _opt("speed_min") is not None else None
+            ),
+            speed_max=(
+                float(_opt("speed_max")) if _opt("speed_max") is not None else None
+            ),
+            time_delta=(
+                float(_opt("time_delta")) if _opt("time_delta") is not None else None
+            ),
             steps=int(_opt("steps")) if _opt("steps") is not None else None,
-            quality_filter=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}quality_filter", False)),
-            quality_accepted=int(_opt("quality_accepted"))
-            if _opt("quality_accepted") is not None
-            else None,
-            quality_rejected=int(_opt("quality_rejected"))
-            if _opt("quality_rejected") is not None
-            else None,
-            quality_reject_no_valid_paths=int(_opt("quality_reject_no_valid_paths"))
-            if _opt("quality_reject_no_valid_paths") is not None
-            else None,
-            quality_reject_weak_los=int(_opt("quality_reject_weak_los"))
-            if _opt("quality_reject_weak_los") is not None
-            else None,
-            quality_reject_low_peak_prominence=int(_opt("quality_reject_low_peak_prominence"))
-            if _opt("quality_reject_low_peak_prominence") is not None
-            else None,
-            quality_reject_peak_misaligned=int(_opt("quality_reject_peak_misaligned"))
-            if _opt("quality_reject_peak_misaligned") is not None
-            else None,
-            require_los=bool(_opt("require_los")) if _opt("require_los") is not None else None,
-            min_los_ratio=float(_opt("min_los_ratio"))
-            if _opt("min_los_ratio") is not None
-            else None,
-            min_peak_prominence_db=float(_opt("min_peak_prominence_db"))
-            if _opt("min_peak_prominence_db") is not None
-            else None,
-            max_bin_offset=int(_opt("max_bin_offset"))
-            if _opt("max_bin_offset") is not None
-            else None,
+            quality_filter=bool(
+                f.attrs.get(f"{_META_PREFIX_COLLECTION}quality_filter", False)
+            ),
+            quality_accepted=(
+                int(_opt("quality_accepted"))
+                if _opt("quality_accepted") is not None
+                else None
+            ),
+            quality_rejected=(
+                int(_opt("quality_rejected"))
+                if _opt("quality_rejected") is not None
+                else None
+            ),
+            quality_reject_no_valid_paths=(
+                int(_opt("quality_reject_no_valid_paths"))
+                if _opt("quality_reject_no_valid_paths") is not None
+                else None
+            ),
+            quality_reject_weak_los=(
+                int(_opt("quality_reject_weak_los"))
+                if _opt("quality_reject_weak_los") is not None
+                else None
+            ),
+            quality_reject_low_peak_prominence=(
+                int(_opt("quality_reject_low_peak_prominence"))
+                if _opt("quality_reject_low_peak_prominence") is not None
+                else None
+            ),
+            quality_reject_peak_misaligned=(
+                int(_opt("quality_reject_peak_misaligned"))
+                if _opt("quality_reject_peak_misaligned") is not None
+                else None
+            ),
+            require_los=(
+                bool(_opt("require_los")) if _opt("require_los") is not None else None
+            ),
+            min_los_ratio=(
+                float(_opt("min_los_ratio"))
+                if _opt("min_los_ratio") is not None
+                else None
+            ),
+            min_peak_prominence_db=(
+                float(_opt("min_peak_prominence_db"))
+                if _opt("min_peak_prominence_db") is not None
+                else None
+            ),
+            max_bin_offset=(
+                int(_opt("max_bin_offset"))
+                if _opt("max_bin_offset") is not None
+                else None
+            ),
         )
 
     def format_roi(self) -> str:
@@ -215,7 +272,7 @@ def _require_dataset_any(f: h5py.File, keys: tuple[str, ...]) -> h5py.Dataset:
 
 
 def _read_meta(f: h5py.File, key: str) -> Any:
-    """读取元数据：优先 attrs，兼容旧版 dataset 字段。"""
+    """读取元数据：优先根 ``attrs``，兼容旧版将标量存为单元素 dataset 的文件。"""
     if key in f.attrs:
         return f.attrs[key]
     if key in f:
@@ -231,12 +288,18 @@ def _array_info(name: str, arr: np.ndarray) -> str:
 class Dataset:
     """ISAC HDF5 数据集的内存表示（必含 CFR；CIR 可选）。
 
-    蒙特卡洛等场景下射线数目可能随样本变化；若含 CIR，``cir_a`` / ``cir_tau`` 在路径维上可能对较短样本零填充。
+    典型数组形状：
 
-    - 构造采集结果：``Dataset.from_export_arrays(...)``
-    - 落盘：``dataset.save(path)``
-    - 读取：``Dataset.load(path)``
-    - 摘要：``dataset.show()``；CFR 预览：``dataset.plot_cfr(slot=...)``
+    - ``cfr``：``(num_slots, S, F)`` 或 ``(num_slots, F)``，复数；``S``=OFDM 符号，``F``=子载波
+    - ``cir_a`` / ``cir_tau``：路径数可变时在路径维零填充；``cir_a`` 末维为 ``[Re, Im]``
+    - ``target_position`` / ``target_velocity``：``(num_slots, 3)``
+    - ``bs_pos``：``(3,)``
+
+    常用 API：
+
+    - 构造：``Dataset.from_export_arrays(...)``
+    - 落盘 / 读取：``save`` / ``load``
+    - 校验：``show()``；CFR 预览：``plot_cfr(slot=...)``
     """
 
     cfr: np.ndarray
@@ -332,20 +395,24 @@ class Dataset:
                 subcarrier_spacing=float(_read_meta(f, _META_KEY_SUBCARRIER_SPACING)),
                 num_subcarriers=int(_read_meta(f, _META_KEY_NUM_SUBCARRIERS)),
                 num_slots=int(_read_meta(f, _META_KEY_NUM_SLOTS)),
-                description=str(_read_meta(f, _META_KEY_DESCRIPTION))
-                if (_META_KEY_DESCRIPTION in f.attrs or _META_KEY_DESCRIPTION in f)
-                else "",
+                description=(
+                    str(_read_meta(f, _META_KEY_DESCRIPTION))
+                    if (_META_KEY_DESCRIPTION in f.attrs or _META_KEY_DESCRIPTION in f)
+                    else ""
+                ),
                 collection_meta=CollectionMetadata.read_hdf5_attrs(f),
             )
 
     def save(self, filepath: str | Path) -> None:
-        """写入 HDF5；成功后打印保存路径。"""
+        """写入 HDF5（gzip 压缩 CFR/CIR）；根属性含 OFDM 网格与 ``has_cir``。"""
         path = Path(filepath)
         has_cir = self.cir_a is not None and self.cir_tau is not None
         with h5py.File(path, "w") as f:
             f.create_dataset(_DATASET_KEY_CFR, data=self.cfr, compression="gzip")
             if has_cir:
-                f.create_dataset(_DATASET_KEY_CIR_A, data=self.cir_a, compression="gzip")
+                f.create_dataset(
+                    _DATASET_KEY_CIR_A, data=self.cir_a, compression="gzip"
+                )
                 f.create_dataset(
                     _DATASET_KEY_CIR_TAU, data=self.cir_tau, compression="gzip"
                 )
@@ -393,7 +460,9 @@ class Dataset:
             )
             print(f"  collection ROI: {m.format_roi()}")
             if m.num_samples is not None:
-                print(f"  collection num_samples={m.num_samples}, sampling_mode={m.sampling_mode}")
+                print(
+                    f"  collection num_samples={m.num_samples}, sampling_mode={m.sampling_mode}"
+                )
             if m.time_delta is not None:
                 print(f"  collection time_delta={m.time_delta}, steps={m.steps}")
 
@@ -424,7 +493,9 @@ class Dataset:
             fig.colorbar(im, ax=ax)
             ax.set_title(f"CFR slot={slot} ({'|·|' if magnitude else 'real'} 2D)")
         else:
-            raise ValueError(f"cfr[slot] 维度 {plane.ndim} 不支持快速绘图，请先 reshape")
+            raise ValueError(
+                f"cfr[slot] 维度 {plane.ndim} 不支持快速绘图，请先 reshape"
+            )
 
         plt.tight_layout()
         plt.show()
