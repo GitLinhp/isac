@@ -35,7 +35,7 @@ from tqdm import tqdm
 
 from isac import PROJECT_ROOT
 from isac.datasets import CollectionMetadata, Dataset
-from isac.data_structures.rx_target_tx_geometric import RxTargetTxGeometric
+from isac.channel.rt.rx_target_tx_geometric import RxTargetTxGeometric
 from isac.sensing.sample_quality import (
     QualityFilterStats,
     SampleQualityConfig,

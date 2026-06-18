@@ -20,7 +20,7 @@ import sionna.rt.scene
 from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
 from ...data_structures.params.rt_scene import RtSceneParams, AntennaArrayParams
-from ...data_structures.rx_target_tx_geometric import RxTargetTxGeometric
+from .rx_target_tx_geometric import RxTargetTxGeometric
 from ... import PROJECT_ROOT
 
 

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from isac.data_structures.rx_target_tx_geometric import RxTargetTxGeometric
+from isac.channel.rt.rx_target_tx_geometric import RxTargetTxGeometric
 from isac.sensing.utils import MONOSTATIC_TX_RX_EPS_M, compute_range
 
 
