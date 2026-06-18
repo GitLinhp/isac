@@ -93,17 +93,12 @@ flowchart TB
 ### 3. 发射参考信号
 
 ```
-x_rg = system.tx_symbols_to_resource_grid()
+_, x_rg, x_time = system.transmit()
 ```
 
 - 配置 [`sensing.source.type = "zc"`](config/static_target_simulation.toml)：Zadoff-Chu 序列映射到资源网格。
-- 输出形状：`(batch, …, num_ofdm_symbols, fft_size)`，默认 **512 × 2048**。
-
-```
-x_time = system.components.modulator(x_rg)
-```
-
-- 时域样点数 **N = 512 × (2048 + 512) = 1,310,720**。
+- `x_rg` 形状：`(batch, …, num_ofdm_symbols, fft_size)`，默认 **512 × 2048**。
+- `x_time` 为 `modulator(x_rg)`；时域样点数 **N = 512 × (2048 + 512) = 1,310,720**。
 
 ### 4. 点目标信道（时域）
 

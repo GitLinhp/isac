@@ -94,7 +94,7 @@ def main() -> None:
     system.components.rt_scene.get("reflector").velocity = [0, 0, -20]  # 设置反射器速度
     system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]  # 设置基站1发射速度
 
-    x_rg = system.tx_symbols_to_resource_grid()
+    _, x_rg, x_time = system.transmit()
     ch = system.components.channel
     snr_db = system.params.channel.snr_db
     no_comm = ch.noise_power_from_snr_db(
@@ -109,7 +109,6 @@ def main() -> None:
         y_rg = system.apply_channel(x_rg, domain=domain)
 
     elif domain == "time":
-        x_time = system.components.modulator(x_rg)
         y_time_clean = ch(x_time, domain=domain, snr_db=None)
         y_time = system.apply_channel(x_time, domain=domain)
         y_clean = system.components.demodulator(y_time_clean)

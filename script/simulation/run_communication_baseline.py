@@ -44,31 +44,17 @@ def main() -> None:
     script_out_dir = PROJECT_ROOT / "out" / "communication_baseline"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    batch_size = system.args.batch_size  # 获取批处理大小
+    # 发射
+    b, _, x_time = system.transmit()
 
-    b: torch.Tensor = system.components.binary_source(  # 生成比特流
-        [
-            batch_size,
-            1,
-            1,
-            system.components.rg.num_data_symbols
-            * system.params.qam.num_bits_per_symbol,
-        ]
-    )
-    b = b.to(system.device)  # 将比特流移动到设备上
-    x = system.components.mapper(b)  # 映射比特流到频域
-    x_rg = system.components.rg_mapper(x)  # 频域映射
-    x_time = system.components.modulator(x_rg)  # 调制到时域
-
+    # 时域信道
     y_time = x_time  # 时域信道
 
-    y_rg = system.components.demodulator(y_time)  # 解调到频域
-    y = system.components.rg_demapper(y_rg)  # 频域解映射
-    b_hat = system.components.demapper(
-        y, no=torch.tensor(0.0, device=system.device)
-    )  # 解码
-    ber = compute_ber(b, b_hat)  # 计算误码率
+    # 接收
+    b_hat = system.receive(y_time)
 
+    # 计算误码率
+    ber = compute_ber(b, b_hat)
     print("BER: {:.3e}".format(ber))
 
 

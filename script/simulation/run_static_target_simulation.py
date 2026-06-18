@@ -135,8 +135,7 @@ def main() -> None:
     )
 
     # --- OFDM 参考信号与时域 static_target 信道 ---
-    x_rg = system.tx_symbols_to_resource_grid()
-    x_time = system.components.modulator(x_rg)
+    _, x_rg, x_time = system.transmit()
 
     ch = system.components.channel
     snr_db = system.params.channel.snr_db

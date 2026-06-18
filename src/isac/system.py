@@ -9,14 +9,8 @@ import sionna
 
 # 自定义模块
 from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
-from .utils.type_converter import convert
 from .data_structures import SystemParams, SystemComponents
 from . import PROJECT_ROOT
-
-
-def csv_float2_scalar(value: object) -> str:
-    """将标量格式化为保留两位小数的 CSV 字段字符串。"""
-    return f"{convert(value, 'float'):.2f}"
 
 
 class System:
@@ -50,6 +44,36 @@ class System:
             self.params, device=self.device
         )
 
+    # 发射
+    def transmit(self) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
+        """生成发射比特 ``b``（仅 binary 源）、频域资源网格 ``x_rg`` 与时域 ``x_time``。"""
+        src_type = self.params.sensing.source.type
+        batch_size = self.args.batch_size
+        rg = self.components.rg
+
+        if src_type == "binary":  # 二进制源
+            b = self.components.binary_source(
+                [
+                    batch_size,
+                    1,
+                    1,
+                    rg.num_data_symbols * self.params.qam.num_bits_per_symbol,
+                ]
+            )
+            x = self.components.mapper(b)
+
+        elif src_type == "zc":  # Zadoff-Chu 源
+            b = None
+            x = self.components.zc_source([batch_size, 1, 1, rg.num_data_symbols])
+
+        else:  # 不支持的源类型
+            raise ValueError(f"unsupported sensing.source.type: {src_type!r}")
+
+        x_rg = self.components.rg_mapper(x)  # 频域资源网格映射
+        x_time = self.components.modulator(x_rg)  # OFDM调制
+        return b, x_rg, x_time
+
+    # 应用信道
     def apply_channel(
         self,
         inputs: torch.Tensor,
@@ -64,32 +88,30 @@ class System:
             coderate=self.params.channel.coderate,
         )
 
-    def tx_symbols_to_resource_grid(self) -> torch.Tensor:
-        """按 ``params.sensing.source`` 生成发射侧频域资源网格 ``x_rg``（``ResourceGridMapper`` 输出）。"""
+    # 接收
+    def receive(
+        self,
+        y_time: torch.Tensor,
+        no: torch.Tensor | float | None = None,
+    ) -> torch.Tensor:
+        """时域接收：``demodulator`` → ``rg_demapper`` → ``demapper``，返回译码比特 ``b_hat``。"""
+        if no is None:
+            no = torch.tensor(0.0, device=self.device)
+        elif not isinstance(no, torch.Tensor):
+            no = torch.tensor(no, device=self.device, dtype=torch.float32)
 
-        src_type = self.params.sensing.source.type
-        batch = self.args.batch_size
-        rg = self.components.rg
+        # OFDM 解调
+        y_rg = self.components.demodulator(y_time)
 
-        if src_type == "binary":  # 二进制源
-            b = self.components.binary_source(
-                [
-                    batch,
-                    1,
-                    1,
-                    rg.num_data_symbols * self.params.qam.num_bits_per_symbol,
-                ]
-            )
-            x = self.components.mapper(b)
+        # 资源网格解映射
+        y = self.components.rg_demapper(y_rg)
 
-        elif src_type == "zc":  # Zadoff-Chu 源
-            x = self.components.zc_source([batch, 1, 1, rg.num_data_symbols])
+        # QAM 解映射
+        b_hat = self.components.demapper(y, no=no)
 
-        else:  # 不支持的源类型
-            raise ValueError(f"unsupported sensing.source.type: {src_type!r}")
+        return b_hat
 
-        return self.components.rg_mapper(x)
-
+    # 信道估计
     def estimate_channel(
         self, x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12
     ) -> torch.Tensor:

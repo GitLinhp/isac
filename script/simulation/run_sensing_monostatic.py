@@ -84,12 +84,11 @@ def main() -> None:
     )
 
     # --- OFDM 参考信号与信道 ---
-    x_rg = system.tx_symbols_to_resource_grid()
+    _, x_rg, x_time = system.transmit()
 
     if domain == "frequency":
         y_rg = system.apply_channel(x_rg, domain=domain)
     elif domain == "time":
-        x_time = system.components.modulator(x_rg)
         y_time = system.apply_channel(x_time, domain=domain)
         y_rg = system.components.demodulator(y_time)
     else:

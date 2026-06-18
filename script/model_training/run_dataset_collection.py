@@ -42,7 +42,8 @@ from isac.sensing.sample_quality import (
     evaluate_sample_quality,
 )
 from isac.sensing.utils import doppler_to_velocity
-from isac.system import System, csv_float2_scalar
+from isac.system import System
+from isac.utils import csv_float2_scalar
 from isac.utils import (
     compute_rmse,
     images_to_gif,
@@ -232,12 +233,11 @@ def _los_truth_at_first_triple(
 
 def _estimate_delay_doppler_spectrum(system: System, domain: str) -> torch.Tensor:
     """OFDM 参考网格 → 信道施加 → LS 信道估计 → 时延–多普勒谱。"""
-    x_rg = system.tx_symbols_to_resource_grid()
+    _, x_rg, x_time = system.transmit()
 
     if domain == "frequency":
         y_rg = system.apply_channel(x_rg, domain=domain)
     elif domain == "time":
-        x_time = system.components.modulator(x_rg)
         y_time = system.apply_channel(x_time, domain=domain)
         y_rg = system.components.demodulator(y_time)
     else:

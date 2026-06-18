@@ -14,6 +14,8 @@ import torch
 import numpy as np
 import sionna
 
+from .type_converter import convert
+
 
 # ============================================================================
 # 随机种子设置
@@ -42,3 +44,8 @@ def set_random_seed(seed: int) -> None:
         torch.backends.cudnn.benchmark = False
 
     sionna.phy.config.seed = seed
+
+
+def csv_float2_scalar(value: object) -> str:
+    """将标量格式化为保留两位小数的 CSV 字段字符串。"""
+    return f"{convert(value, 'float'):.2f}"
