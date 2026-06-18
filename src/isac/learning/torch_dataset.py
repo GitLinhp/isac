@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 import tomli
 
 from ..data_structures import SystemParams
-from ..data_structures.components.ofdm_components import build_ofdm_components
+from ..data_structures.components.ofdm_components import OFDMComponents
 from ..datasets import Dataset as IsacDataset
 from ..sensing.sensing_performance import SensingPerformance
 from ..utils.config_loader import load_config
@@ -68,7 +68,7 @@ class MonostaticSensingTorchDataset(Dataset):
         )
 
         params = _load_system_params(config_file)
-        ofdm = build_ofdm_components(params, device=_sionna_device_str(self.device))
+        ofdm = OFDMComponents.build_from_params(params, device=_sionna_device_str(self.device))
         self._sensing_perf = SensingPerformance(
             ofdm.rg,
             carrier_frequency=self._isac_ds.carrier_frequency,

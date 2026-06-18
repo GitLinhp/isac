@@ -36,8 +36,8 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-from isac.data_structures.components.ofdm_components import build_ofdm_components
-from isac.data_structures.components.sensing_components import build_sensing_components
+from isac.data_structures.components.ofdm_components import OFDMComponents
+from isac.data_structures.components.sensing_components import SensingComponents
 from isac.data_structures.params import SystemParams
 from isac.utils import load_config, set_random_seed
 
@@ -236,8 +236,8 @@ def _build_tx_packet_impl(effective: EffectiveConfig) -> TxPacket:
     set_random_seed(seed)
     sionna.phy.config.device = device
 
-    ofdm = build_ofdm_components(params, device=device)
-    sens = build_sensing_components(params, ofdm.rg, device=device)
+    ofdm = OFDMComponents.build_from_params(params, device=device)
+    sens = SensingComponents.build_from_params(params, ofdm.rg, device=device)
     rg = ofdm.rg
 
     if params.sensing.source.type != "zc":

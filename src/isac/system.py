@@ -11,11 +11,10 @@ import sionna
 from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
 from .utils.type_converter import convert
 from .data_structures import SystemParams, SystemComponents
-from .sensing.clutter_suppression import MovingTargetDetection, MovingTargetIndication
 from . import PROJECT_ROOT
 
 
-def _csv_float2_scalar(value: object) -> str:
+def csv_float2_scalar(value: object) -> str:
     """将标量格式化为保留两位小数的 CSV 字段字符串。"""
     return f"{convert(value, 'float'):.2f}"
 
@@ -44,17 +43,8 @@ class System:
 
         sionna.phy.config.device = self.device
 
-        self.components = SystemComponents.from_system_params(
+        self.components = SystemComponents.build_from_params(
             self.params, device=self.device
-        )
-
-        self.moving_target_indication = MovingTargetIndication(
-            self.components.sensing_performance,
-            filter_order=1,
-        )
-        self.moving_target_detection = MovingTargetDetection(
-            self.components.sensing_performance,
-            self.params.carrier_frequency,
         )
 
     def apply_channel(

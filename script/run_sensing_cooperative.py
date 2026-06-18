@@ -140,7 +140,7 @@ def main() -> None:
         path_label = "双基地" if is_bistatic else "单基地"
 
         h_tx = h_per_tx[tx_name]
-        h_tx = system.moving_target_indication(h_tx, axis=-2)
+        h_tx = system.components.moving_target_indication(h_tx, axis=-2)
         h_dd_tx = dd(h_tx)
 
         slug = _slug_tx_name(tx_name)
@@ -208,7 +208,7 @@ def main() -> None:
     )
 
     h_combined = sum(h_per_tx[name] for name in geom.tx_names)
-    h_combined = system.moving_target_indication(h_combined, axis=-2)
+    h_combined = system.components.moving_target_indication(h_combined, axis=-2)
     h_dd_combined = dd(h_combined)
     dd.h_delay_doppler = h_dd_combined
     dd.visualize(

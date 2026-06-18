@@ -159,8 +159,8 @@ def _build_rx_context_impl_from_toml(
 ) -> RxContext:
     import sionna
 
-    from isac.data_structures.components.ofdm_components import build_ofdm_components
-    from isac.data_structures.components.sensing_components import build_sensing_components
+    from isac.data_structures.components.ofdm_components import OFDMComponents
+    from isac.data_structures.components.sensing_components import SensingComponents
     from isac.data_structures.params import SystemParams
     from isac.utils import load_config, set_random_seed
 
@@ -169,8 +169,8 @@ def _build_rx_context_impl_from_toml(
     set_random_seed(seed)
     sionna.phy.config.device = device
 
-    ofdm = build_ofdm_components(params, device=device)
-    sens = build_sensing_components(params, ofdm.rg, device=device)
+    ofdm = OFDMComponents.build_from_params(params, device=device)
+    sens = SensingComponents.build_from_params(params, ofdm.rg, device=device)
 
     import torch
 
@@ -194,8 +194,8 @@ def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
     import sionna
     import torch
 
-    from isac.data_structures.components.ofdm_components import build_ofdm_components
-    from isac.data_structures.components.sensing_components import build_sensing_components
+    from isac.data_structures.components.ofdm_components import OFDMComponents
+    from isac.data_structures.components.sensing_components import SensingComponents
     from isac.utils import set_random_seed
 
     params = effective.system_params
@@ -203,8 +203,8 @@ def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
     set_random_seed(effective.seed)
     sionna.phy.config.device = device
 
-    ofdm = build_ofdm_components(params, device=device)
-    sens = build_sensing_components(params, ofdm.rg, device=device)
+    ofdm = OFDMComponents.build_from_params(params, device=device)
+    sens = SensingComponents.build_from_params(params, ofdm.rg, device=device)
 
     x_rg_t = torch.from_numpy(tx_packet.x_rg).to(device=device, dtype=torch.complex64)
     cp = params.ofdm.cyclic_prefix_length

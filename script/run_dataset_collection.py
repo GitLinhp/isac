@@ -42,7 +42,7 @@ from isac.sensing.sample_quality import (
     evaluate_sample_quality,
 )
 from isac.sensing.utils import doppler_to_velocity
-from isac.system import System, _csv_float2_scalar
+from isac.system import System, csv_float2_scalar
 from isac.utils import (
     compute_rmse,
     images_to_gif,
@@ -359,14 +359,14 @@ def _kinematics_row(
     vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
     return {
         index_key: episode_idx,
-        "pos_x_m": _csv_float2_scalar(pos_row[0]),
-        "pos_y_m": _csv_float2_scalar(pos_row[1]),
-        "pos_z_m": _csv_float2_scalar(pos_row[2]),
-        "vel_x_mps": _csv_float2_scalar(vel_row[0]),
-        "vel_y_mps": _csv_float2_scalar(vel_row[1]),
-        "vel_z_mps": _csv_float2_scalar(vel_row[2]),
-        "true_range_m": _csv_float2_scalar(true_range),
-        "true_radial_velocity_mps": _csv_float2_scalar(true_velocity),
+        "pos_x_m": csv_float2_scalar(pos_row[0]),
+        "pos_y_m": csv_float2_scalar(pos_row[1]),
+        "pos_z_m": csv_float2_scalar(pos_row[2]),
+        "vel_x_mps": csv_float2_scalar(vel_row[0]),
+        "vel_y_mps": csv_float2_scalar(vel_row[1]),
+        "vel_z_mps": csv_float2_scalar(vel_row[2]),
+        "true_range_m": csv_float2_scalar(true_range),
+        "true_radial_velocity_mps": csv_float2_scalar(true_velocity),
     }
 
 
@@ -381,10 +381,10 @@ def _append_monostatic_sensing_columns(
     """追加单基地感知列；RMSE 为单 episode 估计 vs 真值（非跨 episode 统计）。"""
     rmse_range = compute_rmse(est_range.reshape(1), true_range.reshape(1))
     rmse_velocity = compute_rmse(est_velocity.reshape(1), true_velocity.reshape(1))
-    row["est_range_m"] = _csv_float2_scalar(est_range)
-    row["rmse_range_m"] = _csv_float2_scalar(rmse_range)
-    row["est_radial_velocity_mps"] = _csv_float2_scalar(est_velocity)
-    row["rmse_radial_velocity_mps"] = _csv_float2_scalar(rmse_velocity)
+    row["est_range_m"] = csv_float2_scalar(est_range)
+    row["rmse_range_m"] = csv_float2_scalar(rmse_range)
+    row["est_radial_velocity_mps"] = csv_float2_scalar(est_velocity)
+    row["rmse_radial_velocity_mps"] = csv_float2_scalar(rmse_velocity)
 
 
 def _append_bistatic_sensing_columns(
@@ -398,12 +398,12 @@ def _append_bistatic_sensing_columns(
     """追加双基地感知列。"""
     rmse_path = compute_rmse(est_path.reshape(1), true_path.reshape(1))
     rmse_velocity = compute_rmse(est_velocity.reshape(1), true_velocity.reshape(1))
-    row["true_los_path_length_m"] = _csv_float2_scalar(true_path)
-    row["true_velocity_paths_doppler_mps"] = _csv_float2_scalar(true_velocity)
-    row["est_los_path_length_m"] = _csv_float2_scalar(est_path)
-    row["est_velocity_paths_doppler_mps"] = _csv_float2_scalar(est_velocity)
-    row["rmse_los_path_m"] = _csv_float2_scalar(rmse_path)
-    row["rmse_velocity_paths_doppler_mps"] = _csv_float2_scalar(rmse_velocity)
+    row["true_los_path_length_m"] = csv_float2_scalar(true_path)
+    row["true_velocity_paths_doppler_mps"] = csv_float2_scalar(true_velocity)
+    row["est_los_path_length_m"] = csv_float2_scalar(est_path)
+    row["est_velocity_paths_doppler_mps"] = csv_float2_scalar(est_velocity)
+    row["rmse_los_path_m"] = csv_float2_scalar(rmse_path)
+    row["rmse_velocity_paths_doppler_mps"] = csv_float2_scalar(rmse_velocity)
 
 
 def _log_sensing_step(

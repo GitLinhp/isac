@@ -155,9 +155,9 @@ def merge_config(
         ofdm=effective_ofdm,
     )
 
-    from isac.data_structures.components.ofdm_components import build_ofdm_components
+    from isac.data_structures.components.ofdm_components import OFDMComponents
 
-    rg = build_ofdm_components(effective_params, device=overrides.device).rg
+    rg = OFDMComponents.build_from_params(effective_params, device=overrides.device).rg
     sp = SensingPerformance(rg, carrier_frequency=overrides.center_freq)
     samp_rate = int(overrides.fft_len * overrides.subcarrier_spacing)
     sym_dur = (overrides.fft_len + overrides.cp_len) / samp_rate if samp_rate else 0.0

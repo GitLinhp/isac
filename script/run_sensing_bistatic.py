@@ -3,7 +3,7 @@
 管线概要
 --------
 1. 按 ``--domain`` 在频域或时域施加信道，经 ``estimate_channel`` 得到 CFR 相关估计。
-2. 计算时延–多普勒谱；再沿多普勒维（``dim=0``）对谱施加 **MTI**（``system.moving_target_indication``），并导出 ``out/sensing_bistatic/sensing_bistatic_delay_doppler_spectrum.png``。
+2. 计算时延–多普勒谱；再沿多普勒维（``dim=0``）对谱施加 **MTI**（``system.components.moving_target_indication``），并导出 ``out/sensing_bistatic/sensing_bistatic_delay_doppler_spectrum.png``。
 3. MUSIC 提取峰；须传入 ``sens_mode='bistatic'``，使 bin→物理量与折叠路径 ``||T-X||+||R-T||`` 及配套多普勒尺度一致（勿沿用默认单基地的 ``τ·c/2``、``v∝f_d/(2f_c)``）。
 4. 用 ``RTScene.rx_target_tx_geometric`` 的 ``range_tensor`` / ``vel_tensor`` 作真值；``match_peaks_and_compute_radial_rmse`` 做匈牙利匹配并计算 RMSE。
 
@@ -98,7 +98,7 @@ def main() -> None:
     h = system.estimate_channel(x_rg, y_rg)
 
     # MTI：沿符号维（dim=0，对应慢时间）抑制零多普勒杂波后再作时延–多普勒谱
-    h = system.moving_target_indication(h, axis=-2)
+    h = system.components.moving_target_indication(h, axis=-2)
 
     # 计算时延–多普勒谱
     h_delay_doppler = system.components.delay_doppler_spectrum(h)
