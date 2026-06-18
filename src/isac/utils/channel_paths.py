@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import torch
 from sionna.phy.channel import subcarrier_frequencies
 
-if TYPE_CHECKING:
-    from sionna.phy.ofdm import ResourceGrid
+
+from sionna.phy.ofdm import ResourceGrid
 
 
 def scene_slug_from_rt_scene(scene: object) -> str:

@@ -10,6 +10,8 @@
 import numpy as np
 import torch
 
+from .type_converter import convert
+
 
 def next_pow2(n: int) -> int:
     """
@@ -104,6 +106,40 @@ def radian_to_degree(radian: float | np.ndarray | torch.Tensor) -> torch.Tensor:
     else:
         radian = radian.to(torch.float32)
     return radian * 180 / np.pi
+
+
+def cartesian_direction_to_yaw_pitch_roll(
+    direction: torch.Tensor | np.ndarray,
+) -> np.ndarray:
+    """将笛卡尔方向向量转换为 ``[yaw, pitch, roll]``（弧度）。
+
+    参数:
+    -------
+    - direction : torch.Tensor | np.ndarray
+        方向向量，形状应可展平为长度 3。
+
+    返回:
+    -------
+    - np.ndarray
+        长度为 3 的 ``[yaw, pitch, roll]``，单位为弧度。
+    """
+    vec = np.asarray(convert(direction, "numpy"), dtype=np.float64).reshape(-1)
+    if vec.size != 3:
+        raise ValueError(f"direction 必须为长度 3 的向量，当前长度为 {vec.size}")
+
+    x, y, z = vec
+    r = float(np.linalg.norm(vec))
+    if r < 1e-12:
+        return np.array([0.0, 0.0, 0.0], dtype=np.float64)
+
+    theta = float(np.arccos(np.clip(z / r, -1.0, 1.0)))
+    phi = float(np.arctan2(y, x))
+
+    yaw = phi
+    pitch = (np.pi / 2.0) - theta
+    roll = 0.0
+
+    return np.array([yaw, pitch, roll], dtype=np.float64)
 
 
 #  线性尺度转换为 dB 尺度工具函数
