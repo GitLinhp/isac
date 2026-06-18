@@ -2,7 +2,7 @@
 感知相关组件构建（与 ``sensing_params`` 对应）
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from sionna.phy.ofdm import ResourceGrid
 
@@ -53,16 +53,7 @@ class SensingComponents:
         music_estimator = MUSICEstimator(
             device=device, sensing_performance=sensing_performance
         )
-        p = system_params.sensing.cfar
-        cfar_inst = CFARDetector(
-            cfar_type=p.cfar_type,
-            guard=p.guard,
-            trailing=p.trailing,
-            pfa=p.pfa,
-            detector=p.detector,
-            offset=p.offset,
-            k=p.k,
-        )
+        cfar_inst = CFARDetector(**asdict(system_params.sensing.cfar))
 
         return cls(
             sensing_performance=sensing_performance,
