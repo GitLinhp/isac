@@ -1,8 +1,10 @@
 """
-OFDM / 物理层相关组件构建（与 ``ofdm_params`` 对应）
+OFDM / 物理层相关组件构建（与 ``ofdm_params`` 对应；``sensing.source.type == 'zc'`` 时含可选 ZC 源）
 """
 
+import math
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 from sionna.phy.mimo import StreamManagement
@@ -16,6 +18,7 @@ from sionna.phy.ofdm import (
 )
 
 from ..params import SystemParams
+from ...zc_source import ZCSource
 
 
 @dataclass
@@ -30,6 +33,7 @@ class OFDMComponents:
     rg_demapper: ResourceGridDemapper
     modulator: OFDMModulator
     demodulator: OFDMDemodulator
+    zc_source: Optional[ZCSource] = None
 
     @classmethod
     def build_from_params(
@@ -58,6 +62,23 @@ class OFDMComponents:
             dc_null=False,
             device=device,
         )
+
+        src = system_params.sensing.source
+        zc_inst: Optional[ZCSource] = None
+        if src.type == "zc":
+            n_data = rg.num_data_symbols
+            u = src.root_index
+            if math.gcd(u, n_data) != 1:
+                raise ValueError(
+                    "sensing.source: ZC requires gcd(root_index, rg.num_data_symbols)=1; "
+                    f"got root_index={u}, num_data_symbols={n_data}"
+                )
+            zc_inst = ZCSource(
+                root_index=u,
+                normalize=src.normalize,
+                device=device,
+            )
+
         rg_mapper = ResourceGridMapper(rg, device=device)
         rg_demapper = ResourceGridDemapper(rg, sm, device=device)
         modulator = OFDMModulator(
@@ -79,4 +100,5 @@ class OFDMComponents:
             rg_demapper=rg_demapper,
             modulator=modulator,
             demodulator=demodulator,
+            zc_source=zc_inst,
         )

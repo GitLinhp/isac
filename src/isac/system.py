@@ -85,7 +85,7 @@ class System:
             if zc is None:
                 raise RuntimeError(
                     "sensing.source.type is 'zc' but components.zc_source is missing; "
-                    "check SystemComponents wiring"
+                    "check OFDMComponents wiring"
                 )
             x = zc([batch, 1, 1, rg.num_data_symbols])
             return self.components.rg_mapper(x)

@@ -2,14 +2,11 @@
 感知相关组件构建（与 ``sensing_params`` 对应）
 """
 
-import math
 from dataclasses import dataclass
-from typing import Optional
 
 from sionna.phy.ofdm import ResourceGrid
 
 from ..params import SystemParams
-from ...zc_source import ZCSource
 from ...sensing.sensing_performance import SensingPerformance
 from ...sensing.music_estimator import MUSICEstimator
 from ...sensing.delay_doppler_spectrum import DelayDopplerSpectrum
@@ -27,7 +24,6 @@ class SensingComponents:
     cfar: CFARDetector
     moving_target_indication: MovingTargetIndication
     moving_target_detection: MovingTargetDetection
-    zc_source: Optional[ZCSource] = None
 
     @classmethod
     def build_from_params(
@@ -68,22 +64,6 @@ class SensingComponents:
             k=p.k,
         )
 
-        src = system_params.sensing.source
-        zc_inst: Optional[ZCSource] = None
-        if src.type == "zc":
-            n_data = rg.num_data_symbols
-            u = src.root_index
-            if math.gcd(u, n_data) != 1:
-                raise ValueError(
-                    "sensing.source: ZC requires gcd(root_index, rg.num_data_symbols)=1; "
-                    f"got root_index={u}, num_data_symbols={n_data}"
-                )
-            zc_inst = ZCSource(
-                root_index=u,
-                normalize=src.normalize,
-                device=device,
-            )
-
         return cls(
             sensing_performance=sensing_performance,
             delay_doppler_spectrum=delay_doppler_spectrum,
@@ -91,5 +71,4 @@ class SensingComponents:
             cfar=cfar_inst,
             moving_target_indication=moving_target_indication,
             moving_target_detection=moving_target_detection,
-            zc_source=zc_inst,
         )

@@ -71,7 +71,7 @@ class SystemComponents:
     )
     """动目标检测（MTD），由 ``SensingComponents.build_from_params`` 构造。"""
     zc_source: Optional[ZCSource] = None
-    """Zadoff-Chu 源（仅 ``sensing.source.type == 'zc'`` 时由 ``SensingComponents.build_from_params`` 构造）。"""
+    """Zadoff-Chu 源（仅 ``sensing.source.type == 'zc'`` 时由 ``OFDMComponents.build_from_params`` 构造）。"""
 
     @classmethod
     def build_from_params(
@@ -102,5 +102,5 @@ class SystemComponents:
             music_estimator=sens.music_estimator,  # MUSIC估计器
             moving_target_indication=sens.moving_target_indication,
             moving_target_detection=sens.moving_target_detection,
-            zc_source=sens.zc_source,
+            zc_source=ofdm.zc_source,
         )
