@@ -75,11 +75,10 @@ edge_diffraction = false
 synthetic_array = true
 seed = 42
 
-[sensing]
 
-[sensing.windows]
+[windows]
 
-[sensing.cfar]
+[cfar]
 type = "ca"
 guard = 2
 trailing = 20

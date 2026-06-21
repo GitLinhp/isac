@@ -74,7 +74,7 @@ def main() -> None:
     _, x_rg, x_time = system.transmit()
 
     # --- 应用信道（RCS 点目标仅时域）---
-    y_time = system.apply_channel(x_time, domain="time")
+    y_time = system.components.channel(x_time, domain="time")
 
     # --- 感知 ---
     _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)

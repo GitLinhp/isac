@@ -3,7 +3,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -20,6 +20,7 @@ from sionna.phy.ofdm import (
 from .system_params import SystemParams
 from ..channel.awgn import AWGN
 from ..channel.channel import Channel
+from ..channel.isac_channel import IsacChannel
 from ..channel.rt.rt_scene import RTScene
 from ..channel.static_target_simulator import StaticTargetSimulator
 from ..sensing.sensing_performance import SensingPerformance
@@ -55,12 +56,8 @@ class SystemComponents:
     """OFDM解调器"""
 
     # 信道组件
-    channel_type: Literal["rt", "rcs"] = "rt"
-    """信道类型"""
-    rt_channel: Optional[Channel] = None
-    """RT信道"""
-    awgn: AWGN = field(default_factory=AWGN)
-    """AWGN信道"""
+    channel: Optional[IsacChannel] = None
+    """统一信道（RT / RCS + AWGN）"""
 
     # 感知组件
     sensing_performance: SensingPerformance = field(default_factory=SensingPerformance)
@@ -85,39 +82,6 @@ class SystemComponents:
     """RT场景"""
     static_target_sim: Optional[StaticTargetSimulator] = None
     """静态目标模拟器"""
-
-    def apply_channel(
-        self,
-        inputs: torch.Tensor,
-        domain: str = "frequency",
-        *,
-        snr_db: Optional[float] = None,
-    ) -> torch.Tensor:
-        if self.channel_type == "rcs":
-            if domain != "time":
-                raise ValueError("channel.type='rcs' 仅支持 domain='time'")
-            y_clean = self.static_target_sim(inputs)
-        else:
-            y_clean = self.rt_channel(inputs, domain=domain, snr_db=None)
-        if snr_db is None:
-            return y_clean
-        return self.awgn(y_clean, snr_db)
-
-    def cfr_per_tx(
-        self,
-        rt_scene: RTScene,
-        *,
-        device: Optional[torch.device] = None,
-        dtype: torch.dtype = torch.complex64,
-    ) -> dict[str, torch.Tensor]:
-        """按发射机分离的 OFDM 频域信道（仅 ``channel_type='rt'``）。"""
-        if self.channel_type != "rt" or self.rt_channel is None:
-            raise ValueError("cfr_per_tx 仅适用于 channel.type='rt'")
-        return self.rt_channel.cfr_per_tx(
-            rt_scene,
-            device=device,
-            dtype=dtype,
-        )
 
     @classmethod
     def build_from_params(
@@ -200,6 +164,13 @@ class SystemComponents:
         elif static_target_sim is None:
             raise ValueError("channel.type='rcs' 要求已构建 static_target")
         awgn = AWGN(device=device)
+        isac_channel = IsacChannel(
+            channel_type=channel_type,
+            default_snr_db=channel.snr_db,
+            rt=rt_channel,
+            static_target_sim=static_target_sim,
+            awgn=awgn,
+        )
 
         # 感知组件
         sensing_performance = SensingPerformance(
@@ -246,9 +217,7 @@ class SystemComponents:
             rg_demapper=rg_demapper,
             modulator=modulator,
             demodulator=demodulator,
-            channel_type=channel_type,
-            rt_channel=rt_channel,
-            awgn=awgn,
+            channel=isac_channel,
             sensing_performance=sensing_performance,
             delay_doppler_spectrum=delay_doppler_spectrum,
             music_estimator=music_estimator,

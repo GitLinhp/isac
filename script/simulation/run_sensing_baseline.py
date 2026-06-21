@@ -62,10 +62,10 @@ def main() -> None:
 
     # --- 应用信道 ---
     if domain == "frequency":
-        y_rg = system.apply_channel(x_rg, domain=domain)
+        y_rg = system.components.channel(x_rg, domain=domain)
         _, h_delay_doppler = system.sensing(x_rg, y_rg)
     elif domain == "time":
-        y_time = system.apply_channel(x_time, domain=domain)
+        y_time = system.components.channel(x_time, domain=domain)
         _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")

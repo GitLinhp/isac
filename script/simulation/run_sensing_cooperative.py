@@ -95,7 +95,7 @@ def main() -> None:
     _, x_rg, x_time = system.transmit()
 
     device = torch.device(args.device)
-    h_per_tx = comps.cfr_per_tx(scene, device=device)
+    h_per_tx = comps.channel.cfr_per_tx(scene, device=device)
 
     geom = scene.rx_target_tx_geometric
     geom.display()

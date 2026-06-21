@@ -6,7 +6,7 @@
 
 | 项目 | `run_sensing_monostatic.py` | `run_static_target_simulation.py` |
 |------|----------------------------|-----------------------------------|
-| 信道 | Sionna RT 射线追踪（`system.apply_channel`） | `static_target_simulator` 点散射 |
+| 信道 | Sionna RT 射线追踪（`system.components.channel`） | `static_target_simulator` 点散射 |
 | 配置 | 含 `[rt_scene]` | 无 RT，[`config/static_target_simulation.toml`](config/static_target_simulation.toml) |
 | 施加域 | 频域或时域（`--domain`） | **固定时域**（仿真器仅接受 IQ 样点流） |
 | 真值 | `RTScene.rx_target_tx_geometric` | CLI `--range_m` / `--velocity_mps` |

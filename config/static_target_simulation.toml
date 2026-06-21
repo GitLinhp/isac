@@ -30,13 +30,12 @@ self_coupling_db = -10.0
 rndm_phaseshift = true
 self_coupling = true
 
-[sensing]
 
 # 感知窗函数参数
-[sensing.windows]
+[windows]
 
 # CFAR 参数
-[sensing.cfar]
+[cfar]
 type = "ca"         # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/processing.py）
 guard = 2           # 保护单元
 trailing = 20       # 参考单元

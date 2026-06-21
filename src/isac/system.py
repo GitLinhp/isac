@@ -74,19 +74,6 @@ class System:
         x_time = comps.modulator(x_rg)  # OFDM调制
         return b, x_rg, x_time
 
-    # 应用信道
-    def apply_channel(
-        self,
-        inputs: torch.Tensor,
-        domain: str = "frequency",
-    ) -> torch.Tensor:
-        """经信道并加 AWGN；TOML ``snr_db`` 为接收端 SNR (dB)，按 ``E[|y_clean|^2]`` 定标 ``no``。"""
-        return self.components.apply_channel(
-            inputs,
-            domain=domain,
-            snr_db=self.params.channel.snr_db,
-        )
-
     # 接收
     def receive(
         self,
@@ -110,10 +97,6 @@ class System:
         b_hat = comps.demapper(y, no=no)
 
         return b_hat
-
-    def demodulate(self, y_time: torch.Tensor) -> torch.Tensor:
-        """时域 IQ → 频域资源网格（squeeze，供 ``estimate_channel`` / ``sensing`` 使用）。"""
-        return self.components.demodulator(y_time).squeeze()
 
     # 信道估计
     def estimate_channel(
@@ -164,7 +147,7 @@ class System:
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """接收端感知：LS 信道估计 → 可选 MTI → 时延–多普勒谱。
 
-        传入 ``y_time`` 时内部 ``demodulate`` 为 ``y_rg``；与 ``y_rg`` 二选一。
+        传入 ``y_time`` 时内部 ``demodulator`` 解调为 ``y_rg``；与 ``y_rg`` 二选一。
 
         返回 ``(h, h_delay_doppler)``。
         """
@@ -173,10 +156,9 @@ class System:
         if y_rg is None and y_time is None:
             raise ValueError("须传入 y_rg 或 y_time")
 
-        if y_time is not None:
-            y_rg = self.demodulate(y_time)
-
         comps = self.components
+        if y_time is not None:
+            y_rg = comps.demodulator(y_time).squeeze()
 
         h = self.estimate_channel(x_rg, y_rg)
         if apply_mti:
@@ -184,22 +166,6 @@ class System:
         h_delay_doppler = comps.delay_doppler_spectrum(h)
 
         return h, h_delay_doppler
-
-    def _reference_tx_power_dbm(self) -> float | None:
-        """首个含发射机的收发机在 TOML 中配置的 ``power_dbm``；用于将归一化 ``mean(|x|^2)`` 映射为 dBm。"""
-        scene = self.components.rt_scene
-        if scene is None:
-            return None
-        params_map = scene.scene_params.transceivers
-        if not params_map:
-            return None
-        for name, tc in scene.transceivers.items():
-            if tc.tx is None:
-                continue
-            p = params_map.get(name)
-            if p is not None and p.power_dbm is not None:
-                return float(p.power_dbm)
-        return None
 
     def _update_rt_target_pose_from_velocity(
         self,

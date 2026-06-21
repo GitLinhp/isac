@@ -228,9 +228,9 @@ def _estimate_delay_doppler_spectrum(system: System, domain: str) -> torch.Tenso
     _, x_rg, x_time = system.transmit()
 
     if domain == "frequency":
-        y_rg = system.apply_channel(x_rg, domain=domain)
+        y_rg = system.components.channel(x_rg, domain=domain)
     elif domain == "time":
-        y_time = system.apply_channel(x_time, domain=domain)
+        y_time = system.components.channel(x_time, domain=domain)
         y_rg = system.components.demodulator(y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")

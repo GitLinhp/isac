@@ -23,7 +23,7 @@ cyclic_prefix_length = 512   # 循环前缀长度；别名 num_cyclic_prefix
 l_min = -6                   # OFDM 解调器最小时延抽头索引
 dc_null = false              # 资源网格是否置空 DC 子载波
 
-# --- OFDM 信源（SystemParams.source → zc_source；type=binary 时不构建 ZC）---
+# --- 信源（SystemParams.source → zc_source；type=binary 时不构建 ZC）---
 [source]
 type = "zc"      # binary | zc；ZC 须 gcd(root_index, num_data_symbols)=1
 root_index = 1
@@ -37,7 +37,7 @@ num_streams = 1           # 流数
 # --- 信道（SystemParams.channel）---
 [channel]
 type = "rt"   # rt | rcs
-snr_db = 10.0 # 接收端 SNR (dB)，apply_channel 时使用
+snr_db = 10.0 # 接收端 SNR (dB)，components.channel 时使用
 
 # --- 射线追踪场景（SystemParams.rt_scene；channel.type=rt 时必填）---
 [rt_scene]
@@ -116,11 +116,10 @@ synthetic_array = true
 seed = 42
 
 # --- 感知（SystemParams.windows / music / cfar / mti / mtd）---
-[sensing]
 # 感知窗函数参数
-[sensing.windows]
+[windows]
 # 延迟窗函数参数
-[sensing.windows.delay_window]
+[windows.delay_window]
 # type = "hamming"
 type = "general_hamming"
 alpha = 0.7
@@ -128,14 +127,14 @@ alpha = 0.7
 # at = 45           # chebwin 衰减 (dB)
 
 # 多普勒窗函数参数
-[sensing.windows.doppler_window]
+[windows.doppler_window]
 # type = "hamming"
 type = "general_hamming"
 alpha = 0.54
 # type = "chebwin"
 # at = 45
 
-[sensing.cfar]
+[cfar]
 type = "ca" # ca | os（os 时须设置 k）
 # type = "os"
 # k = 24                     # 仅 type=os：有序统计索引
@@ -145,15 +144,15 @@ pfa = 1e-4
 detector = "linear" # linear | squarelaw
 # offset = 0.0               # 可选：阈值缩放；省略则按 pfa 自动计算
 
-[sensing.music]
+[music]
 threshold = 0.1          # MUSICEstimator.__call__ 默认门限
 near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
 
-[sensing.mti]
+[mti]
 filter_order = 1 # MTI 脉冲对消阶数
 # prf = 30000.0              # 可选；省略则由 rg.ofdm_symbol_duration 推导
 
-[sensing.mtd]
+[mtd]
 # num_filters = 512          # 可选；省略则等于 num_ofdm_symbols
 
 # =============================================================================

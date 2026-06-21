@@ -92,23 +92,22 @@ synthetic_array = true      # 是否使用合成阵列
 seed = 42                   # 随机种子
 
 # 感知参数
-[sensing]
 
 # 感知窗函数参数
-[sensing.windows]
+[windows]
 
 # # 时延窗函数参数
-# [sensing.windows.delay_window]
+# [windows.delay_window]
 # type = "chebwin" # 窗函数类型
 # at = 60          # 窗函数衰减(dB)
 
 # # 多普勒窗函数参数
-# [sensing.windows.doppler_window]
+# [windows.doppler_window]
 # type = "chebwin" # 窗函数类型
 # at = 50          # 窗函数衰减(dB)
 
 # CFAR 参数
-[sensing.cfar]
+[cfar]
 type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/processing.py）
 # k = 24               # 仅 type=os 时需要：有序统计索引
 guard = 2           # 保护单元

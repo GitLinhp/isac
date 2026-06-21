@@ -25,7 +25,6 @@
 | `estimate_channel(x, y)`    | 对 `x`/`y` squeeze 后做 LS 频域信道估计 `h = y·conj(x)/(|x|²+ε)`；`x` 为 `(S,F)`，`y` 为 `(rx_num,S,F)`，`rx_num=1` 时 `h` 退化为 `(S,F)`；多 RX 时对 `x` 在 leading 维广播。 |
 | `_paths_cfr_numpy()`        | 调用射线追踪 `paths.cfr`，按当前 RG 的子载波频率与符号参数得到 **CFR（numpy）**。                               |
 | `_paths_cir_numpy()`        | 调用 `paths.cir`，参数与 OFDM 符号对齐；返回 **`cir_a`**（最后一维 `[Re, Im]`）与 **`tau`**（秒）。 |
-| `_reference_tx_power_dbm()` | 从场景收发机配置中取首个有发射机且配置了 `power_dbm` 的参考发射功率（dBm），用于功率相关换算。                        |
 
 ### 通信 / 感知基线与评估
 

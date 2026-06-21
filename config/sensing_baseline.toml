@@ -77,13 +77,12 @@ edge_diffraction = false   # 是否考虑边缘衍射
 synthetic_array = true     # 是否使用合成阵列
 
 # 感知参数
-[sensing]
 
 # 感知窗函数参数
-[sensing.windows]
+[windows]
 
 # 时延窗函数参数
-[sensing.windows.delay_window]
+[windows.delay_window]
 # type = "hamming"
 type = "general_hamming"
 alpha = 0.7
@@ -91,7 +90,7 @@ alpha = 0.7
 # at = 45          # 窗函数衰减(dB)
 
 # 多普勒窗函数参数
-[sensing.windows.doppler_window]
+[windows.doppler_window]
 # type = "hamming"
 type = "general_hamming"
 alpha = 0.54
@@ -99,7 +98,7 @@ alpha = 0.54
 # at = 45          # 窗函数衰减(dB)
 
 # CFAR 参数
-[sensing.cfar]
+[cfar]
 type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/processing.py）
 # k = 24               # 仅 type=os 时需要：有序统计索引
 guard = 2           # 保护单元

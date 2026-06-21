@@ -105,11 +105,6 @@ class ChannelParams:
 
 
 @dataclass
-class SensingPerformanceParams:
-    """感知性能占位；载波频率用 SystemParams.carrier_frequency，rg 在 build 时注入。"""
-
-
-@dataclass
 class WindowParams:
     """时延 / 多普勒窗配置"""
 
@@ -139,17 +134,17 @@ class CFARParams:
     def __post_init__(self) -> None:
         t = self.type.strip().lower()
         if t not in ("ca", "os"):
-            raise ValueError("sensing.cfar.type must be 'ca' or 'os'")
+            raise ValueError("cfar.type must be 'ca' or 'os'")
         self.type = t
         if t == "os" and self.k is None:
-            raise ValueError("sensing.cfar: type 'os' requires integer 'k' in config")
+            raise ValueError("cfar: type 'os' requires integer 'k' in config")
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "CFARParams":
         raw_type = config_dict.get("type", "ca")
         if not isinstance(raw_type, str):
             raise ValueError(
-                f"sensing.cfar.type must be a string, got {type(raw_type)!r}"
+                f"cfar.type must be a string, got {type(raw_type)!r}"
             )
         k_raw = config_dict.get("k", None)
         cfar_k: Optional[int] = int(k_raw) if k_raw is not None else None
@@ -276,27 +271,33 @@ class SystemParams:
     """系统配置（嵌套 Params，顺序对齐 system_components）。"""
 
     carrier_frequency: float = 2.6e9
+    """载波频率"""
     num_bits_per_symbol: int = 2
+    """QAM 每符号比特数"""
 
     source: SourceParams = field(default_factory=SourceParams)
+    """信源"""
     ofdm: OFDMParams = field(default_factory=OFDMParams)
+    """OFDM"""
     stream_management: StreamManagementParams = field(
         default_factory=StreamManagementParams
     )
 
     channel: ChannelParams = field(default_factory=ChannelParams)
-
-    sensing_performance: SensingPerformanceParams = field(
-        default_factory=SensingPerformanceParams
-    )
+    """信道"""
     windows: WindowParams = field(default_factory=WindowParams)
+    """时延 / 多普勒窗"""
     music: MusicParams = field(default_factory=MusicParams)
+    """MUSIC"""
     cfar: CFARParams = field(default_factory=CFARParams)
+    """CFAR"""
     mti: MTIParams = field(default_factory=MTIParams)
     mtd: MTDParams = field(default_factory=MTDParams)
-
+    """动目标检测"""
     rt_scene: Optional[RtSceneParams] = None
+    """射线追踪场景"""
     static_target: Optional[StaticTargetParams] = None
+    """静态目标"""
 
     @property
     def samp_rate(self) -> int:
@@ -324,21 +325,21 @@ class SystemParams:
         # 信道
         channel = ChannelParams.from_dict(config_dict.get("channel", {}))
 
-        # windows / music / cfar / mti / mtd
-        sensing = config_dict.get("sensing", {})
-        windows = WindowParams.from_dict(sensing.get("windows", {}))
-        music = MusicParams.from_dict(sensing.get("music", {}))
-        cfar = CFARParams.from_dict(sensing.get("cfar", {}))
-        mti = MTIParams.from_dict(sensing.get("mti", {}))
-        mtd = MTDParams.from_dict(sensing.get("mtd", {}))
+        windows = WindowParams.from_dict(config_dict.get("windows") or {})
+        music = MusicParams.from_dict(config_dict.get("music") or {})
+        cfar = CFARParams.from_dict(config_dict.get("cfar") or {})
+        mti = MTIParams.from_dict(config_dict.get("mti") or {})
+        mtd = MTDParams.from_dict(config_dict.get("mtd") or {})
 
-        # rt_scene
-        rt_scene = RtSceneParams.from_dict(config_dict.get("rt_scene", {}))
+        rt_scene_cfg = config_dict.get("rt_scene")
+        rt_scene: Optional[RtSceneParams] = None
+        if isinstance(rt_scene_cfg, dict) and rt_scene_cfg:
+            rt_scene = RtSceneParams.from_dict(rt_scene_cfg)
 
-        # static_target
-        static_target = StaticTargetParams.from_dict(
-            config_dict.get("static_target", {})
-        )
+        static_target_cfg = config_dict.get("static_target")
+        static_target: Optional[StaticTargetParams] = None
+        if isinstance(static_target_cfg, dict) and static_target_cfg:
+            static_target = StaticTargetParams.from_dict(static_target_cfg)
 
         params = cls(
             carrier_frequency=carrier_frequency,
