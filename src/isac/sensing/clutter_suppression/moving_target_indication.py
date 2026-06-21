@@ -11,38 +11,38 @@ import torch.nn.functional as F
 from ..sensing_performance import SensingPerformance
 
 
-def _mti_coefficients_from_order(order: int) -> np.ndarray:
-    """``(1 - z^{-1})^{order}`` 的 FIR 分子系数 ``b[k] = (-1)^k * C(order, k)``，``k=0…order``。"""
-    n = int(order)
-    if n < 1:
-        raise ValueError(f"filter_order 须为 >= 1 的整数，收到: {order!r}")
-    if n > 64:
-        raise ValueError(f"filter_order 过大（>64），请减小阶数以控制计算量")
-    return np.array(
-        [((-1) ** k) * math.comb(n, k) for k in range(n + 1)],
-        dtype=np.float64,
-    )
-
-
-def _mti_fir_last_dim(x: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """因果 FIR：``y[n] = sum_k b[k] * x[n-k]``（``n-k<0`` 视为 0），与 ``scipy.signal.lfilter(b, [1], x)`` 零初态沿最后一维一致。"""
-    b = b.flatten()
-    L = int(b.numel())
-    *lead, t = x.shape
-    if L == 0:
-        return torch.zeros_like(x)
-    if t == 0:
-        return x
-    x2 = x.reshape(-1, t)
-    b = b.to(device=x2.device, dtype=x2.dtype)
-    xpad = F.pad(x2, (L - 1, 0))
-    windows = xpad.unfold(1, L, 1).flip(-1)
-    y2 = (windows * b).sum(dim=-1)
-    return y2.reshape(*lead, t)
-
-
 class MovingTargetIndication:
     """动目标显示：``order`` 阶脉冲对消，系数为 ``(1 - z^{-1})^{order}``；PRF 由 ``ResourceGrid.ofdm_symbol_duration`` 推导。"""
+
+    @staticmethod
+    def _coefficients_from_order(order: int) -> np.ndarray:
+        """``(1 - z^{-1})^{order}`` 的 FIR 分子系数 ``b[k] = (-1)^k * C(order, k)``，``k=0…order``。"""
+        n = int(order)
+        if n < 1:
+            raise ValueError(f"filter_order 须为 >= 1 的整数，收到: {order!r}")
+        if n > 64:
+            raise ValueError(f"filter_order 过大（>64），请减小阶数以控制计算量")
+        return np.array(
+            [((-1) ** k) * math.comb(n, k) for k in range(n + 1)],
+            dtype=np.float64,
+        )
+
+    @staticmethod
+    def _fir_last_dim(x: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """因果 FIR：``y[n] = sum_k b[k] * x[n-k]``（``n-k<0`` 视为 0），与 ``scipy.signal.lfilter(b, [1], x)`` 零初态沿最后一维一致。"""
+        b = b.flatten()
+        L = int(b.numel())
+        *lead, t = x.shape
+        if L == 0:
+            return torch.zeros_like(x)
+        if t == 0:
+            return x
+        x2 = x.reshape(-1, t)
+        b = b.to(device=x2.device, dtype=x2.dtype)
+        xpad = F.pad(x2, (L - 1, 0))
+        windows = xpad.unfold(1, L, 1).flip(-1)
+        y2 = (windows * b).sum(dim=-1)
+        return y2.reshape(*lead, t)
 
     def __init__(
         self,
@@ -59,7 +59,7 @@ class MovingTargetIndication:
         else:
             self.prf = float(prf)
 
-        self.filter_coefficients = _mti_coefficients_from_order(self.filter_order)
+        self.filter_coefficients = self._coefficients_from_order(self.filter_order)
 
     def __call__(
         self,
@@ -89,10 +89,10 @@ class MovingTargetIndication:
         axis_norm = axis % ndim
         x = torch.movedim(signal_data, axis_norm, -1)
         b = torch.as_tensor(self.filter_coefficients, device=x.device, dtype=x.dtype)
-        y = _mti_fir_last_dim(x, b)
+        y = self._fir_last_dim(x, b)
         return torch.movedim(y, -1, axis_norm)
 
-    def _frequency_response(
+    def frequency_response(
         self,
         num_points: int = 1024,
         *,
@@ -110,7 +110,9 @@ class MovingTargetIndication:
         """
         dev = device if device is not None else torch.device("cpu")
         # 与 ``scipy.signal.freqz(..., worN=num_points)`` 的 ``\\omega`` 采样一致：``[0, \\pi)`` 上均匀 ``num_points`` 点。
-        omega = torch.arange(num_points, device=dev, dtype=dtype) * (torch.pi / num_points)
+        omega = torch.arange(num_points, device=dev, dtype=dtype) * (
+            torch.pi / num_points
+        )
         b = torch.as_tensor(self.filter_coefficients, device=dev, dtype=dtype)
         k = torch.arange(b.numel(), device=dev, dtype=dtype)
         om = omega.unsqueeze(1)
@@ -123,18 +125,13 @@ class MovingTargetIndication:
         frequencies_hz = omega * (self.prf / (2.0 * torch.pi))
         return frequencies_hz, magnitude
 
-    @property
-    def frequency_response(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        """默认 ``num_points=1024``、CPU、``float64`` 下的 ``(frequencies_hz, |H|)``；见 ``_frequency_response``。"""
-        return self._frequency_response()
-
     def plot_frequency_response(
         self,
         num_points: int = 1024,
         show: bool = True,
         save_path: Optional[str] = None,
     ) -> None:
-        frequencies, magnitude = self._frequency_response(num_points)
+        frequencies, magnitude = self.frequency_response(num_points)
         freq_np = frequencies.detach().cpu().numpy()
         mag_db = (20 * torch.log10(magnitude + 1e-10)).detach().cpu().numpy()
 
