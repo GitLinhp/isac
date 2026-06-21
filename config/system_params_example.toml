@@ -151,6 +151,7 @@ detector = "linear" # linear | squarelaw
 
 [sensing.music]
 threshold = 0.1 # MUSICEstimator.__call__ 默认门限
+near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
 
 [sensing.mti]
 filter_order = 1 # MTI 脉冲对消阶数

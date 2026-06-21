@@ -66,14 +66,16 @@ def _steering_vector_2d(
     delay_row_idx: torch.Tensor,
 ) -> torch.Tensor:
     """2D 子阵导向向量（Kronecker）；多普勒维对应 fftshift 后以网格中心为 0 的归一化频率。"""
-    normalized_doppler_freq = (float(doppler_idx) - num_doppler_bins / 2.0) / num_doppler_bins
+    normalized_doppler_freq = (
+        float(doppler_idx) - num_doppler_bins / 2.0
+    ) / num_doppler_bins
     normalized_delay_freq = float(delay_idx) / num_delay_bins
-    doppler_steering = torch.exp(1j * 2 * torch.pi * normalized_doppler_freq * doppler_row_idx).to(
-        torch.complex64
-    )
-    delay_steering = torch.exp(1j * 2 * torch.pi * normalized_delay_freq * delay_row_idx).to(
-        torch.complex64
-    )
+    doppler_steering = torch.exp(
+        1j * 2 * torch.pi * normalized_doppler_freq * doppler_row_idx
+    ).to(torch.complex64)
+    delay_steering = torch.exp(
+        1j * 2 * torch.pi * normalized_delay_freq * delay_row_idx
+    ).to(torch.complex64)
     return torch.kron(doppler_steering, delay_steering)
 
 
@@ -105,7 +107,9 @@ def _noise_subspace_from_loaded_covariance(
 
         if num_sources is None:
             normalized_eigenvalues = eigenvalues / (eigenvalues[0] + _MUSIC_EPS)
-            num_signal_sources = int(torch.sum(normalized_eigenvalues > threshold).item())
+            num_signal_sources = int(
+                torch.sum(normalized_eigenvalues > threshold).item()
+            )
             num_signal_sources = max(1, min(num_signal_sources, subarray_size - 1))
         else:
             num_signal_sources = max(1, min(int(num_sources), subarray_size - 1))
@@ -136,6 +140,7 @@ class MUSICEstimator:
         self,
         device: torch.device,
         sensing_performance: Optional[SensingPerformance] = None,
+        near_range_guard_m: float = 1.0,
     ):
         """初始化 MUSIC 估计器
 
@@ -145,9 +150,12 @@ class MUSICEstimator:
             计算设备
         - sensing_performance : SensingPerformance, 可选
             感知性能对象；用于 ``__call__`` 成功检出峰时打印表格中的物理量列。
+        - near_range_guard_m : float
+            默认近距保护物理距离 (m)；跳过 ``[0, guard)`` 对应时延 bin 以减轻直达波/泄漏。
         """
         self.device = device
         self.sensing_performance = sensing_performance
+        self.near_range_guard_m = near_range_guard_m
 
     def __call__(
         self,
@@ -159,6 +167,7 @@ class MUSICEstimator:
         metric_mode: MusicMode = "delay_doppler",
         *,
         sens_mode: SensMode = "monostatic",
+        near_range_guard_m: Optional[float] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """使用 Torch 实现的 2D-MUSIC 估计谱峰（``__call__``，可直接 ``estimator(...)``）。
 
@@ -182,6 +191,8 @@ class MUSICEstimator:
         - sens_mode : {'monostatic', 'bistatic'}
             同时作用于 ``delay_to_range`` 与 ``doppler_to_velocity``：``monostatic`` 对应径向网格往返尺度
             （``tau·c/2``、``v∝f_d/(2f_c)``）；``bistatic`` 对应单程几何路径尺度（``tau·c``、``v∝f_d/f_c``）。
+        - near_range_guard_m : float | None
+            单次调用覆盖近距保护距离 (m)；``None`` 时使用构造时的默认值。
 
         返回:
         ----------
@@ -213,16 +224,31 @@ class MUSICEstimator:
                     f"当前 cfar {tuple(cfar_full.shape)}，谱 {tuple(spectrum_tensor.shape)}"
                 )
 
-        # 设置搜索范围并提取搜索区域
-        delay_start, delay_end, doppler_start, doppler_end = self._get_search_range(
-            search_range, num_subcarriers, num_symbols
+        guard_m = (
+            self.near_range_guard_m
+            if near_range_guard_m is None
+            else near_range_guard_m
         )
 
-        search_region = spectrum_tensor[doppler_start:doppler_end, delay_start:delay_end]
+        # 设置搜索范围并提取搜索区域
+        delay_start, delay_end, doppler_start, doppler_end = self._get_search_range(
+            search_range,
+            num_subcarriers,
+            num_symbols,
+            sens_mode=sens_mode,
+            near_range_guard_m=guard_m,
+        )
+
+        search_region = spectrum_tensor[
+            doppler_start:doppler_end, delay_start:delay_end
+        ]
         num_doppler_bins = int(doppler_end - doppler_start)
         num_delay_bins = int(delay_end - delay_start)
 
-        if num_doppler_bins < _MIN_SEARCH_DIMENSION or num_delay_bins < _MIN_SEARCH_DIMENSION:
+        if (
+            num_doppler_bins < _MIN_SEARCH_DIMENSION
+            or num_delay_bins < _MIN_SEARCH_DIMENSION
+        ):
             return self._return_empty_peaks(sens_mode=sens_mode)
 
         cfar_region: Optional[torch.Tensor] = None
@@ -332,7 +358,9 @@ class MUSICEstimator:
         sensing_performance: Optional[SensingPerformance],
         metric_mode: MusicMode = "delay_doppler",
         *,
-        physics: Optional[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        physics: Optional[
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        ] = None,
     ) -> None:
         """将估计谱峰格式化为表格并打印。``physics`` 为 (τ_s, f_d_hz, range_m, v_mps) 时与返回值同源。"""
         print(f"使用MUSIC算法检测到 {peaks_delay.numel()} 个谱峰:")
@@ -391,7 +419,9 @@ class MUSICEstimator:
                 )
         else:
             idx_a, idx_b = (
-                ("时延索引", "多普勒索引") if metric_mode == "delay_doppler" else ("距离索引", "速度索引")
+                ("时延索引", "多普勒索引")
+                if metric_mode == "delay_doppler"
+                else ("距离索引", "速度索引")
             )
             headers = ["峰值", idx_a, idx_b, "功率 (dBm)"]
             for i, (delay_idx, doppler_idx, power) in enumerate(
@@ -416,6 +446,9 @@ class MUSICEstimator:
         search_range: Optional[Tuple[int, int, int, int]],
         num_subcarriers: int,
         num_symbols: int,
+        *,
+        sens_mode: SensMode = "monostatic",
+        near_range_guard_m: float = 1.0,
     ) -> Tuple[int, int, int, int]:
         """获取搜索范围
 
@@ -427,6 +460,10 @@ class MUSICEstimator:
             子载波数量
         - num_symbols : int
             符号数量
+        - sens_mode : {'monostatic', 'bistatic'}
+            近距保护 bin 换算所用的距离分辨率尺度
+        - near_range_guard_m : float
+            跳过近零时延的物理保护距离 (m)
 
         返回:
         ----------
@@ -434,8 +471,14 @@ class MUSICEstimator:
             (delay_start, delay_end, doppler_start, doppler_end)
         """
         if search_range is None:
-            # 跳过近零时延 bin，减轻直达波/泄漏在 MUSIC 候选中的占优
-            delay_guard = min(8, max(0, num_subcarriers // 64))
+            sp = self.sensing_performance
+            if sp is None:
+                raise ValueError(
+                    "search_range 为 None 时须注入 sensing_performance，"
+                    "以按 near_range_guard_m 换算近距保护 bin"
+                )
+            delay_guard = sp.near_delay_guard_bins(near_range_guard_m, sens_mode)
+            delay_guard = min(max(0, delay_guard), num_subcarriers - 1)
             return delay_guard, num_subcarriers, 0, num_symbols
         return search_range
 
@@ -510,10 +553,14 @@ class MUSICEstimator:
 
         # 样本协方差；Hermitian 对称化减轻浮点非 Hermitian 导致的 eigh 不稳定
         covariance_matrix = (snapshots @ snapshots.conj().T) / _NUM_SNAPSHOTS
-        covariance_matrix = (covariance_matrix + covariance_matrix.conj().transpose(-2, -1)) * 0.5
+        covariance_matrix = (
+            covariance_matrix + covariance_matrix.conj().transpose(-2, -1)
+        ) * 0.5
 
         identity = torch.eye(subarray_size, dtype=torch.complex64, device=self.device)
-        trace_real = torch.real(torch.diagonal(covariance_matrix).sum()).clamp(min=_MUSIC_EPS)
+        trace_real = torch.real(torch.diagonal(covariance_matrix).sum()).clamp(
+            min=_MUSIC_EPS
+        )
         base_load = (trace_real / float(subarray_size)) * _COV_DIAG_LOAD_REL
         base_load_f = max(float(base_load.item()), _COV_DIAG_LOAD_MIN)
 
@@ -639,7 +686,9 @@ class MUSICEstimator:
         doppler_indices = torch.arange(
             subarray_doppler_size, device=self.device, dtype=torch.float32
         )
-        delay_indices = torch.arange(subarray_delay_size, device=self.device, dtype=torch.float32)
+        delay_indices = torch.arange(
+            subarray_delay_size, device=self.device, dtype=torch.float32
+        )
 
         # 对每个候选坐标计算 MUSIC 伪谱值，并结合局部幅度形成最终排序分数。
         scores = []

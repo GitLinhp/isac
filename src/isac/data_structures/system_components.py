@@ -132,6 +132,7 @@ class SystemComponents:
         channel_p = system_params.channel
         windows = system_params.windows
         cfar_p = system_params.cfar
+        music_p = system_params.music
         mti_p = system_params.mti
         mtd_p = system_params.mtd
         carrier_frequency = system_params.carrier_frequency
@@ -211,7 +212,9 @@ class SystemComponents:
             doppler_window=windows.doppler_window,
         )
         music_estimator = MUSICEstimator(
-            device=device, sensing_performance=sensing_performance
+            device=device,
+            sensing_performance=sensing_performance,
+            near_range_guard_m=music_p.near_range_guard_m,
         )
         cfar = CFARDetector(
             cfar_type=cfar_p.type,

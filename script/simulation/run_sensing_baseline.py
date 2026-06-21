@@ -40,41 +40,6 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _print_dd_spectrum_report(
-    dd_noisy: torch.Tensor,
-    dd_clean: torch.Tensor,
-    *,
-    snr_db: float,
-) -> None:
-    """打印时延–多普勒谱峰值/底噪与处理增益诊断。"""
-    a_noisy = torch.abs(dd_noisy).flatten()
-    a_clean = torch.abs(dd_clean).flatten()
-    peak_n = float(a_noisy.max().item())
-    peak_c = float(a_clean.max().item())
-    med_n = float(a_noisy.median().item())
-    med_c = float(a_clean.median().item())
-    dr_n = 20.0 * math.log10(peak_n / med_n) if med_n > 0 else float("inf")
-    dr_c = 20.0 * math.log10(peak_c / med_c) if med_c > 0 else float("inf")
-
-    print("=== 时延–多普勒谱诊断 ===")
-    print(
-        f"无噪谱: peak={peak_c:.6f}, median={med_c:.6e}, "
-        f"峰/中值={dr_c:.1f} dB"
-    )
-    print(
-        f"加噪谱: peak={peak_n:.6f}, median={med_n:.6e}, "
-        f"峰/中值={dr_n:.1f} dB"
-    )
-    print(
-        f"底噪抬升 (median): {10 * math.log10(med_n / med_c):.1f} dB "
-        f"(配置接收 SNR={snr_db:.1f} dB，FFT 后仍可能有 ~60 dB 处理增益)"
-    )
-    print(
-        "提示: to_db=False 线性作图时，median≪peak 的底噪在 3D 图上几乎不可见；"
-        "低 SNR 建议 to_db=True。"
-    )
-
-
 def main() -> None:
     args = argument_parser()
     set_random_seed(args.seed)
@@ -113,11 +78,6 @@ def main() -> None:
 
     # --- 显示感知结果 ---
     comps.sensing_performance.display_performance()
-    _print_dd_spectrum_report(
-        result.h_delay_doppler,
-        result.h_delay_doppler_clean,
-        snr_db=system.params.channel.snr_db,
-    )
     comps.delay_doppler_spectrum.visualize(
         offset=20,
         file_name=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",

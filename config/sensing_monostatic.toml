@@ -8,15 +8,15 @@ num_bits_per_symbol = 2 # QAM调制每个符号的比特数
 num_symbols = 512            # 符号数
 num_subcarriers = 2048       # 子载波数
 num_valid_subcarriers = 2048 # 有效子载波数
-subcarrier_spacing = 15000.0 # 子载波间隔(Hz)
-cyclic_prefix_length = 512      # 循环前缀长度
+subcarrier_spacing = 15e3    # 子载波间隔(Hz)
+cyclic_prefix_length = 512   # 循环前缀长度
 l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
 
 # 射线追踪场景参数
 
 [channel]
 type = "rt"
-snr_db = 10             # 信噪比(dB)
+snr_db = 10 # 信噪比(dB)
 [rt_scene]
 filename = "None"
 merge_shapes = false # 是否合并相同材质的形状
