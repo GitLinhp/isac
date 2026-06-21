@@ -110,7 +110,7 @@ def merge_config(
     messages: list[str] = []
 
     _compare_override(
-        messages, "num_subcarriers", params.ofdm.num_subcarriers, overrides.fft_len, int
+        messages, "fft_size", params.ofdm.fft_size, overrides.fft_len, int
     )
     _compare_override(
         messages, "num_symbols", params.ofdm.num_symbols, overrides.ofdm_symbols, int
@@ -135,20 +135,15 @@ def merge_config(
     toml_seed = _toml_path_solver_seed(raw)
     _compare_override(messages, "seed", toml_seed, overrides.seed, int)
 
-    valid_sc = min(params.ofdm.num_valid_subcarriers, overrides.fft_len)
-    if overrides.fft_len != params.ofdm.num_subcarriers:
-        valid_sc = overrides.fft_len
-
     effective_params = replace(
         params,
         carrier_frequency=overrides.center_freq,
         ofdm=replace(
             params.ofdm,
-            num_subcarriers=overrides.fft_len,
+            fft_size=overrides.fft_len,
             num_symbols=overrides.ofdm_symbols,
             cyclic_prefix_length=overrides.cp_len,
             subcarrier_spacing=overrides.subcarrier_spacing,
-            num_valid_subcarriers=valid_sc,
         ),
     )
     if effective_params.static_target is not None:

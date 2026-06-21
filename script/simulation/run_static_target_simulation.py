@@ -77,7 +77,7 @@ def main() -> None:
     y_time = system.apply_channel(x_time, domain="time")
 
     # --- 感知 ---
-    result = system.sensing(x_rg, y_time=y_time)
+    _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)
 
     # --- 显示感知结果 ---
     comps.sensing_performance.display_performance()
@@ -94,7 +94,7 @@ def main() -> None:
     true_velocities = torch.tensor([velocity_mps], dtype=torch.float64, device=device)
 
     est_ranges, est_velocities, _ = comps.music_estimator(
-        spectrum_tensor=result.h_delay_doppler,
+        spectrum_tensor=h_delay_doppler,
         metric_mode=args.metric_mode,
     )
 

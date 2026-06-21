@@ -117,7 +117,7 @@ def prewarm_sionna_rx(
         key = merge_config(
             str(config_path),
             GrcOverrides(
-                fft_len=params.ofdm.num_subcarriers,
+                fft_len=params.ofdm.fft_size,
                 ofdm_symbols=params.ofdm.num_symbols,
                 cp_len=params.ofdm.cyclic_prefix_length,
                 subcarrier_spacing=params.ofdm.subcarrier_spacing,
@@ -171,7 +171,7 @@ def _build_rx_context_impl_from_toml(
     x_rg_t = torch.from_numpy(tx_packet.x_rg).to(device=device, dtype=torch.complex64)
     cp = params.ofdm.cyclic_prefix_length
     n_sym = params.ofdm.num_symbols
-    fft_size = params.ofdm.num_subcarriers
+    fft_size = params.ofdm.fft_size
 
     return RxContext(
         x_rg=x_rg_t,
@@ -201,7 +201,7 @@ def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
     x_rg_t = torch.from_numpy(tx_packet.x_rg).to(device=device, dtype=torch.complex64)
     cp = params.ofdm.cyclic_prefix_length
     n_sym = params.ofdm.num_symbols
-    fft_size = params.ofdm.num_subcarriers
+    fft_size = params.ofdm.fft_size
 
     return RxContext(
         x_rg=x_rg_t,

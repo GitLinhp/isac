@@ -1,9 +1,8 @@
 # 标准库
 import argparse
 import csv
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
 import torch
 import numpy as np
 import sionna
@@ -12,16 +11,6 @@ import sionna
 from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
 from .data_structures import SystemParams, SystemComponents
 from . import PROJECT_ROOT
-
-
-@dataclass
-class SensingResult:
-    """``System.sensing`` 输出：LS 信道估计与时延–多普勒谱。"""
-
-    h: torch.Tensor
-    h_delay_doppler: torch.Tensor
-    h_clean: Optional[torch.Tensor] = None
-    h_delay_doppler_clean: Optional[torch.Tensor] = None
 
 
 class System:
@@ -44,7 +33,7 @@ class System:
         self.config: dict = load_config(args.config_file)
         self.device: str = args.device
 
-        # 设置全局设备
+        # 设置 Sionna 全局设备
         sionna.phy.config.device = self.device
 
         # 加载系统参数
@@ -69,7 +58,7 @@ class System:
                     batch_size,
                     1,
                     1,
-                    rg.num_data_symbols * self.params.qam.num_bits_per_symbol,
+                    rg.num_data_symbols * self.params.num_bits_per_symbol,
                 ]
             )
             x = comps.mapper(b)
@@ -79,7 +68,7 @@ class System:
             x = comps.zc_source([batch_size, 1, 1, rg.num_data_symbols])
 
         else:  # 不支持的源类型
-            raise ValueError(f"unsupported ofdm.source.type: {src_type!r}")
+            raise ValueError(f"unsupported source.type: {src_type!r}")
 
         x_rg = comps.rg_mapper(x)  # 频域资源网格映射
         x_time = comps.modulator(x_rg)  # OFDM调制
@@ -172,13 +161,12 @@ class System:
         y_time: Optional[torch.Tensor] = None,
         apply_mti: bool = False,
         mti_axis: int = -2,
-        y_rg_clean: Optional[torch.Tensor] = None,
-        y_time_clean: Optional[torch.Tensor] = None,
-    ) -> SensingResult:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """接收端感知：LS 信道估计 → 可选 MTI → 时延–多普勒谱。
 
         传入 ``y_time`` 时内部 ``demodulate`` 为 ``y_rg``；与 ``y_rg`` 二选一。
-        ``y_rg_clean`` / ``y_time_clean`` 用于无噪参考谱（SNR 诊断）。
+
+        返回 ``(h, h_delay_doppler)``。
         """
         if y_rg is not None and y_time is not None:
             raise ValueError("y_rg 与 y_time 不可同时传入")
@@ -195,23 +183,7 @@ class System:
             h = comps.moving_target_indication(h, axis=mti_axis)
         h_delay_doppler = comps.delay_doppler_spectrum(h)
 
-        h_clean: Optional[torch.Tensor] = None
-        h_dd_clean: Optional[torch.Tensor] = None
-        y_rg_clean_resolved: Optional[torch.Tensor] = y_rg_clean
-        if y_time_clean is not None:
-            y_rg_clean_resolved = self.demodulate(y_time_clean)
-        if y_rg_clean_resolved is not None:
-            h_clean = self.estimate_channel(x_rg, y_rg_clean_resolved)
-            if apply_mti:
-                h_clean = comps.moving_target_indication(h_clean, axis=mti_axis)
-            h_dd_clean = comps.delay_doppler_spectrum(h_clean)
-
-        return SensingResult(
-            h=h,
-            h_delay_doppler=h_delay_doppler,
-            h_clean=h_clean,
-            h_delay_doppler_clean=h_dd_clean,
-        )
+        return h, h_delay_doppler
 
     def _reference_tx_power_dbm(self) -> float | None:
         """首个含发射机的收发机在 TOML 中配置的 ``power_dbm``；用于将归一化 ``mean(|x|^2)`` 映射为 dBm。"""

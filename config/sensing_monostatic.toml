@@ -1,16 +1,19 @@
 carrier_frequency = 6e9 # 载波频率(Hz)
-
-[qam]
 num_bits_per_symbol = 2 # QAM调制每个符号的比特数
 
 # OFDM参数
 [ofdm]
-num_symbols = 512            # 符号数
-num_subcarriers = 2048       # 子载波数
-num_valid_subcarriers = 2048 # 有效子载波数
-subcarrier_spacing = 15e3    # 子载波间隔(Hz)
-cyclic_prefix_length = 512   # 循环前缀长度
-l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+num_symbols = 512          # 符号数
+fft_size = 2048            # FFT 大小
+subcarrier_spacing = 30e3  # 子载波间隔(Hz)
+cyclic_prefix_length = 512 # 循环前缀长度
+l_min = -6                 # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
+# 发射参考：binary（比特+QAM）| zc（Zadoff-Chu）；ZC 须 gcd(root_index, num_data_symbols)=1
+[source]
+type = "zc"
+root_index = 1
+normalize = true
 
 # 射线追踪场景参数
 
@@ -90,12 +93,6 @@ seed = 42                   # 随机种子
 
 # 感知参数
 [sensing]
-
-# 发射参考：binary（比特+QAM）| zc（Zadoff-Chu）；ZC 须 gcd(root_index, ofdm 网格 num_data_symbols)=1
-[ofdm.source]
-type = "zc"
-root_index = 1
-normalize = true
 
 # 感知窗函数参数
 [sensing.windows]

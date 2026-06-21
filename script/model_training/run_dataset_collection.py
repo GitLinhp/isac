@@ -586,7 +586,7 @@ def _export_h5(
         np.array(scene.transceivers["bs1"].position),
         system.params.carrier_frequency,
         system.params.ofdm.subcarrier_spacing,
-        system.params.ofdm.num_subcarriers,
+        system.params.ofdm.fft_size,
         len(h_freq_list),
         scene_name,
         dataset_cir_a=cir_a_arr,

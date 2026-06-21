@@ -7,7 +7,7 @@ from typing import Literal, Optional
 
 import numpy as np
 import torch
-from sionna.phy.mimo import StreamManagement
+from sionna.phy.mimo import StreamManagement, stream_management
 from sionna.phy.mapping import BinarySource, Mapper, Demapper
 from sionna.phy.ofdm import (
     ResourceGrid,
@@ -125,43 +125,43 @@ class SystemComponents:
         system_params: SystemParams,
         device: str = "cuda:0",
     ) -> "SystemComponents":
-        qam = system_params.qam
-        source_p = system_params.source
+        num_bits_per_symbol = system_params.num_bits_per_symbol
+        source = system_params.source
         ofdm = system_params.ofdm
-        stream_p = system_params.stream_management
-        channel_p = system_params.channel
+        stream_management = system_params.stream_management
+        channel = system_params.channel
         windows = system_params.windows
-        cfar_p = system_params.cfar
-        music_p = system_params.music
-        mti_p = system_params.mti
-        mtd_p = system_params.mtd
+        cfar = system_params.cfar
+        music = system_params.music
+        mti = system_params.mti
+        mtd = system_params.mtd
         carrier_frequency = system_params.carrier_frequency
 
         sm = StreamManagement(
-            np.array(stream_p.rx_tx_association),
-            stream_p.num_streams,
+            np.array(stream_management.rx_tx_association),
+            stream_management.num_streams,
         )
 
         # 基本组件
         binary_source = BinarySource(device=device)
-        mapper = Mapper("qam", qam.num_bits_per_symbol, device=device)
+        mapper = Mapper("qam", num_bits_per_symbol, device=device)
         demapper = Demapper(
             "app",
             "qam",
-            qam.num_bits_per_symbol,
+            num_bits_per_symbol,
             hard_out=True,
             device=device,
         )
         zc_source: Optional[ZCSource] = None
-        if source_p.type == "zc":
+        if source.type == "zc":
             zc_source = ZCSource(
-                root_index=source_p.root_index,
-                normalize=source_p.normalize,
+                root_index=source.root_index,
+                normalize=source.normalize,
                 device=device,
             )
         rg = ResourceGrid(
             num_ofdm_symbols=ofdm.num_symbols,
-            fft_size=ofdm.num_subcarriers,
+            fft_size=ofdm.fft_size,
             subcarrier_spacing=ofdm.subcarrier_spacing,
             cyclic_prefix_length=ofdm.cyclic_prefix_length,
             dc_null=ofdm.dc_null,
@@ -174,14 +174,14 @@ class SystemComponents:
             device=device,
         )
         demodulator = OFDMDemodulator(
-            fft_size=ofdm.num_subcarriers,
+            fft_size=ofdm.fft_size,
             l_min=ofdm.l_min,
             cyclic_prefix_length=ofdm.cyclic_prefix_length,
             device=device,
         )
 
         # 信道组件（rt_scene / static_target_sim 须先于 rt_channel 构建）
-        channel_type = channel_p.type
+        channel_type = channel.type
         rt_scene: Optional[RTScene] = None
         if system_params.rt_scene is not None:
             rt_scene = RTScene(scene_params=system_params.rt_scene)
@@ -214,26 +214,26 @@ class SystemComponents:
         music_estimator = MUSICEstimator(
             device=device,
             sensing_performance=sensing_performance,
-            near_range_guard_m=music_p.near_range_guard_m,
+            near_range_guard_m=music.near_range_guard_m,
         )
         cfar = CFARDetector(
-            cfar_type=cfar_p.type,
-            k=cfar_p.k,
-            guard=cfar_p.guard,
-            trailing=cfar_p.trailing,
-            pfa=cfar_p.pfa,
-            detector=cfar_p.detector,
-            offset=cfar_p.offset,
+            cfar_type=cfar.type,
+            k=cfar.k,
+            guard=cfar.guard,
+            trailing=cfar.trailing,
+            pfa=cfar.pfa,
+            detector=cfar.detector,
+            offset=cfar.offset,
         )
         moving_target_indication = MovingTargetIndication(
             sensing_performance,
-            filter_order=mti_p.filter_order,
-            prf=mti_p.prf,
+            filter_order=mti.filter_order,
+            prf=mti.prf,
         )
         moving_target_detection = MovingTargetDetection(
             sensing_performance,
             carrier_frequency,
-            num_filters=mtd_p.num_filters,
+            num_filters=mtd.num_filters,
         )
 
         return cls(

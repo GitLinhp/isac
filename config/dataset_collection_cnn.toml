@@ -1,15 +1,17 @@
 carrier_frequency = 4.9e9
-
-[qam]
 num_bits_per_symbol = 2
 
 [ofdm]
 num_symbols = 512
-num_subcarriers = 2048
-num_valid_subcarriers = 2048
+fft_size = 2048
 subcarrier_spacing = 30000.0
 cyclic_prefix_length = 512
 l_min = -6
+
+[source]
+type = "zc"
+root_index = 1
+normalize = true
 
 
 [channel]
@@ -74,10 +76,6 @@ synthetic_array = true
 seed = 42
 
 [sensing]
-[ofdm.source]
-type = "zc"
-root_index = 1
-normalize = true
 
 [sensing.windows]
 

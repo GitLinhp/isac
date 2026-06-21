@@ -8,25 +8,6 @@ from .rt_scene_params import RtSceneParams
 
 
 @dataclass
-class QAMParams:
-    """QAM 配置"""
-
-    num_bits_per_symbol: int = 2
-    """QAM 每符号比特数"""
-    order: int = field(init=False)
-    """QAM 阶数，由 num_bits_per_symbol 计算得出"""
-
-    def __post_init__(self) -> None:
-        self.order = self.num_bits_per_symbol**2
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "QAMParams":
-        return cls(
-            num_bits_per_symbol=int(config_dict.get("num_bits_per_symbol", 2)),
-        )
-
-
-@dataclass
 class SourceParams:
     """OFDM 信源配置（binary / ZC）"""
 
@@ -36,15 +17,13 @@ class SourceParams:
 
     def __post_init__(self) -> None:
         if self.type not in ("binary", "zc"):
-            raise ValueError("ofdm.source.type must be 'binary' or 'zc'")
+            raise ValueError("source.type must be 'binary' or 'zc'")
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SourceParams":
         raw_type = config_dict.get("type", "binary")
         if not isinstance(raw_type, str):
-            raise ValueError(
-                f"ofdm.source.type must be a string, got {type(raw_type)!r}"
-            )
+            raise ValueError(f"source.type must be a string, got {type(raw_type)!r}")
         return cls(
             type=raw_type.strip().lower(),
             root_index=int(config_dict.get("root_index", 1)),
@@ -57,8 +36,7 @@ class OFDMParams:
     """OFDM 网格与调制参数"""
 
     num_symbols: int = 512
-    num_subcarriers: int = 2048
-    num_valid_subcarriers: int = 2048
+    fft_size: int = 2048
     subcarrier_spacing: float = 30000.0
     cyclic_prefix_length: int = 0
     l_min: int = -6
@@ -66,7 +44,7 @@ class OFDMParams:
 
     @property
     def samp_rate(self) -> int:
-        return int(self.subcarrier_spacing * self.num_subcarriers)
+        return int(self.subcarrier_spacing * self.fft_size)
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "OFDMParams":
@@ -75,10 +53,12 @@ class OFDMParams:
         cp = config_dict.get(
             "cyclic_prefix_length", config_dict.get("num_cyclic_prefix", 0)
         )
+        fft_size_raw = config_dict.get(
+            "fft_size", config_dict.get("num_subcarriers", 1024)
+        )
         return cls(
             num_symbols=int(config_dict.get("num_symbols", 1024)),
-            num_subcarriers=int(config_dict.get("num_subcarriers", 1024)),
-            num_valid_subcarriers=int(config_dict.get("num_valid_subcarriers", 1024)),
+            fft_size=int(fft_size_raw),
             subcarrier_spacing=float(config_dict.get("subcarrier_spacing", 30000.0)),
             cyclic_prefix_length=int(cp),
             l_min=l_min,
@@ -296,8 +276,8 @@ class SystemParams:
     """系统配置（嵌套 Params，顺序对齐 system_components）。"""
 
     carrier_frequency: float = 2.6e9
+    num_bits_per_symbol: int = 2
 
-    qam: QAMParams = field(default_factory=QAMParams)
     source: SourceParams = field(default_factory=SourceParams)
     ofdm: OFDMParams = field(default_factory=OFDMParams)
     stream_management: StreamManagementParams = field(
@@ -324,87 +304,45 @@ class SystemParams:
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SystemParams":
-        ofdm_raw = config_dict.get("ofdm", {})
-        if not isinstance(ofdm_raw, dict):
-            ofdm_raw = {}
-
-        # carrier_frequency（仅顶层配置，不从 [ofdm] 回退）
+        # 载波频率
         carrier_frequency = float(config_dict.get("carrier_frequency", 2.6e9))
 
-        # qam
-        qam_raw = config_dict.get("qam", {})
-        if not isinstance(qam_raw, dict):
-            qam_raw = {}
-        if "num_bits_per_symbol" not in qam_raw and "num_bits_per_symbol" in ofdm_raw:
-            qam_raw = {
-                **qam_raw,
-                "num_bits_per_symbol": ofdm_raw["num_bits_per_symbol"],
-            }
-        qam = QAMParams.from_dict(qam_raw)
+        # QAM 每符号比特数
+        num_bits_per_symbol = int(config_dict.get("num_bits_per_symbol", 2))
 
-        # source
-        src_dict = ofdm_raw.get("source")
-        if not isinstance(src_dict, dict):
-            src_dict = {}
-        source = SourceParams.from_dict(src_dict)
+        # 信源
+        source = SourceParams.from_dict(config_dict.get("source", {}))
 
         # ofdm
-        ofdm = OFDMParams.from_dict(ofdm_raw)
+        ofdm = OFDMParams.from_dict(config_dict.get("ofdm", {}))
 
-        # stream_management
-        stream_dict = ofdm_raw.get("stream_management")
-        if not isinstance(stream_dict, dict):
-            stream_dict = {}
-        stream_management = StreamManagementParams.from_dict(stream_dict)
+        # 资源网格解映射流管理
+        stream_management = StreamManagementParams.from_dict(
+            config_dict.get("stream_management", {})
+        )
 
-        # channel
-        channel_raw = config_dict.get("channel", {})
-        if not isinstance(channel_raw, dict):
-            channel_raw = {}
-        channel = ChannelParams.from_dict(channel_raw)
-
-        # sensing_performance（无 TOML 字段，构建时注入 carrier_frequency + rg）
+        # 信道
+        channel = ChannelParams.from_dict(config_dict.get("channel", {}))
 
         # windows / music / cfar / mti / mtd
-        sensing = config_dict.get("sensing") or {}
-        if not isinstance(sensing, dict):
-            sensing = {}
-        w = sensing.get("windows")
-        if not isinstance(w, dict):
-            w = {}
-        windows = WindowParams.from_dict(w)
-        music_dict = sensing.get("music")
-        if not isinstance(music_dict, dict):
-            music_dict = {}
-        music = MusicParams.from_dict(music_dict)
-        cfar_dict = sensing.get("cfar")
-        if not isinstance(cfar_dict, dict):
-            cfar_dict = {}
-        cfar = CFARParams.from_dict(cfar_dict)
-        mti_dict = sensing.get("mti")
-        if not isinstance(mti_dict, dict):
-            mti_dict = {}
-        mti = MTIParams.from_dict(mti_dict)
-        mtd_dict = sensing.get("mtd")
-        if not isinstance(mtd_dict, dict):
-            mtd_dict = {}
-        mtd = MTDParams.from_dict(mtd_dict)
+        sensing = config_dict.get("sensing", {})
+        windows = WindowParams.from_dict(sensing.get("windows", {}))
+        music = MusicParams.from_dict(sensing.get("music", {}))
+        cfar = CFARParams.from_dict(sensing.get("cfar", {}))
+        mti = MTIParams.from_dict(sensing.get("mti", {}))
+        mtd = MTDParams.from_dict(sensing.get("mtd", {}))
 
         # rt_scene
-        rt_scene_cfg = config_dict.get("rt_scene")
-        rt_scene: Optional[RtSceneParams] = None
-        if isinstance(rt_scene_cfg, dict) and rt_scene_cfg:
-            rt_scene = RtSceneParams.from_dict(rt_scene_cfg)
+        rt_scene = RtSceneParams.from_dict(config_dict.get("rt_scene", {}))
 
         # static_target
-        static_target_cfg = config_dict.get("static_target")
-        static_target: Optional[StaticTargetParams] = None
-        if isinstance(static_target_cfg, dict) and static_target_cfg:
-            static_target = StaticTargetParams.from_dict(static_target_cfg)
+        static_target = StaticTargetParams.from_dict(
+            config_dict.get("static_target", {})
+        )
 
         params = cls(
             carrier_frequency=carrier_frequency,
-            qam=qam,
+            num_bits_per_symbol=num_bits_per_symbol,
             source=source,
             ofdm=ofdm,
             stream_management=stream_management,

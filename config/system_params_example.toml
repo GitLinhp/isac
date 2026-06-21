@@ -10,33 +10,29 @@
 #   3. 启用文件末尾 [static_target] 注释块中的配置
 # =============================================================================
 
-# --- 载波（SystemParams.carrier_frequency）---
+# --- 载波 / QAM（SystemParams 顶层）---
 carrier_frequency = 6e9 # 载波频率 (Hz)
-
-# --- QAM（SystemParams.qam → mapper / demapper）---
-[qam]
 num_bits_per_symbol = 2 # QAM 每符号比特数，须为 2 的幂次
 
 # --- OFDM 网格（SystemParams.ofdm → rg / modulator / demodulator）---
 [ofdm]
 num_symbols = 512            # OFDM 符号数
-num_subcarriers = 2048       # FFT 大小 / 子载波数
-num_valid_subcarriers = 2048 # 有效子载波数
+fft_size = 2048              # FFT 大小
 subcarrier_spacing = 30000.0 # 子载波间隔 (Hz)
 cyclic_prefix_length = 512   # 循环前缀长度；别名 num_cyclic_prefix
 l_min = -6                   # OFDM 解调器最小时延抽头索引
 dc_null = false              # 资源网格是否置空 DC 子载波
 
-# --- 流管理（SystemParams.stream_management → rg_demapper）---
-[ofdm.stream_management]
-rx_tx_association = [[1]] # 收发关联矩阵
-num_streams = 1           # 流数
-
 # --- OFDM 信源（SystemParams.source → zc_source；type=binary 时不构建 ZC）---
-[ofdm.source]
+[source]
 type = "zc"      # binary | zc；ZC 须 gcd(root_index, num_data_symbols)=1
 root_index = 1
 normalize = true
+
+# --- 流管理（SystemParams.stream_management → rg_demapper）---
+[stream_management]
+rx_tx_association = [[1]] # 收发关联矩阵
+num_streams = 1           # 流数
 
 # --- 信道（SystemParams.channel）---
 [channel]
@@ -150,7 +146,7 @@ detector = "linear" # linear | squarelaw
 # offset = 0.0               # 可选：阈值缩放；省略则按 pfa 自动计算
 
 [sensing.music]
-threshold = 0.1 # MUSICEstimator.__call__ 默认门限
+threshold = 0.1          # MUSICEstimator.__call__ 默认门限
 near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
 
 [sensing.mti]

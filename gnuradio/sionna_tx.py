@@ -129,7 +129,7 @@ def get_tx_packet(
         raw = load_config(config_path)
         params = SystemParams.from_dict(raw)
         overrides = GrcOverrides(
-            fft_len=int(fft_len if fft_len is not None else params.ofdm.num_subcarriers),
+            fft_len=int(fft_len if fft_len is not None else params.ofdm.fft_size),
             ofdm_symbols=int(
                 ofdm_symbols if ofdm_symbols is not None else params.ofdm.num_symbols
             ),
@@ -197,7 +197,7 @@ def prewarm_sionna_tx(
         raw = load_config(config_path)
         params = SystemParams.from_dict(raw)
         overrides = GrcOverrides(
-            fft_len=params.ofdm.num_subcarriers,
+            fft_len=params.ofdm.fft_size,
             ofdm_symbols=params.ofdm.num_symbols,
             cp_len=params.ofdm.cyclic_prefix_length,
             subcarrier_spacing=params.ofdm.subcarrier_spacing,
@@ -237,7 +237,7 @@ def _build_tx_packet_impl(effective: EffectiveConfig) -> TxPacket:
 
     if params.source.type != "zc":
         raise ValueError(
-            f"sionna_tx only supports ofdm.source.type='zc', "
+            f"sionna_tx only supports source.type='zc', "
             f"got {params.source.type!r}"
         )
     if comps.zc_source is None:
@@ -252,7 +252,7 @@ def _build_tx_packet_impl(effective: EffectiveConfig) -> TxPacket:
 
     cp = params.ofdm.cyclic_prefix_length
     n_sym = params.ofdm.num_symbols
-    fft_size = params.ofdm.num_subcarriers
+    fft_size = params.ofdm.fft_size
     expected_time = n_sym * (fft_size + cp)
     if x_time.size != expected_time:
         raise RuntimeError(

@@ -63,16 +63,10 @@ def main() -> None:
     # --- 应用信道 ---
     if domain == "frequency":
         y_rg = system.apply_channel(x_rg, domain=domain)
-        y_rg_clean = comps.apply_channel(x_rg, domain=domain, snr_db=None).squeeze()
-        result = system.sensing(x_rg, y_rg, y_rg_clean=y_rg_clean)
+        _, h_delay_doppler = system.sensing(x_rg, y_rg)
     elif domain == "time":
         y_time = system.apply_channel(x_time, domain=domain)
-        y_time_clean = comps.apply_channel(x_time, domain=domain, snr_db=None)
-        result = system.sensing(
-            x_rg,
-            y_time=y_time,
-            y_time_clean=y_time_clean,
-        )
+        _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")
 
@@ -86,7 +80,7 @@ def main() -> None:
         backend="matplotlib",
     )
     comps.music_estimator(
-        spectrum_tensor=result.h_delay_doppler,
+        spectrum_tensor=h_delay_doppler,
         metric_mode="dd",
     )
 
