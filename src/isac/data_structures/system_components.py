@@ -139,7 +139,6 @@ class SystemComponents:
         )
 
         # 信道组件（rt_scene / static_target_sim 须先于 rt_channel 构建）
-        channel_type = channel.type
         rt_scene: Optional[RTScene] = None
         if system_params.rt_scene is not None:
             rt_scene = RTScene(scene_params=system_params.rt_scene)
@@ -151,7 +150,7 @@ class SystemComponents:
             st_params.ensure_phy()
             static_target_sim = StaticTargetSimulator(st_params)
         rt_channel: Optional[Channel] = None
-        if channel_type == "rt":
+        if channel.type == "rt":
             if rt_scene is None:
                 raise ValueError("channel.type='rt' 要求已构建 rt_scene")
             rt_channel = Channel(rg=rg, paths=lambda: rt_scene.paths)
@@ -159,7 +158,7 @@ class SystemComponents:
             raise ValueError("channel.type='rcs' 要求已构建 static_target")
         awgn = AWGN(device=device)
         isac_channel = IsacChannel(
-            channel_type=channel_type,
+            channel_type=channel.type,
             default_snr_db=channel.snr_db,
             rt=rt_channel,
             static_target_sim=static_target_sim,
