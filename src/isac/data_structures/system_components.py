@@ -2,7 +2,7 @@
 系统组件数据结构和配置类
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -36,23 +36,23 @@ class SystemComponents:
     """系统组件（最小调用单元扁平字段）。"""
 
     # 基本组件
-    binary_source: BinarySource = field(default_factory=BinarySource)
+    binary_source: Optional[BinarySource] = None
     """二进制源"""
-    mapper: Mapper = field(default_factory=Mapper)
+    mapper: Optional[Mapper] = None
     """映射器"""
-    demapper: Demapper = field(default_factory=Demapper)
+    demapper: Optional[Demapper] = None
     """解映射器"""
     zc_source: Optional[ZCSource] = None
     """Zadoff-Chu 源"""
-    rg: ResourceGrid = field(default_factory=ResourceGrid)
+    rg: Optional[ResourceGrid] = None
     """资源网格"""
-    rg_mapper: ResourceGridMapper = field(default_factory=ResourceGridMapper)
+    rg_mapper: Optional[ResourceGridMapper] = None
     """资源网格映射器"""
-    rg_demapper: ResourceGridDemapper = field(default_factory=ResourceGridDemapper)
+    rg_demapper: Optional[ResourceGridDemapper] = None
     """资源网格解映射器"""
-    modulator: OFDMModulator = field(default_factory=OFDMModulator)
+    modulator: Optional[OFDMModulator] = None
     """OFDM调制器"""
-    demodulator: OFDMDemodulator = field(default_factory=OFDMDemodulator)
+    demodulator: Optional[OFDMDemodulator] = None
     """OFDM解调器"""
 
     # 信道组件
@@ -60,23 +60,17 @@ class SystemComponents:
     """统一信道（RT / RCS + AWGN）"""
 
     # 感知组件
-    sensing_performance: SensingPerformance = field(default_factory=SensingPerformance)
+    sensing_performance: Optional[SensingPerformance] = None
     """感知性能"""
-    delay_doppler_spectrum: DelayDopplerSpectrum = field(
-        default_factory=DelayDopplerSpectrum
-    )
+    delay_doppler_spectrum: Optional[DelayDopplerSpectrum] = None
     """延迟多普勒谱"""
-    music_estimator: MUSICEstimator = field(default_factory=MUSICEstimator)
+    music_estimator: Optional[MUSICEstimator] = None
     """MUSIC估计器"""
-    cfar: CFARDetector = field(default_factory=CFARDetector)
+    cfar: Optional[CFARDetector] = None
     """CFAR检测器"""
-    moving_target_indication: MovingTargetIndication = field(
-        default_factory=MovingTargetIndication
-    )
+    moving_target_indication: Optional[MovingTargetIndication] = None
     """移动目标指示"""
-    moving_target_detection: MovingTargetDetection = field(
-        default_factory=MovingTargetDetection
-    )
+    moving_target_detection: Optional[MovingTargetDetection] = None
     """移动目标检测"""
     rt_scene: Optional[RTScene] = None
     """RT场景"""
