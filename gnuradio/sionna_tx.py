@@ -306,7 +306,7 @@ class SionnaBootstrap(gr.basic_block):
 
     def __init__(
         self,
-        config_file: str = "config/sensing_monostatic.toml",
+        config_file: str = "config/simulation/sensing/sensing_monostatic.toml",
         seed: int = 42,
         device: str = "cuda:0",
         fft_len: int = 2048,
@@ -357,7 +357,7 @@ class SionnaOFDMTx(gr.basic_block):
 
     def __init__(
         self,
-        config_file: str = "config/sensing_monostatic.toml",
+        config_file: str = "config/simulation/sensing/sensing_monostatic.toml",
         fft_len: int = 2048,
         ofdm_symbols: int = 512,
         cp_len: int = 512,

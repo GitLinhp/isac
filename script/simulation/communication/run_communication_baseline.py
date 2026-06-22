@@ -14,7 +14,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="communication_baseline.toml",
+        default="simulation/communication/communication_baseline.toml",
         help="配置文件路径",
     )
     parser.add_argument(

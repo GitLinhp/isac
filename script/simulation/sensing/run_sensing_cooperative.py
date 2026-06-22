@@ -37,7 +37,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="sensing_cooperative.toml",
+        default="simulation/sensing/sensing_cooperative.toml",
         help="配置文件路径",
     )
     parser.add_argument(

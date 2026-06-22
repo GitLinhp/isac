@@ -7,7 +7,7 @@ parameters:
 - id: config_file
   label: Config file
   dtype: string
-  default: '"config/sensing_monostatic.toml"'
+  default: '"config/simulation/sensing/sensing_monostatic.toml"'
 - id: seed
   label: Seed
   dtype: int

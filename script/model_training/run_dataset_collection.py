@@ -629,8 +629,8 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="sensing_monostatic_canyon.toml",
-        help="配置文件路径（须含非空 [rt_scene]，默认使用仓库 config/data_collection.toml）",
+        default="simulation/sensing/sensing_monostatic_canyon.toml",
+        help="配置文件路径（须含非空 [rt_scene]）",
     )
     parser.add_argument(
         "--device",

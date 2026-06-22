@@ -23,7 +23,7 @@ OFDM_SYMBOLS = 512
 CP_LEN = 512
 SUBCARRIER_SPACING = 15000.0
 CENTER_FREQ = 6e9
-CONFIG = "config/sensing_monostatic.toml"
+CONFIG = "config/simulation/sensing/sensing_monostatic.toml"
 SEED = 42
 DEVICE = "cuda:0" if os.environ.get("ISAC_VERIFY_CPU") != "1" else "cpu"
 

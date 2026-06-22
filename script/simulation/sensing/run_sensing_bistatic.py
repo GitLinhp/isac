@@ -12,7 +12,7 @@ def argument_parser() -> argparse.Namespace:
 
     parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
-        "--config_file", type=str, default="sensing_bistatic.toml", help="配置文件路径"
+        "--config_file", type=str, default="simulation/sensing/sensing_bistatic.toml", help="配置文件路径"
     )
     parser.add_argument(
         "--device",

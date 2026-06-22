@@ -11,22 +11,10 @@ if str(_SRC) not in sys.path:
 
 from isac.data_structures import SystemParams
 from isac.sensing.sensing_performance import SensingPerformance
-from isac.utils import load_config
+from isac.utils import load_config, resolve_config_path
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
-def resolve_config_path(config_file: str) -> Path:
-    path = Path(config_file)
-    if path.is_absolute():
-        return path
-    candidate = (_REPO_ROOT / path).resolve()
-    if candidate.exists():
-        return candidate
-    if path.parts and path.parts[0] == "..":
-        return (_REPO_ROOT / Path(*path.parts[1:])).resolve()
-    return candidate
 
 
 @dataclass(frozen=True)

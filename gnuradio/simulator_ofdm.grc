@@ -87,7 +87,7 @@ blocks:
   id: variable
   parameters:
     comment: "Sionna \u53D1\u7AEF TOML \u8DEF\u5F84"
-    value: '"config/sensing_monostatic.toml"'
+    value: '"config/simulation/sensing/sensing_monostatic.toml"'
   states:
     bus_sink: false
     bus_source: false

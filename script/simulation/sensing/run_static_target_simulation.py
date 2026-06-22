@@ -18,7 +18,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="static_target_simulation.toml",
+        default="simulation/sensing/static_target_simulation.toml",
         help="配置文件路径",
     )
     parser.add_argument(

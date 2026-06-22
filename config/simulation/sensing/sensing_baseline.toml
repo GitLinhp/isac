@@ -9,13 +9,13 @@ type = "zc"
 num_symbols = 1024           # 符号数
 fft_size = 1024              # FFT 大小
 subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
-cyclic_prefix_length = 0        # 循环前缀长度
+cyclic_prefix_length = 0     # 循环前缀长度
 l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
 
 # 信道参数
 [channel]
 type = "rt"
-snr_db = -5               # 接收端 SNR (dB)：no = E[|y_clean|^2] / 10^(snr_db/10)
+snr_db = -5 # 接收端 SNR (dB)：no = E[|y_clean|^2] / 10^(snr_db/10)
 
 # 射线追踪场景参数
 [rt_scene]

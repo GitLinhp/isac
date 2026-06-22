@@ -41,7 +41,7 @@ GUI 顶部提供 **target_range** / **target_velocity** 滑块（界面标签仍
 
 ## 配置优先级（GRC > TOML）
 
-- **GRC 变量是 flowgraph 的主入口**：`fft_len`、`ofdm_symbols`、`cp_len`、`subcarrier_spacing`、`center_freq`、`seed` 等块参数优先于 `config/sensing_monostatic.toml` 同名字段。
+- **GRC 变量是 flowgraph 的主入口**：`fft_len`、`ofdm_symbols`、`cp_len`、`subcarrier_spacing`、`center_freq`、`seed` 等块参数优先于 `config/simulation/sensing/sensing_monostatic.toml` 同名字段。
 - **Sionna 块内部**通过 `gr_config.merge_config()` 合并：`EffectiveConfig = merge(TOML, GrcOverrides)`，GPU 波形与 DD 处理以 **effective** 为准。
 - **Bootstrap** 在 Python 中通过 `merge_config` + `SensingPerformance` 计算并**打印**感知性能（分辨率、R_max、v_max 等）。
 - GRC 中**不再**维护 `bandwidth`、`R_max`、`v_max` 等派生 Variable；谱图轴使用与默认配置接近的占位值，滑块范围由 `run_simulator_ofdm.py` 启动时刷新。
@@ -98,7 +98,7 @@ GUI 顶部提供 **target_range** / **target_velocity** 滑块（界面标签仍
 | `center_freq`        | 6 GHz         | 载频                              |
 | `samp_rate`          | 30.72 MHz     | `fft_len × subcarrier_spacing`（信道仿真用） |
 | `burst_pri_sec`      | 0.1 s         | PRI；设为 0 恢复连续发送          |
-| `config_file`        | `config/sensing_monostatic.toml` | Sionna 配置          |
+| `config_file`        | `config/simulation/sensing/sensing_monostatic.toml` | Sionna 配置          |
 | `tx_device`          | `cuda:0`      | GPU 设备                          |
 | `target_range`       | 100 m（滑块） | 仿真目标距离                      |
 | `target_velocity`    | 5 m/s（滑块） | 仿真目标速度                      |
@@ -153,7 +153,7 @@ python -u run_simulator_ofdm.py    # 含感知性能 UI 刷新；勿直接跑 si
 | `sionna_rx.py`                   | 收端 tag 门控 + DD 谱         |
 | `sionna_*.block.yml`             | GRC 自定义块                  |
 | `gr_config.py`                   | GRC/TOML merge 与 EffectiveConfig |
-| `config/sensing_monostatic.toml` | Sionna 配置                       |
+| `config/simulation/sensing/sensing_monostatic.toml` | Sionna 配置                       |
 | `sionna_static_target.py`        | Torch 点目标信道 GRC 块           |
 | `sionna_static_target.block.yml` | GRC 块定义                        |
 | `verify_dd_axis.py`              | DD 轴标定验证                 |

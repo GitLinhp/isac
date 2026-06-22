@@ -7,7 +7,7 @@
 | 项目 | `run_sensing_monostatic.py` | `run_static_target_simulation.py` |
 |------|----------------------------|-----------------------------------|
 | 信道 | Sionna RT 射线追踪（`system.components.channel`） | `static_target_simulator` 点散射 |
-| 配置 | 含 `[rt_scene]` | 无 RT，[`config/static_target_simulation.toml`](config/static_target_simulation.toml) |
+| 配置 | 含 `[rt_scene]` | 无 RT，[`config/simulation/sensing/static_target_simulation.toml`](config/simulation/sensing/static_target_simulation.toml) |
 | 施加域 | 频域或时域（`--domain`） | **固定时域**（仿真器仅接受 IQ 样点流） |
 | 真值 | `RTScene.rx_target_tx_geometric` | CLI `--range_m` / `--velocity_mps` |
 | 场景渲染 | 有 | 无 |
@@ -96,7 +96,7 @@ flowchart TB
 _, x_rg, x_time = system.transmit()
 ```
 
-- 配置 [`sensing.source.type = "zc"`](config/static_target_simulation.toml)：Zadoff-Chu 序列映射到资源网格。
+- 配置 [`sensing.source.type = "zc"`](config/simulation/sensing/static_target_simulation.toml)：Zadoff-Chu 序列映射到资源网格。
 - `x_rg` 形状：`(batch, …, num_ofdm_symbols, fft_size)`，默认 **512 × 2048**。
 - `x_time` 为 `modulator(x_rg)`；时域样点数 **N = 512 × (2048 + 512) = 1,310,720**。
 
@@ -168,7 +168,7 @@ select_peak_and_log_radial_rmse(
 
 ## 默认 OFDM / 感知参数
 
-来源：[`config/static_target_simulation.toml`](config/static_target_simulation.toml)
+来源：[`config/simulation/sensing/static_target_simulation.toml`](config/simulation/sensing/static_target_simulation.toml)
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -194,7 +194,7 @@ select_peak_and_log_radial_rmse(
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `--config_file` | `static_target_simulation.toml` | TOML 路径 |
+| `--config_file` | `simulation/sensing/static_target_simulation.toml` | TOML 路径 |
 | `--device` / `-d` | `cuda:0` | `cuda:0` 或 `cpu` |
 | `--seed` | `42` | 随机种子 |
 | `--batch_size` | `1` | 批大小 |
