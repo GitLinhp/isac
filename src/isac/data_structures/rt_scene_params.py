@@ -151,13 +151,21 @@ class RtSceneParams:
     """射线追踪场景配置"""
 
     filename: str | None = None
+    """场景文件名"""
     merge_shapes: bool = False
+    """是否合并相同材质的形状"""
     camera: CameraParams | None = None
+    """相机配置"""
     antenna_arrays: dict[str, AntennaArrayParams] | None = None
+    """天线阵列配置"""
     transceivers: dict[str, TransceiverParams] | None = None
+    """收发器配置"""
     target_materials: dict[str, TargetMaterialParams] | None = None
+    """目标材质配置"""
     targets: dict[str, TargetParams] | None = None
+    """目标配置"""
     path_solver: PathSolverParams | None = None
+    """路径解析器配置"""
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "RtSceneParams":

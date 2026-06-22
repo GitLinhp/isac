@@ -1,6 +1,12 @@
-carrier_frequency = 4.9e9
-num_bits_per_symbol = 2
+carrier_frequency = 4.9e9 # 载波频率(Hz)
 
+# 信源参数
+[source]
+type = "zc"
+root_index = 1
+normalize = true
+
+# OFDM 参数
 [ofdm]
 num_symbols = 512
 fft_size = 2048
@@ -8,15 +14,12 @@ subcarrier_spacing = 30000.0
 cyclic_prefix_length = 512
 l_min = -6
 
-[source]
-type = "zc"
-root_index = 1
-normalize = true
-
-
+# 信道参数
 [channel]
 type = "rt"
 snr_db = 80
+
+# 射线追踪场景参数
 [rt_scene]
 filename = "simple_street_canyon"
 merge_shapes = false
@@ -75,12 +78,16 @@ edge_diffraction = false
 synthetic_array = true
 seed = 42
 
-
+# 时延/多普勒窗参数
 [windows]
 
+# CFAR 参数
 [cfar]
 type = "ca"
 guard = 2
 trailing = 20
 pfa = 1e-4
 detector = "linear"
+
+# MUSIC 参数
+[music]

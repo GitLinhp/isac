@@ -18,7 +18,9 @@ def stack_state_field(
     """将 ``states[name][field]`` 按 ``names`` 顺序堆成 ``(len(names), 3)`` 的 float64 张量。"""
     return torch.stack(
         [
-            torch.as_tensor(states[n][field], dtype=torch.float64, device=device).reshape(3)
+            torch.as_tensor(
+                states[n][field], dtype=torch.float64, device=device
+            ).reshape(3)
             for n in names
         ],
         dim=0,
@@ -104,19 +106,26 @@ def compute_vel(
     diff_tx = t_pos[:, None, :] - x_stack[None, :, :]  # (n_target, n_tx, 3)
     L_tx = torch.linalg.vector_norm(diff_tx, dim=-1, keepdim=True).clamp_min(eps)
     u_tx = diff_tx / L_tx
-    rate_tx = ((t_vel[:, None, :] - x_vel[None, :, :]) * u_tx).sum(dim=-1)  # (n_target, n_tx)
+    rate_tx = ((t_vel[:, None, :] - x_vel[None, :, :]) * u_tx).sum(
+        dim=-1
+    )  # (n_target, n_tx)
     rate_tx = rate_tx.unsqueeze(0).expand(n_rx, -1, -1)
 
-    diff_rt = r_pos[:, None, :] - t_pos[None, :, :]  # (n_rx, n_target, 3)，与 range 中 ‖R-T‖ 一致
+    diff_rt = (
+        r_pos[:, None, :] - t_pos[None, :, :]
+    )  # (n_rx, n_target, 3)，与 range 中 ‖R-T‖ 一致
     L_rx = torch.linalg.vector_norm(diff_rt, dim=-1, keepdim=True).clamp_min(eps)
     u_rt = diff_rt / L_rx
-    rate_rx = ((r_vel[:, None, :] - t_vel[None, :, :]) * u_rt).sum(dim=-1)  # (n_rx, n_target)
+    rate_rx = ((r_vel[:, None, :] - t_vel[None, :, :]) * u_rt).sum(
+        dim=-1
+    )  # (n_rx, n_target)
     rate_rx = rate_rx.unsqueeze(-1).expand(-1, -1, n_tx)
 
     vel_bi = rate_tx + rate_rx
     return torch.where(is_bistatic, vel_bi, vel_mono)
 
 
+# 感知指标转换
 def delay_to_range(
     tau_s: torch.Tensor,
     carrier_frequency: float,
@@ -145,7 +154,9 @@ def delay_to_range(
     elif sens_mode == "bistatic":
         return tau_s * c
     else:
-        raise ValueError(f"不支持的 sens_mode: {sens_mode}，须为 'monostatic' 或 'bistatic'")
+        raise ValueError(
+            f"不支持的 sens_mode: {sens_mode}，须为 'monostatic' 或 'bistatic'"
+        )
 
 
 def doppler_to_velocity(

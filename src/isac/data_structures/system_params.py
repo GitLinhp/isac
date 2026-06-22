@@ -3,7 +3,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Callable, Dict, Literal, Optional, TypeVar, Union
 from .rt_scene_params import RtSceneParams
 
 
@@ -14,6 +14,7 @@ class SourceParams:
     type: Literal["binary", "zc"] = "binary"
     root_index: int = 1
     normalize: bool = True
+    num_bits_per_symbol: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.type not in ("binary", "zc"):
@@ -24,10 +25,29 @@ class SourceParams:
         raw_type = config_dict.get("type", "binary")
         if not isinstance(raw_type, str):
             raise ValueError(f"source.type must be a string, got {type(raw_type)!r}")
+        n_bps_raw = config_dict.get("num_bits_per_symbol")
+        num_bits_per_symbol = int(n_bps_raw) if n_bps_raw is not None else None
         return cls(
             type=raw_type.strip().lower(),
             root_index=int(config_dict.get("root_index", 1)),
             normalize=bool(config_dict.get("normalize", True)),
+            num_bits_per_symbol=num_bits_per_symbol,
+        )
+
+
+@dataclass
+class StreamManagementParams:
+    """资源网格解映射流管理配置"""
+
+    rx_tx_association: list = field(default_factory=lambda: [[1]])
+    num_streams: int = 1
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "StreamManagementParams":
+        assoc = config_dict.get("rx_tx_association", [[1]])
+        return cls(
+            rx_tx_association=assoc,
+            num_streams=int(config_dict.get("num_streams", 1)),
         )
 
 
@@ -67,22 +87,6 @@ class OFDMParams:
 
 
 @dataclass
-class StreamManagementParams:
-    """资源网格解映射流管理配置"""
-
-    rx_tx_association: list = field(default_factory=lambda: [[1]])
-    num_streams: int = 1
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "StreamManagementParams":
-        assoc = config_dict.get("rx_tx_association", [[1]])
-        return cls(
-            rx_tx_association=assoc,
-            num_streams=int(config_dict.get("num_streams", 1)),
-        )
-
-
-@dataclass
 class ChannelParams:
     """信道配置"""
 
@@ -101,106 +105,6 @@ class ChannelParams:
         return cls(
             type=raw_type.strip().lower(),
             snr_db=float(config_dict.get("snr_db", 10.0)),
-        )
-
-
-@dataclass
-class WindowParams:
-    """时延 / 多普勒窗配置"""
-
-    delay_window: Optional[Union[str, Dict[str, Any]]] = None
-    doppler_window: Optional[Union[str, Dict[str, Any]]] = None
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "WindowParams":
-        return cls(
-            delay_window=config_dict.get("delay_window"),
-            doppler_window=config_dict.get("doppler_window"),
-        )
-
-
-@dataclass
-class CFARParams:
-    """CFAR 检测配置"""
-
-    type: str = "ca"
-    k: Optional[int] = None
-    guard: Union[int, list[int]] = 2
-    trailing: Union[int, list[int]] = 20
-    pfa: float = 1e-4
-    detector: str = "linear"
-    offset: Optional[float] = None
-
-    def __post_init__(self) -> None:
-        t = self.type.strip().lower()
-        if t not in ("ca", "os"):
-            raise ValueError("cfar.type must be 'ca' or 'os'")
-        self.type = t
-        if t == "os" and self.k is None:
-            raise ValueError("cfar: type 'os' requires integer 'k' in config")
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "CFARParams":
-        raw_type = config_dict.get("type", "ca")
-        if not isinstance(raw_type, str):
-            raise ValueError(
-                f"cfar.type must be a string, got {type(raw_type)!r}"
-            )
-        k_raw = config_dict.get("k", None)
-        cfar_k: Optional[int] = int(k_raw) if k_raw is not None else None
-        return cls(
-            type=raw_type.strip().lower(),
-            k=cfar_k,
-            guard=config_dict.get("guard", 2),
-            trailing=config_dict.get("trailing", 20),
-            pfa=config_dict.get("pfa", 1e-4),
-            detector=config_dict.get("detector", "linear"),
-            offset=config_dict.get("offset", None),
-        )
-
-
-@dataclass
-class MusicParams:
-    """MUSIC 估计器默认调用参数"""
-
-    threshold: float = 0.1
-    near_range_guard_m: float = 1.0
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "MusicParams":
-        return cls(
-            threshold=float(config_dict.get("threshold", 0.1)),
-            near_range_guard_m=float(config_dict.get("near_range_guard_m", 1.0)),
-        )
-
-
-@dataclass
-class MTIParams:
-    """动目标显示（MTI）配置"""
-
-    filter_order: int = 1
-    prf: Optional[float] = None
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "MTIParams":
-        prf_raw = config_dict.get("prf", None)
-        return cls(
-            filter_order=int(config_dict.get("filter_order", 1)),
-            prf=float(prf_raw) if prf_raw is not None else None,
-        )
-
-
-@dataclass
-class MTDParams:
-    """动目标检测（MTD）配置"""
-
-    num_filters: Optional[int] = None
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "MTDParams":
-        nf = config_dict.get("num_filters", None)
-        return cls(
-            num_filters=int(nf) if nf is not None else None,
         )
 
 
@@ -267,69 +171,171 @@ class StaticTargetParams:
 
 
 @dataclass
+class MTIParams:
+    """动目标显示（MTI）配置"""
+
+    filter_order: int = 1
+    prf: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "MTIParams":
+        prf_raw = config_dict.get("prf", None)
+        return cls(
+            filter_order=int(config_dict.get("filter_order", 1)),
+            prf=float(prf_raw) if prf_raw is not None else None,
+        )
+
+
+@dataclass
+class MTDParams:
+    """动目标检测（MTD）配置"""
+
+    num_filters: Optional[int] = None
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "MTDParams":
+        nf = config_dict.get("num_filters", None)
+        return cls(
+            num_filters=int(nf) if nf is not None else None,
+        )
+
+
+@dataclass
+class WindowParams:
+    """时延 / 多普勒窗配置"""
+
+    delay_window: Optional[Union[str, Dict[str, Any]]] = None
+    doppler_window: Optional[Union[str, Dict[str, Any]]] = None
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "WindowParams":
+        return cls(
+            delay_window=config_dict.get("delay_window"),
+            doppler_window=config_dict.get("doppler_window"),
+        )
+
+
+@dataclass
+class CFARParams:
+    """CFAR 检测配置"""
+
+    type: str = "ca"
+    k: Optional[int] = None
+    guard: Union[int, list[int]] = 2
+    trailing: Union[int, list[int]] = 20
+    pfa: float = 1e-4
+    detector: str = "linear"
+    offset: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        t = self.type.strip().lower()
+        if t not in ("ca", "os"):
+            raise ValueError("cfar.type must be 'ca' or 'os'")
+        self.type = t
+        if t == "os" and self.k is None:
+            raise ValueError("cfar: type 'os' requires integer 'k' in config")
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "CFARParams":
+        raw_type = config_dict.get("type", "ca")
+        if not isinstance(raw_type, str):
+            raise ValueError(f"cfar.type must be a string, got {type(raw_type)!r}")
+        k_raw = config_dict.get("k", None)
+        cfar_k: Optional[int] = int(k_raw) if k_raw is not None else None
+        return cls(
+            type=raw_type.strip().lower(),
+            k=cfar_k,
+            guard=config_dict.get("guard", 2),
+            trailing=config_dict.get("trailing", 20),
+            pfa=config_dict.get("pfa", 1e-4),
+            detector=config_dict.get("detector", "linear"),
+            offset=config_dict.get("offset", None),
+        )
+
+
+@dataclass
+class MusicParams:
+    """MUSIC 估计器默认调用参数"""
+
+    threshold: float = 0.1
+    near_range_guard_m: float = 1.0
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "MusicParams":
+        return cls(
+            threshold=float(config_dict.get("threshold", 0.1)),
+            near_range_guard_m=float(config_dict.get("near_range_guard_m", 1.0)),
+        )
+
+
+_TParams = TypeVar("_TParams")
+
+
+def _parse_section(
+    config_dict: Dict[str, Any],
+    key: str,
+    parser: Callable[[Dict[str, Any]], _TParams],
+) -> Optional[_TParams]:
+    if key not in config_dict:
+        return None
+    raw = config_dict[key]
+    if not isinstance(raw, dict):
+        raise TypeError(f"{key} 须为表(dict)，收到 {type(raw)!r}")
+    return parser(raw)
+
+
+@dataclass
 class SystemParams:
     """系统配置（嵌套 Params，顺序对齐 system_components）。"""
 
-    carrier_frequency: float = 2.6e9
+    carrier_frequency: Optional[float] = None
     """载波频率"""
-    num_bits_per_symbol: int = 2
-    """QAM 每符号比特数"""
 
-    source: SourceParams = field(default_factory=SourceParams)
+    source: Optional[SourceParams] = None
     """信源"""
-    ofdm: OFDMParams = field(default_factory=OFDMParams)
+    stream_management: Optional[StreamManagementParams] = None
+    """流管理"""
+    ofdm: Optional[OFDMParams] = None
     """OFDM"""
-    stream_management: StreamManagementParams = field(
-        default_factory=StreamManagementParams
-    )
 
-    channel: ChannelParams = field(default_factory=ChannelParams)
+    channel: Optional[ChannelParams] = None
     """信道"""
-    windows: WindowParams = field(default_factory=WindowParams)
-    """时延 / 多普勒窗"""
-    music: MusicParams = field(default_factory=MusicParams)
-    """MUSIC"""
-    cfar: CFARParams = field(default_factory=CFARParams)
-    """CFAR"""
-    mti: MTIParams = field(default_factory=MTIParams)
-    mtd: MTDParams = field(default_factory=MTDParams)
-    """动目标检测"""
     rt_scene: Optional[RtSceneParams] = None
     """射线追踪场景"""
     static_target: Optional[StaticTargetParams] = None
     """静态目标"""
 
+    mti: Optional[MTIParams] = None
+    """动目标显示"""
+    mtd: Optional[MTDParams] = None
+    """动目标检测"""
+    windows: Optional[WindowParams] = None
+    """时延 / 多普勒窗"""
+    cfar: Optional[CFARParams] = None
+    """CFAR 检测"""
+    music: Optional[MusicParams] = None
+    """MUSIC 谱估计"""
+
     @property
     def samp_rate(self) -> int:
+        if self.ofdm is None:
+            raise ValueError("ofdm 未配置")
         return self.ofdm.samp_rate
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SystemParams":
-        # 载波频率
-        carrier_frequency = float(config_dict.get("carrier_frequency", 2.6e9))
-
-        # QAM 每符号比特数
-        num_bits_per_symbol = int(config_dict.get("num_bits_per_symbol", 2))
-
-        # 信源
-        source = SourceParams.from_dict(config_dict.get("source", {}))
-
-        # ofdm
-        ofdm = OFDMParams.from_dict(config_dict.get("ofdm", {}))
-
-        # 资源网格解映射流管理
-        stream_management = StreamManagementParams.from_dict(
-            config_dict.get("stream_management", {})
+        carrier_frequency = (
+            float(config_dict["carrier_frequency"])
+            if "carrier_frequency" in config_dict
+            else None
         )
 
-        # 信道
-        channel = ChannelParams.from_dict(config_dict.get("channel", {}))
-
-        windows = WindowParams.from_dict(config_dict.get("windows") or {})
-        music = MusicParams.from_dict(config_dict.get("music") or {})
-        cfar = CFARParams.from_dict(config_dict.get("cfar") or {})
-        mti = MTIParams.from_dict(config_dict.get("mti") or {})
-        mtd = MTDParams.from_dict(config_dict.get("mtd") or {})
+        source = _parse_section(config_dict, "source", SourceParams.from_dict)
+        stream_management = _parse_section(
+            config_dict, "stream_management", StreamManagementParams.from_dict
+        )
+        ofdm = _parse_section(config_dict, "ofdm", OFDMParams.from_dict)
+        channel = _parse_section(config_dict, "channel", ChannelParams.from_dict)
 
         rt_scene_cfg = config_dict.get("rt_scene")
         rt_scene: Optional[RtSceneParams] = None
@@ -341,27 +347,38 @@ class SystemParams:
         if isinstance(static_target_cfg, dict) and static_target_cfg:
             static_target = StaticTargetParams.from_dict(static_target_cfg)
 
+        mti = _parse_section(config_dict, "mti", MTIParams.from_dict)
+        mtd = _parse_section(config_dict, "mtd", MTDParams.from_dict)
+        windows = _parse_section(config_dict, "windows", WindowParams.from_dict)
+        cfar = _parse_section(config_dict, "cfar", CFARParams.from_dict)
+        music = _parse_section(config_dict, "music", MusicParams.from_dict)
+
         params = cls(
             carrier_frequency=carrier_frequency,
-            num_bits_per_symbol=num_bits_per_symbol,
             source=source,
-            ofdm=ofdm,
             stream_management=stream_management,
+            ofdm=ofdm,
             channel=channel,
-            windows=windows,
-            music=music,
-            cfar=cfar,
-            mti=mti,
-            mtd=mtd,
             rt_scene=rt_scene,
             static_target=static_target,
+            mti=mti,
+            mtd=mtd,
+            windows=windows,
+            cfar=cfar,
+            music=music,
         )
-        if params.static_target is not None:
+        if (
+            params.static_target is not None
+            and params.carrier_frequency is not None
+            and params.ofdm is not None
+        ):
             params.static_target.apply_phy(params.carrier_frequency, params.ofdm)
         params._validate_channel_dependencies()
         return params
 
     def _validate_channel_dependencies(self) -> None:
+        if self.channel is None:
+            return
         if self.channel.type == "rt" and self.rt_scene is None:
             raise ValueError("channel.type='rt' 要求配置 [rt_scene]")
         if self.channel.type == "rcs" and self.static_target is None:

@@ -1,7 +1,4 @@
 import argparse
-import math
-
-import torch
 
 from isac import PROJECT_ROOT
 from isac.system import System
@@ -46,7 +43,6 @@ def main() -> None:
     system = System(args)
 
     domain = args.domain
-    comps = system.components
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_baseline"
     script_out_dir.mkdir(parents=True, exist_ok=True)
@@ -63,25 +59,21 @@ def main() -> None:
     # --- 应用信道 ---
     if domain == "frequency":
         y_rg = system.components.channel(x_rg, domain=domain)
-        _, h_delay_doppler = system.sensing(x_rg, y_rg)
     elif domain == "time":
         y_time = system.components.channel(x_time, domain=domain)
-        _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)
+        y_rg = system.components.demodulator(y_time).squeeze()
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    # --- 显示感知结果 ---
-    comps.sensing_performance.display_performance()
-    comps.delay_doppler_spectrum.visualize(
-        offset=20,
-        file_name=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
-        to_db=False,
+    system.sensing(
+        x_rg,
+        y_rg,
+        evaluate=True,
         metric_mode="delay_doppler",
-        backend="matplotlib",
-    )
-    comps.music_estimator(
-        spectrum_tensor=h_delay_doppler,
-        metric_mode="dd",
+        spectrum_file=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
+        visualize_offset=20,
+        display_geometry=False,
+        compute_rmse=False,
     )
 
     rt_scene = system.components.rt_scene

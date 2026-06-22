@@ -1,21 +1,18 @@
-"""单基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
+"""双基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
 
 import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.utils import set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 单基地感知评估")
+    parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 双基地感知评估")
 
     parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
-        "--config_file",
-        type=str,
-        default="sensing_monostatic.toml",
-        help="配置文件路径",
+        "--config_file", type=str, default="sensing_bistatic.toml", help="配置文件路径"
     )
     parser.add_argument(
         "--device",
@@ -34,7 +31,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--domain",
         type=str,
-        default="frequency",
+        default="time",
         choices=["frequency", "time"],
         help="信道施加域：frequency 或 time",
     )
@@ -56,12 +53,11 @@ def main() -> None:
 
     scene = system.components.rt_scene
     domain = args.domain
-    comps = system.components
 
-    script_out_dir = PROJECT_ROOT / "out" / "sensing_monostatic"
+    script_out_dir = PROJECT_ROOT / "out" / "sensing_bistatic"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    scene.render_to_file(filename=script_out_dir / "sensing_monostatic_scene.png")
+    scene.render_to_file(filename=script_out_dir / "sensing_bistatic_scene.png")
 
     # --- 发射 ---
     _, x_rg, x_time = system.transmit()
@@ -69,37 +65,22 @@ def main() -> None:
     # --- 应用信道 ---
     if domain == "frequency":
         y_rg = system.components.channel(x_rg, domain=domain)
-        _, h_delay_doppler = system.sensing(x_rg, y_rg)
     elif domain == "time":
         y_time = system.components.channel(x_time, domain=domain)
-        _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)
+        y_rg = system.components.demodulator(y_time).squeeze()
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    # --- 显示感知结果 ---
-    comps.sensing_performance.display_performance()
-    comps.delay_doppler_spectrum.visualize(
-        offset=50,
-        file_name=script_out_dir / "sensing_monostatic_delay_doppler_spectrum.png",
-        to_db=False,
+    system.sensing(
+        x_rg,
+        y_rg,
+        apply_mti=True,
+        evaluate=True,
         metric_mode=args.metric_mode,
-        backend="matplotlib",
-    )
-
-    geom = scene.rx_target_tx_geometric
-    geom.display()
-
-    est_ranges, est_velocities, _ = comps.music_estimator(
-        spectrum_tensor=h_delay_doppler,
-        metric_mode=args.metric_mode,
-    )
-
-    match_peaks_and_compute_radial_rmse(
-        est_ranges=est_ranges,
-        est_velocities=est_velocities,
-        true_ranges=geom.range_tensor,
-        true_velocities=geom.vel_tensor,
-        label="单基地感知",
+        sens_mode="bistatic",
+        spectrum_file=script_out_dir / "sensing_bistatic_delay_doppler_spectrum.png",
+        visualize_offset=100,
+        label="双基地感知",
     )
 
 

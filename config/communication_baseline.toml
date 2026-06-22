@@ -1,7 +1,16 @@
 carrier_frequency = 2.6e9    # 载波频率(Hz)
-num_bits_per_symbol = 2      # QAM调制每个符号的比特数
 
-# OFDM参数
+# 信源参数
+[source]
+type = "binary"
+num_bits_per_symbol = 2
+
+# 流管理参数
+[stream_management]
+rx_tx_association = [[1]]
+num_streams = 1
+
+# OFDM 参数
 [ofdm]
 num_symbols = 512            # 符号数
 fft_size = 1024              # FFT 大小
@@ -9,10 +18,12 @@ subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
 cyclic_prefix_length = 0     # 循环前缀长度
 l_min = 0                    # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
 
+# 信道参数
 [channel]
 type = "rcs"
 snr_db = 10
 
+# 静态目标参数
 [static_target]
 range_m = 100.0
 velocity_mps = 0.0

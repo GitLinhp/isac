@@ -132,13 +132,14 @@ def test_triplewise_name_order_follows_dict_insertion_order():
     assert geom.target_names == ["z_last", "a_first"]
 
 
-def test_format_table_includes_type_range_vel():
+def test_display_includes_type_range_vel(capsys):
     geom = RxTargetTxGeometric.from_states(
         {"t0": _state([1.0, 0.0, 0.0])},
         {"r0": _state([0.0, 0.0, 0.0])},
         {"x0": _state([0.0, 0.0, 0.0])},
     )
-    text = geom.format_table()
+    geom.display()
+    text = capsys.readouterr().out
     assert "路径类型" in text and "路径长度_m" in text and "径向速度_mps" in text
     assert "monostatic" in text
     assert "t0" in text and "r0" in text and "x0" in text

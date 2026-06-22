@@ -1,8 +1,16 @@
 # =============================================================================
 # SystemParams 完整配置示例（对齐 src/isac/data_structures/system_params.py）
 #
+# 顶层键未出现在 TOML 中 → SystemParams 对应字段为 None → build_from_params 不构建该组件。
+# 空段（如仅写 [windows] 无子键）仍算「已配置」，会走段内 from_dict 默认值。
+#
 # 默认可直接解析并通过校验：channel.type = "rt"，须配合 [rt_scene]。
-# sensing_performance 无 TOML 字段；载波频率用顶层 carrier_frequency，rg 在构建时注入。
+# 典型仿真链所需段：
+#   - 发射/接收：carrier_frequency, [source], [ofdm]
+#   - binary 源须在 [source] 中写 num_bits_per_symbol（见下方注释）
+#   - 通信解调：另需 [stream_management]
+#   - 信道： [channel] + [rt_scene] 或 [static_target]
+#   - 感知： [mti], [mtd], [windows], [cfar], [music]
 #
 # 若改用 channel.type = "rcs"：
 #   1. 将 [channel].type 改为 "rcs"
@@ -10,9 +18,21 @@
 #   3. 启用文件末尾 [static_target] 注释块中的配置
 # =============================================================================
 
-# --- 载波 / QAM（SystemParams 顶层）---
+# --- 载波（SystemParams 顶层）---
 carrier_frequency = 6e9 # 载波频率 (Hz)
-num_bits_per_symbol = 2 # QAM 每符号比特数，须为 2 的幂次
+
+# --- 信源（SystemParams.source；num_bits_per_symbol 仅 type=binary 时配置）---
+[source]
+type = "zc"      # binary | zc；ZC 须 gcd(root_index, num_data_symbols)=1
+root_index = 1
+normalize = true
+# type = "binary"
+# num_bits_per_symbol = 2  # 须为 2 的幂次；代码访问 params.source.num_bits_per_symbol
+
+# --- 流管理（SystemParams.stream_management → rg_demapper）---
+[stream_management]
+rx_tx_association = [[1]] # 收发关联矩阵
+num_streams = 1           # 流数
 
 # --- OFDM 网格（SystemParams.ofdm → rg / modulator / demodulator）---
 [ofdm]
@@ -22,17 +42,6 @@ subcarrier_spacing = 30000.0 # 子载波间隔 (Hz)
 cyclic_prefix_length = 512   # 循环前缀长度；别名 num_cyclic_prefix
 l_min = -6                   # OFDM 解调器最小时延抽头索引
 dc_null = false              # 资源网格是否置空 DC 子载波
-
-# --- 信源（SystemParams.source → zc_source；type=binary 时不构建 ZC）---
-[source]
-type = "zc"      # binary | zc；ZC 须 gcd(root_index, num_data_symbols)=1
-root_index = 1
-normalize = true
-
-# --- 流管理（SystemParams.stream_management → rg_demapper）---
-[stream_management]
-rx_tx_association = [[1]] # 收发关联矩阵
-num_streams = 1           # 流数
 
 # --- 信道（SystemParams.channel）---
 [channel]
@@ -86,7 +95,6 @@ type = ["tx"]
 
 # 目标材质参数
 [rt_scene.target_materials]
-# 目标材质参数
 [rt_scene.target_materials.car_material]
 type = "metal"
 thickness = 0.01
@@ -94,7 +102,6 @@ color = [0, 0.2, 0.6]
 
 # 目标参数
 [rt_scene.targets]
-# 目标参数
 [rt_scene.targets.car]
 fname = "low_poly_car"
 material = "car_material"
@@ -115,8 +122,17 @@ edge_diffraction = false
 synthetic_array = true
 seed = 42
 
-# --- 感知（SystemParams.windows / music / cfar / mti / mtd）---
-# 感知窗函数参数
+# --- 感知（SystemParams.mti / mtd / windows / cfar / music）---
+# --- MTI（SystemParams.mti）---
+[mti]
+filter_order = 1 # MTI 脉冲对消阶数
+# prf = 30000.0              # 可选；省略则由 rg.ofdm_symbol_duration 推导
+
+# --- MTD（SystemParams.mtd）---
+[mtd]
+# num_filters = 512          # 可选；省略则等于 num_ofdm_symbols
+
+# --- 时延/多普勒窗（SystemParams.windows）---
 [windows]
 # 延迟窗函数参数
 [windows.delay_window]
@@ -134,6 +150,7 @@ alpha = 0.54
 # type = "chebwin"
 # at = 45
 
+# --- CFAR（SystemParams.cfar）---
 [cfar]
 type = "ca" # ca | os（os 时须设置 k）
 # type = "os"
@@ -144,16 +161,10 @@ pfa = 1e-4
 detector = "linear" # linear | squarelaw
 # offset = 0.0               # 可选：阈值缩放；省略则按 pfa 自动计算
 
+# --- MUSIC（SystemParams.music）---
 [music]
 threshold = 0.1          # MUSICEstimator.__call__ 默认门限
 near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
-
-[mti]
-filter_order = 1 # MTI 脉冲对消阶数
-# prf = 30000.0              # 可选；省略则由 rg.ofdm_symbol_duration 推导
-
-[mtd]
-# num_filters = 512          # 可选；省略则等于 num_ofdm_symbols
 
 # =============================================================================
 # --- RCS 点目标信道（将 channel.type 改为 rcs 并注释 [rt_scene] 后启用）---

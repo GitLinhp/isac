@@ -1,16 +1,36 @@
 # 标准库
 import argparse
 import csv
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Union
 import torch
 import numpy as np
 import sionna
 
 # 自定义模块
-from .utils import load_config, cartesian_direction_to_yaw_pitch_roll
+from .utils import (
+    cartesian_direction_to_yaw_pitch_roll,
+    load_config,
+    match_peaks_and_compute_radial_rmse,
+)
 from .data_structures import SystemParams, SystemComponents
 from . import PROJECT_ROOT
+
+
+SensMode = Literal["monostatic", "bistatic"]
+MetricMode = Literal["delay_doppler", "range_velocity", "dd", "rv"]
+
+
+@dataclass
+class SensingResult:
+    """``System.sensing(..., evaluate=True)`` 的返回结构。"""
+
+    h_delay_doppler: torch.Tensor
+    est_ranges: Optional[torch.Tensor] = None
+    est_velocities: Optional[torch.Tensor] = None
+    rmse_range_m: Optional[torch.Tensor] = None
+    rmse_velocity_mps: Optional[torch.Tensor] = None
 
 
 class System:
@@ -58,7 +78,7 @@ class System:
                     batch_size,
                     1,
                     1,
-                    rg.num_data_symbols * self.params.num_bits_per_symbol,
+                    rg.num_data_symbols * self.params.source.num_bits_per_symbol,
                 ]
             )
             x = comps.mapper(b)
@@ -139,33 +159,123 @@ class System:
     def sensing(
         self,
         x_rg: torch.Tensor,
-        y_rg: Optional[torch.Tensor] = None,
+        y_rg: torch.Tensor,
         *,
-        y_time: Optional[torch.Tensor] = None,
         apply_mti: bool = False,
         mti_axis: int = -2,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        evaluate: bool = False,
+        metric_mode: MetricMode = "range_velocity",
+        sens_mode: SensMode = "monostatic",
+        label: str = "感知",
+        spectrum_file: Union[Path, str, None] = None,
+        visualize_offset: int = 50,
+        to_db: bool = False,
+        backend: str = "matplotlib",
+        display_performance: bool = True,
+        display_geometry: bool = True,
+        run_music: bool = True,
+        compute_rmse: bool = True,
+        true_ranges: Optional[torch.Tensor] = None,
+        true_velocities: Optional[torch.Tensor] = None,
+        distance_axis_label: str = "径向距离",
+        velocity_axis_label: str = "径向速度",
+        music_num_sources: Optional[int] = None,
+    ) -> Union[torch.Tensor, SensingResult]:
         """接收端感知：LS 信道估计 → 可选 MTI → 时延–多普勒谱。
 
-        传入 ``y_time`` 时内部 ``demodulator`` 解调为 ``y_rg``；与 ``y_rg`` 二选一。
-
-        返回 ``(h, h_delay_doppler)``。
+        ``evaluate=False`` 时仅返回 ``h_delay_doppler``；``evaluate=True`` 时可选执行
+        性能表、谱图、几何真值展示、MUSIC 与 RMSE，并返回 ``SensingResult``。
         """
-        if y_rg is not None and y_time is not None:
-            raise ValueError("y_rg 与 y_time 不可同时传入")
-        if y_rg is None and y_time is None:
-            raise ValueError("须传入 y_rg 或 y_time")
-
         comps = self.components
-        if y_time is not None:
-            y_rg = comps.demodulator(y_time).squeeze()
 
         h = self.estimate_channel(x_rg, y_rg)
         if apply_mti:
             h = comps.moving_target_indication(h, axis=mti_axis)
         h_delay_doppler = comps.delay_doppler_spectrum(h)
 
-        return h, h_delay_doppler
+        if not evaluate:
+            return h_delay_doppler
+
+        if display_performance:
+            if comps.sensing_performance is None:
+                raise ValueError("evaluate 要求已构建 sensing_performance 组件")
+            comps.sensing_performance.display_performance()
+
+        if spectrum_file is not None:
+            if comps.delay_doppler_spectrum is None:
+                raise ValueError("evaluate 要求已构建 delay_doppler_spectrum 组件")
+            comps.delay_doppler_spectrum.visualize(
+                offset=visualize_offset,
+                file_name=spectrum_file,
+                to_db=to_db,
+                metric_mode=metric_mode,
+                backend=backend,
+            )
+
+        if display_geometry:
+            scene = comps.rt_scene
+            if scene is None:
+                raise ValueError(
+                    "display_geometry=True 要求已构建 rt_scene；"
+                    "或设 display_geometry=False 并传入 true_ranges/true_velocities"
+                )
+            scene.rx_target_tx_geometric.display()
+
+        est_ranges: Optional[torch.Tensor] = None
+        est_velocities: Optional[torch.Tensor] = None
+        rmse_range_m: Optional[torch.Tensor] = None
+        rmse_velocity_mps: Optional[torch.Tensor] = None
+
+        if run_music:
+            if comps.music_estimator is None:
+                raise ValueError("run_music=True 要求已构建 music_estimator 组件")
+            music_kwargs: dict = {
+                "spectrum_tensor": h_delay_doppler,
+                "metric_mode": metric_mode,
+                "sens_mode": sens_mode,
+            }
+            if music_num_sources is not None:
+                music_kwargs["num_sources"] = music_num_sources
+            est_ranges, est_velocities, _ = comps.music_estimator(**music_kwargs)
+
+        if compute_rmse:
+            if est_ranges is None or est_velocities is None:
+                raise ValueError("compute_rmse=True 要求 run_music=True")
+            tr = true_ranges
+            tv = true_velocities
+            if tr is None or tv is None:
+                scene = comps.rt_scene
+                if scene is None:
+                    raise ValueError(
+                        "compute_rmse=True 须传入 true_ranges/true_velocities，"
+                        "或配置 rt_scene 以从 rx_target_tx_geometric 读取真值"
+                    )
+                geom = scene.rx_target_tx_geometric
+                tr = geom.range_tensor
+                tv = geom.vel_tensor
+            (
+                rmse_range_m,
+                rmse_velocity_mps,
+                _,
+                _,
+                _,
+            ) = match_peaks_and_compute_radial_rmse(
+                est_ranges=est_ranges,
+                est_velocities=est_velocities,
+                true_ranges=tr,
+                true_velocities=tv,
+                label=label,
+                distance_axis_label=distance_axis_label,
+                velocity_axis_label=velocity_axis_label,
+            )
+
+        return SensingResult(
+            h_delay_doppler=h_delay_doppler,
+            est_ranges=est_ranges,
+            est_velocities=est_velocities,
+            rmse_range_m=rmse_range_m,
+            rmse_velocity_mps=rmse_velocity_mps,
+        )
 
     def _update_rt_target_pose_from_velocity(
         self,

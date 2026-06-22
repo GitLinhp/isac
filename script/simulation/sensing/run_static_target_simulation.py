@@ -6,7 +6,7 @@ import torch
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.utils import set_random_seed
 
 
 def argument_parser() -> argparse.Namespace:
@@ -77,30 +77,18 @@ def main() -> None:
     y_time = system.components.channel(x_time, domain="time")
 
     # --- 感知 ---
-    _, h_delay_doppler = system.sensing(x_rg, y_time=y_time)
-
-    # --- 显示感知结果 ---
-    comps.sensing_performance.display_performance()
-    comps.delay_doppler_spectrum.visualize(
-        offset=50,
-        file_name=script_out_dir / "static_target_delay_doppler_spectrum.png",
-        to_db=False,
-        metric_mode=args.metric_mode,
-        backend="matplotlib",
-    )
-
+    y_rg = system.components.demodulator(y_time).squeeze()
     device = torch.device(args.device)
     true_ranges = torch.tensor([range_m], dtype=torch.float64, device=device)
     true_velocities = torch.tensor([velocity_mps], dtype=torch.float64, device=device)
 
-    est_ranges, est_velocities, _ = comps.music_estimator(
-        spectrum_tensor=h_delay_doppler,
+    system.sensing(
+        x_rg,
+        y_rg,
+        evaluate=True,
         metric_mode=args.metric_mode,
-    )
-
-    match_peaks_and_compute_radial_rmse(
-        est_ranges=est_ranges,
-        est_velocities=est_velocities,
+        spectrum_file=script_out_dir / "static_target_delay_doppler_spectrum.png",
+        display_geometry=False,
         true_ranges=true_ranges,
         true_velocities=true_velocities,
         label="静态目标仿真",
