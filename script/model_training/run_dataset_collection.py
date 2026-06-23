@@ -20,6 +20,7 @@
 """
 
 import argparse
+import csv
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,16 +42,14 @@ from isac.sensing.sample_quality import (
 )
 from isac.sensing.utils import doppler_to_velocity
 from isac.system import System
+from isac.channel import RTScene
 from isac.utils import csv_float2_scalar
 from isac.utils import (
+    cartesian_direction_to_yaw_pitch_roll,
     compute_rmse,
     images_to_gif,
-    paths_cfr_numpy,
-    paths_cir_numpy,
-    scene_slug_from_rt_scene,
     match_peaks_and_compute_radial_rmse,
     set_random_seed,
-    stack_ragged_cir_samples,
 )
 from isac.utils import target_generation as tg
 
@@ -228,14 +227,14 @@ def _estimate_delay_doppler_spectrum(system: System, domain: str) -> torch.Tenso
     _, x_rg, x_time = system.transmit()
 
     if domain == "frequency":
-        y_rg = system.components.channel(x_rg, domain=domain)
+        y_rg = system.components.channel(x_rg, domain=domain, snr_db=system.params.channel.snr_db)
     elif domain == "time":
-        y_time = system.components.channel(x_time, domain=domain)
+        y_time = system.components.channel(x_time, domain=domain, snr_db=system.params.channel.snr_db)
         y_rg = system.components.demodulator(y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    h = system.estimate_channel(x_rg, y_rg)
+    h = system.components.ls_channel_estimator(x_rg, y_rg)
     return system.components.delay_doppler_spectrum(h)
 
 
@@ -527,21 +526,95 @@ def _build_collection_metadata(
     )
 
 
-def _export_csv(
-    system: System,
+def _update_rt_target_pose_from_velocity(
+    target: object,
+    pos: np.ndarray | list[float],
+    vel: np.ndarray | list[float],
+) -> None:
+    """更新 RT 目标位置、速度与朝向（速度方向 → yaw/pitch/roll）。"""
+    pos_a = np.asarray(pos, dtype=np.float64).reshape(-1)
+    vel_a = np.asarray(vel, dtype=np.float64).reshape(-1)
+    if pos_a.size != 3 or vel_a.size != 3:
+        raise ValueError("位置与速度须为三维向量")
+    v_eps = 1e-9
+    speed = float(np.linalg.norm(vel_a))
+    if speed > v_eps:
+        direction = (vel_a / speed).astype(np.float64)
+    else:
+        direction = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    orientation = cartesian_direction_to_yaw_pitch_roll(direction)
+    target.update(
+        position=pos_a,
+        velocity=vel_a,
+        orientation=orientation,
+    )
+
+
+def save_episodes_csv(
     *,
     scene_slug: str,
-    cfg: CollectionConfig,
     rows: list[dict[str, str | int]],
-    out_dir: Path,
+    run_sensing: bool,
+    csv_mode: Literal["unified", "legacy"] = "unified",
+    output_root: Path | None = None,
 ) -> None:
-    system.save_episodes_csv(
-        scene_slug=scene_slug,
-        rows=rows,
-        run_sensing=cfg.run_sensing,
-        csv_mode=cfg.csv_mode,
-        output_root=out_dir,
-    )
+    """写入 Episode CSV：统一表或 legacy 分裂文件名。"""
+    if not rows:
+        print("无 CSV 行，跳过写入")
+        return
+    out_dir = output_root if output_root is not None else PROJECT_ROOT / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if csv_mode == "unified":
+        path = out_dir / f"{scene_slug}_mc_dataset_episodes.csv"
+        keys_set: set[str] = set()
+        for r in rows:
+            keys_set.update(r.keys())
+        keys = sorted(keys_set)
+        with path.open("w", newline="", encoding="utf-8") as csv_f:
+            writer = csv.DictWriter(csv_f, fieldnames=keys, restval="")
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({k: r.get(k, "") for k in keys})
+        print(f"统一 Episode CSV 已写入: {path}")
+        return
+
+    if run_sensing:
+        path = out_dir / f"{scene_slug}_mc_dataset_sensing_metrics.csv"
+        fieldnames = [
+            "sample_idx",
+            "pos_x_m",
+            "pos_y_m",
+            "pos_z_m",
+            "vel_x_mps",
+            "vel_y_mps",
+            "vel_z_mps",
+            "true_range_m",
+            "est_range_m",
+            "rmse_range_m",
+            "true_radial_velocity_mps",
+            "est_radial_velocity_mps",
+            "rmse_radial_velocity_mps",
+        ]
+    else:
+        path = out_dir / f"{scene_slug}_mc_dataset_kinematics.csv"
+        fieldnames = [
+            "sample_idx",
+            "pos_x_m",
+            "pos_y_m",
+            "pos_z_m",
+            "vel_x_mps",
+            "vel_y_mps",
+            "vel_z_mps",
+            "true_range_m",
+            "true_radial_velocity_mps",
+        ]
+    slim = [{k: r[k] for k in fieldnames if k in r} for r in rows]
+    with path.open("w", newline="", encoding="utf-8") as csv_f:
+        writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(slim)
+    print(f"CSV 已写入: {path}")
 
 
 def _export_h5(
@@ -570,7 +643,7 @@ def _export_h5(
     if cfg.save_cir:
         if not cir_a_list:
             raise RuntimeError("save_cir 已启用但主循环未采集 CIR")
-        cir_a_arr, cir_tau_arr = stack_ragged_cir_samples(cir_a_list, cir_tau_list)
+        cir_a_arr, cir_tau_arr = RTScene.stack_ragged_cir_samples(cir_a_list, cir_tau_list)
 
     h5_path, desc_h5, scene_name = _resolve_h5_output(
         run_sensing=cfg.run_sensing,
@@ -871,9 +944,9 @@ def _process_episode(
         csv_rows.append(row)
 
     if cfg.save_h5:
-        h_freq_list.append(paths_cfr_numpy(system.components.rg, scene))
+        h_freq_list.append(scene.cfr_numpy(system.components.rg))
         if cfg.save_cir:
-            ca, ct = paths_cir_numpy(system.components.rg, scene)
+            ca, ct = scene.cir_numpy(system.components.rg)
             cir_a_list.append(ca)
             cir_tau_list.append(ct)
 
@@ -934,9 +1007,9 @@ def _run_monte_carlo_with_quality_filter(
         pos = pos_batch[0]
         vel = vel_batch[0]
 
-        system._update_rt_target_pose_from_velocity(target, pos, vel)
+        _update_rt_target_pose_from_velocity(target, pos, vel)
         true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
-        cfr = paths_cfr_numpy(system.components.rg, scene)
+        cfr = scene.cfr_numpy(system.components.rg)
 
         result = evaluate_sample_quality(
             scene,
@@ -1002,7 +1075,7 @@ def main() -> None:
     if not scene.rt_targets:
         raise RuntimeError("当前场景中没有可用的 RT 目标（scene.rt_targets 为空）")
     _, target = next(iter(scene.rt_targets.items()))
-    scene_slug = scene_slug_from_rt_scene(scene)
+    scene_slug = scene.output_slug
     roi_box3d = _resolve_roi(args)
 
     h_freq_list: list[np.ndarray] = []
@@ -1063,13 +1136,13 @@ def main() -> None:
         for i in tqdm(range(n_ep), desc="MC 数据集", unit="sample"):
             pos = pos_arr[i]
             vel = vel_arr[i]
-            system._update_rt_target_pose_from_velocity(target, pos, vel)
+            _update_rt_target_pose_from_velocity(target, pos, vel)
 
             if cfg.quality_filter:
                 true_range, true_velocity = _los_truth_at_first_triple(
                     scene, system.device
                 )
-                cfr = paths_cfr_numpy(system.components.rg, scene)
+                cfr = scene.cfr_numpy(system.components.rg)
                 result = evaluate_sample_quality(
                     scene,
                     cfr,
@@ -1115,12 +1188,12 @@ def main() -> None:
 
     # 8. 落盘：Episode CSV、HDF5（CFR [+ 可选 CIR] + kinematics）、场景 GIF
     if cfg.save_csv:
-        _export_csv(
-            system,
+        save_episodes_csv(
             scene_slug=scene_slug,
-            cfg=cfg,
             rows=csv_rows,
-            out_dir=SCRIPT_OUT_DIR,
+            run_sensing=cfg.run_sensing,
+            csv_mode=cfg.csv_mode,
+            output_root=SCRIPT_OUT_DIR,
         )
 
     _export_h5(

@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from ..sensing_performance import SensingPerformance
-from ...utils.windows import get_named_window_tensor_1d
+from ...utils.windows import apply_window
 
 
 class MovingTargetDetection:
@@ -42,13 +42,7 @@ class MovingTargetDetection:
         axis_norm = axis % ndim
 
         x = torch.movedim(signal_data.to(torch.complex128), axis_norm, -1)
-        n_last = x.shape[-1]
-
-        if window is not None:
-            w = get_named_window_tensor_1d(
-                window, n_last, device=dev, dtype=torch.float64, sym=True
-            ).reshape((1,) * (x.ndim - 1) + (n_last,))
-            x = x * w.to(torch.complex128)
+        x = apply_window(x, dim=-1, window=window, periodic=False)
 
         spec = torch.fft.fftshift(
             torch.fft.fft(x, n=self.num_filters, dim=-1),

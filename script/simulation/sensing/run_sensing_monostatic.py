@@ -55,7 +55,6 @@ def main() -> None:
     system = System(args)
 
     scene = system.components.rt_scene
-    domain = args.domain
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_monostatic"
     script_out_dir.mkdir(parents=True, exist_ok=True)
@@ -66,10 +65,12 @@ def main() -> None:
     _, x_rg, x_time = system.transmit()
 
     # --- 应用信道 ---
+    domain = args.domain
+    snr_db = system.params.channel.snr_db
     if domain == "frequency":
-        y_rg = system.components.channel(x_rg, domain=domain)
+        y_rg = system.components.channel(x_rg, domain=domain, snr_db=snr_db)
     elif domain == "time":
-        y_time = system.components.channel(x_time, domain=domain)
+        y_time = system.components.channel(x_time, domain=domain, snr_db=snr_db)
         y_rg = system.components.demodulator(y_time).squeeze()
     else:
         raise ValueError(f"不支持的域: {domain}")

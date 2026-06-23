@@ -1,4 +1,4 @@
-"""gnuradio 薄封装：re-export ISAC Torch static_target_simulator。"""
+"""gnuradio 薄封装：re-export ISAC Torch STChannel。"""
 import sys
 from pathlib import Path
 
@@ -12,11 +12,11 @@ for _p in (_GRC, str(_SRC)):
 import numpy as np
 import torch
 
-from isac.channel.static_target_simulator import StaticTargetParams, StaticTargetSimulator
+from isac.channel import StaticTargetParams, STChannel
 
 __all__ = [
     "StaticTargetParams",
-    "StaticTargetSimulator",
+    "STChannel",
     "apply_grc_default_channel",
 ]
 
@@ -36,7 +36,7 @@ def apply_grc_default_channel(
     generator: torch.Generator | None = None,
 ) -> np.ndarray:
     """用 simulator_ofdm.grc 默认参数对时域 IQ 施加 static_target 信道，返回 numpy complex64。"""
-    sim = StaticTargetSimulator(
+    sim = STChannel(
         StaticTargetParams(
             range_m=range_m,
             velocity_mps=velocity_mps,
@@ -48,7 +48,7 @@ def apply_grc_default_channel(
             self_coupling_db=self_coupling_db,
             rndm_phaseshift=rndm_phaseshift,
             self_coupling=self_coupling,
-        )
+        ),
     )
     if isinstance(tx, np.ndarray):
         tx_t = torch.from_numpy(np.asarray(tx, dtype=np.complex64)).to(device)

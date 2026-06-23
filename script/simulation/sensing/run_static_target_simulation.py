@@ -74,10 +74,11 @@ def main() -> None:
     _, x_rg, x_time = system.transmit()
 
     # --- 应用信道（RCS 点目标仅时域）---
-    y_time = system.components.channel(x_time, domain="time")
+    snr_db = system.params.channel.snr_db
+    y_time = system.components.channel(x_time, domain="time", snr_db=snr_db)
+    y_rg = system.components.demodulator(y_time).squeeze()
 
     # --- 感知 ---
-    y_rg = system.components.demodulator(y_time).squeeze()
     device = torch.device(args.device)
     true_ranges = torch.tensor([range_m], dtype=torch.float64, device=device)
     true_velocities = torch.tensor([velocity_mps], dtype=torch.float64, device=device)

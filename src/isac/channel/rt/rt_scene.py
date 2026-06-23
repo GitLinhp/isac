@@ -3,8 +3,11 @@ import weakref
 from typing import Dict, Optional, Any
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 # 第三方库
+from sionna.phy.channel import cir_to_ofdm_channel, subcarrier_frequencies
+from sionna.phy.ofdm import ResourceGrid
 from sionna.rt import (
     Scene,
     load_scene,
@@ -474,6 +477,126 @@ class RTScene(Scene):
             synthetic_array=cfg.synthetic_array,
         )
         return self._paths
+
+    @property
+    def output_slug(self) -> str:
+        """输出文件名用：将 ``scene_params.filename`` 规范为合法片段（未配置或字面 ``None`` 时用 ``scene``）。"""
+        raw = getattr(self.scene_params, "filename", None)
+        if raw is None:
+            return "scene"
+        s = str(raw).strip()
+        if not s or s.lower() == "none":
+            return "scene"
+        return s
+
+    @staticmethod
+    def stack_ragged_cir_samples(
+        cir_a_list: list[np.ndarray],
+        cir_tau_list: list[np.ndarray],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """路径条数随几何变化时，将各样本 CIR 在每一维上取上界后零填充，再堆成 ``(N,...)``。"""
+        if not cir_a_list or len(cir_a_list) != len(cir_tau_list):
+            raise ValueError("cir_a_list 与 cir_tau_list 须同长度且非空")
+        n = len(cir_a_list)
+        ndims_a = {x.ndim for x in cir_a_list}
+        if len(ndims_a) != 1:
+            raise ValueError(f"CIR_a 各样本秩不一致: {ndims_a}")
+        nd_a = cir_a_list[0].ndim
+        max_shape_a = list(cir_a_list[0].shape)
+        for arr in cir_a_list[1:]:
+            if arr.ndim != nd_a:
+                raise ValueError("CIR_a 逐样本秩不一致")
+            max_shape_a = [max(max_shape_a[i], arr.shape[i]) for i in range(nd_a)]
+
+        ndims_t = {x.ndim for x in cir_tau_list}
+        if len(ndims_t) != 1:
+            raise ValueError(f"CIR_tau 各样本秩不一致: {ndims_t}")
+        nd_t = cir_tau_list[0].ndim
+        max_shape_t = list(cir_tau_list[0].shape)
+        for arr in cir_tau_list[1:]:
+            if arr.ndim != nd_t:
+                raise ValueError("CIR_tau 逐样本秩不一致")
+            max_shape_t = [max(max_shape_t[i], arr.shape[i]) for i in range(nd_t)]
+
+        out_a = np.zeros((n,) + tuple(max_shape_a), dtype=np.float64)
+        out_tau = np.zeros((n,) + tuple(max_shape_t), dtype=np.float64)
+        for i, (a, t) in enumerate(zip(cir_a_list, cir_tau_list, strict=True)):
+            out_a[(i,) + tuple(slice(0, s) for s in a.shape)] = a
+            out_tau[(i,) + tuple(slice(0, s) for s in t.shape)] = t
+        return out_a, out_tau
+
+    def cfr_per_tx(
+        self,
+        rg: ResourceGrid,
+        *,
+        device: torch.device | None = None,
+        dtype: torch.dtype = torch.complex64,
+    ) -> dict[str, torch.Tensor]:
+        """按发射机分离 OFDM 频域信道 ``(S, F)``，与 ``RTChannel.h_freq`` 一致。
+
+        假定单 RX / 单 RX 天线（``h[0, 0, 0, tx, 0]``）。速度符号由 ``doppler_to_velocity`` 统一换算。
+        """
+        freqs = subcarrier_frequencies(rg.fft_size, rg.subcarrier_spacing)
+        a, tau = self.paths.cir(
+            num_time_steps=rg.num_ofdm_symbols,
+            sampling_frequency=1 / rg.ofdm_symbol_duration,
+            normalize_delays=False,
+            out_type="torch",
+        )
+        h = cir_to_ofdm_channel(
+            freqs,
+            torch.unsqueeze(a, dim=0),
+            torch.unsqueeze(tau, dim=0),
+            normalize=False,
+        )
+        s, f = rg.num_ofdm_symbols, rg.fft_size
+        if h.ndim != 7 or h.shape[-2:] != (s, f):
+            raise ValueError(
+                "cir_to_ofdm_channel 须为 7D (batch, rx, rx_ant, tx, tx_ant, S, F)，"
+                f"收到 {tuple(h.shape)}，末两维期望 ({s}, {f})"
+            )
+        tx_names = list(self.tx_states.keys())
+        num_tx = int(h.shape[3])
+        if num_tx != len(tx_names):
+            raise ValueError(
+                f"OFDM 信道的 tx 维 ({num_tx}) 与 tx_states 数量 ({len(tx_names)}) 不一致"
+            )
+        out: dict[str, torch.Tensor] = {}
+        for i, name in enumerate(tx_names):
+            slab = h[0, 0, 0, i, 0]
+            if device is not None or dtype != slab.dtype:
+                slab = slab.to(device=device, dtype=dtype)
+            out[name] = slab
+        return out
+
+    def cfr_numpy(self, rg: ResourceGrid) -> np.ndarray:
+        """与 ``RTChannel.cfr`` 一致：在 OFDM 子载波频率网格上取射线追踪 CFR（numpy）。"""
+        freqs = subcarrier_frequencies(rg.fft_size, rg.subcarrier_spacing)
+        return self.paths.cfr(
+            frequencies=freqs,
+            sampling_frequency=1 / rg.ofdm_symbol_duration,
+            num_time_steps=rg.num_ofdm_symbols,
+            out_type="numpy",
+        )
+
+    def cir_numpy(self, rg: ResourceGrid) -> tuple[np.ndarray, np.ndarray]:
+        """与 ``RTChannel`` OFDM 采样一致的路径 CIR（numpy）：``cir_a`` 最后一维 ``[Re,Im]``，`tau` 为时延 (s)。"""
+        a_cpx, tau = self.paths.cir(
+            num_time_steps=rg.num_ofdm_symbols,
+            sampling_frequency=1 / rg.ofdm_symbol_duration,
+            normalize_delays=False,
+            out_type="numpy",
+        )
+        tau_np = np.asarray(tau, dtype=np.float64)
+        a_np = np.asarray(a_cpx)
+        cir_a = np.stack(
+            [
+                np.asarray(a_np.real, dtype=np.float64),
+                np.asarray(a_np.imag, dtype=np.float64),
+            ],
+            axis=-1,
+        )
+        return cir_a, tau_np
 
     # ==================== 显示方法 ====================
     def preview(self) -> None:

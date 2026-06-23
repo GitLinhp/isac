@@ -16,11 +16,11 @@ for _p in (_GRC, str(_SRC)):
     if _p not in sys.path:
         sys.path.insert(0, str(_p))
 
-from isac.channel.static_target_simulator import StaticTargetParams, StaticTargetSimulator
+from isac.channel import StaticTargetParams, STChannel
 
 
 class SionnaStaticTarget(gr.basic_block):
-    """Torch static_target_simulator 的 GNU Radio 流块（packet_len tag 门控）。"""
+    """Torch STChannel 的 GNU Radio 流块（packet_len tag 门控）。"""
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class SionnaStaticTarget(gr.basic_block):
         self._burst_mode = bool(burst_mode)
         self._burst_armed = not self._burst_mode
 
-        self._sim = StaticTargetSimulator(
+        self._sim = STChannel(
             StaticTargetParams(
                 range_m=range_m,
                 velocity_mps=velocity_mps,
@@ -73,7 +73,7 @@ class SionnaStaticTarget(gr.basic_block):
                 self_coupling_db=float(self_coupling_db),
                 rndm_phaseshift=bool(rndm_phaseshift),
                 self_coupling=bool(self_coupling),
-            )
+            ),
         )
 
         self.set_min_output_buffer(max(4096, int(ofdm_symbols)))
@@ -92,7 +92,7 @@ class SionnaStaticTarget(gr.basic_block):
         self_coupling: bool,
     ) -> None:
         """GRC 滑块回调：运行时更新目标参数。"""
-        self._sim = StaticTargetSimulator(
+        self._sim = STChannel(
             StaticTargetParams(
                 range_m=range_m,
                 velocity_mps=velocity_mps,
@@ -104,7 +104,7 @@ class SionnaStaticTarget(gr.basic_block):
                 self_coupling_db=float(self_coupling_db),
                 rndm_phaseshift=bool(rndm_phaseshift),
                 self_coupling=bool(self_coupling),
-            )
+            ),
         )
 
     def forecast(self, noutput_items: int, ninputs) -> List[int]:

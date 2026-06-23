@@ -17,12 +17,12 @@ from sionna.phy.ofdm import (
 )
 
 from .system_params import SystemParams
-from ..channel.awgn import AWGN
-from ..channel.channel import Channel
-from ..channel.isac_channel import IsacChannel
+from ..channel import Channel
+from ..channel.rt_channel import RTChannel
+from ..channel.st_channel import STChannel
 from ..channel.rt.rt_scene import RTScene
-from ..channel.static_target_simulator import StaticTargetSimulator
 from ..sensing.sensing_performance import SensingPerformance
+from ..sensing.ls_channel_estimator import LSChannelEstimator
 from ..sensing.music_estimator import MUSICEstimator
 from ..sensing.delay_doppler_spectrum import DelayDopplerSpectrum
 from ..sensing.cfar import CFARDetector
@@ -53,14 +53,14 @@ class SystemComponents:
     """OFDM调制器"""
     demodulator: Optional[OFDMDemodulator] = None
     """OFDM解调器"""
+    ls_channel_estimator: Optional[LSChannelEstimator] = None
+    """频域 LS 信道估计"""
 
     # 信道组件
-    channel: Optional[IsacChannel] = None
+    channel: Optional[Channel] = None
     """统一信道（RT / RCS + AWGN）"""
     rt_scene: Optional[RTScene] = None
     """RT场景"""
-    static_target_sim: Optional[StaticTargetSimulator] = None
-    """静态目标模拟器"""
 
     # 感知组件
     sensing_performance: Optional[SensingPerformance] = None
@@ -71,10 +71,16 @@ class SystemComponents:
     """移动目标检测"""
     delay_doppler_spectrum: Optional[DelayDopplerSpectrum] = None
     """延迟多普勒谱"""
-    cfar: Optional[CFARDetector] = None
+    cfar_detector: Optional[CFARDetector] = None
     """CFAR检测器"""
     music_estimator: Optional[MUSICEstimator] = None
     """MUSIC估计器"""
+
+    @property
+    def static_target_sim(self) -> Optional[STChannel]:
+        """RCS 点目标信道；非 ``STChannel`` 时为 ``None``。"""
+        ch = self.channel
+        return ch if isinstance(ch, STChannel) else None
 
     @classmethod
     def build_from_params(
@@ -126,6 +132,7 @@ class SystemComponents:
                 device=device,
             )
             kwargs["rg"] = rg
+            kwargs["ls_channel_estimator"] = LSChannelEstimator(rg)
             kwargs["rg_mapper"] = ResourceGridMapper(rg, device=device)
             kwargs["modulator"] = OFDMModulator(
                 cyclic_prefix_length=ofdm.cyclic_prefix_length,
@@ -145,9 +152,9 @@ class SystemComponents:
                 )
                 kwargs["rg_demapper"] = ResourceGridDemapper(rg, sm, device=device)
 
-        # 信道（rt_scene / static_target_sim 须先于 RT 后端构建）
+        # 信道（rt_scene 须先于 RT 后端构建）
         if system_params.channel is not None and rg is not None:
-            channel = system_params.channel
+            channel_cfg = system_params.channel
             rt_scene: Optional[RTScene] = None
             if system_params.rt_scene is not None:
                 rt_scene = RTScene(scene_params=system_params.rt_scene)
@@ -156,28 +163,25 @@ class SystemComponents:
                 rt_scene.bandwidth = float(rg.bandwidth)
                 kwargs["rt_scene"] = rt_scene
 
-            static_target_sim: Optional[StaticTargetSimulator] = None
-            if system_params.static_target is not None:
-                st_params = system_params.static_target
-                st_params.ensure_phy()
-                static_target_sim = StaticTargetSimulator(st_params)
-                kwargs["static_target_sim"] = static_target_sim
-
-            rt_channel: Optional[Channel] = None
-            if channel.type == "rt":
+            if channel_cfg.type == "rt":
                 if rt_scene is None:
                     raise ValueError("channel.type='rt' 要求已构建 rt_scene")
-                rt_channel = Channel(rg=rg, paths=lambda: rt_scene.paths)
-            elif static_target_sim is None:
-                raise ValueError("channel.type='rcs' 要求已构建 static_target")
-
-            kwargs["channel"] = IsacChannel(
-                channel_type=channel.type,
-                default_snr_db=channel.snr_db,
-                rt=rt_channel,
-                static_target_sim=static_target_sim,
-                awgn=AWGN(device=device),
-            )
+                kwargs["channel"] = RTChannel(
+                    rg=rg,
+                    paths=lambda: rt_scene.paths,
+                    device=device,
+                )
+            elif channel_cfg.type == "rcs":
+                if system_params.static_target is None:
+                    raise ValueError("channel.type='rcs' 要求已构建 static_target")
+                st_params = system_params.static_target
+                st_params.ensure_phy()
+                kwargs["channel"] = STChannel(
+                    params=st_params,
+                    device=device,
+                )
+            else:
+                raise ValueError(f"unsupported channel.type: {channel_cfg.type!r}")
 
         # 感知
         if system_params.ofdm is not None and carrier_frequency is not None:
@@ -213,7 +217,7 @@ class SystemComponents:
 
             if system_params.cfar is not None:
                 cfar = system_params.cfar
-                kwargs["cfar"] = CFARDetector(
+                kwargs["cfar_detector"] = CFARDetector(
                     cfar_type=cfar.type,
                     k=cfar.k,
                     guard=cfar.guard,

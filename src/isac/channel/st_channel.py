@@ -6,25 +6,35 @@
 """
 
 import math
+from typing import Optional
 
 import torch
 from scipy.constants import c
+from sionna.phy.config import Precision
 
 from ..data_structures.system_params import StaticTargetParams
+from .channel import Channel
 
-# √(4π)³：雷达方程幅度标定中的 (4π)^(3/2) 因子，见 _target_scale_ampl
 _FOUR_PI_CUBED_SQRT = math.sqrt((4.0 * math.pi) ** 3)
 _TWO_PI = 2.0 * math.pi
 
-class StaticTargetSimulator:
+
+class STChannel(Channel):
     """gr-radar static_target_simulator_cc 的 Torch 复现。
 
-    用法：``StaticTargetSimulator(params)(tx)``；``tx`` 为时域复基带，末维长度须与
+    用法：``STChannel(params)(tx)``；``tx`` 为时域复基带，末维长度须与
     CPI 样点数一致（如 ``num_ofdm_symbols * (fft_size + cp_len)``）。
     """
 
-    def __init__(self, params: StaticTargetParams) -> None:
+    def __init__(
+        self,
+        params: StaticTargetParams,
+        precision: Optional[Precision] = None,
+        device: Optional[str] = None,
+    ) -> None:
+        super().__init__(precision=precision, device=device)
         self.params = params
+        self._generator: torch.Generator | None = None
 
     @staticmethod
     def _fft_freq_bins(n: int, samp_rate: float, device: torch.device) -> torch.Tensor:
@@ -43,7 +53,6 @@ class StaticTargetSimulator:
     ) -> torch.Tensor:
         """由预计算的频域 bin 构建分数时延滤波器。"""
         delay = float(delay_s)
-        # H(f) = exp(-j 2π f τ)，分数时延 τ 不必为整数样点
         phase = torch.fmod(_TWO_PI * delay * freq, _TWO_PI)
         inv_n = 1.0 / float(freq.numel()) if compensate_numpy_ifft else 1.0
         return (inv_n * (torch.cos(phase) - 1j * torch.sin(phase))).to(torch.complex64)
@@ -73,13 +82,9 @@ class StaticTargetSimulator:
         compensate_numpy_ifft: bool,
         device: torch.device,
     ) -> torch.Tensor:
-        """频域分数时延滤波器。
-
-        gr-radar (FFTW) 在 range 滤波器内除以 N 以补偿无归一化 IFFT。
-        ``torch.fft.ifft`` 默认含 1/N，故 ``compensate_numpy_ifft=False`` 时不除 N。
-        """
-        freq = StaticTargetSimulator._fft_freq_bins(n, samp_rate, device)
-        return StaticTargetSimulator._build_delay_filter_from_freq(
+        """频域分数时延滤波器。"""
+        freq = STChannel._fft_freq_bins(n, samp_rate, device)
+        return STChannel._build_delay_filter_from_freq(
             freq, delay_s, compensate_numpy_ifft=compensate_numpy_ifft
         )
 
@@ -106,25 +111,22 @@ class StaticTargetSimulator:
         n = tx.shape[-1]
         device = tx.device
 
-        # 双程：多普勒 f_d = 2 v f_c / c；距离时延 τ = 2R/c
-        doppler_hz = 2.0 * velocity_mps * center_freq / c
+        doppler_hz = -2.0 * velocity_mps * center_freq / c
         timeshift_s = 2.0 * range_m / c
-        # 方位：横向天线位置 × sin(方位角) → 等效时延 (s)
         azimuth_shift_s = position_rx_m * math.sin(math.radians(azimuth_deg))
-        scale_ampl = StaticTargetSimulator._target_scale_ampl(range_m, rcs, center_freq)
+        scale_ampl = STChannel._target_scale_ampl(range_m, rcs, center_freq)
 
-        doppler_filt = StaticTargetSimulator._build_doppler_filter(
+        doppler_filt = STChannel._build_doppler_filter(
             n, doppler_hz, scale_ampl, samp_rate, device
         )
-        freq_bins = StaticTargetSimulator._fft_freq_bins(n, samp_rate, device)
-        range_filt = StaticTargetSimulator._build_delay_filter_from_freq(
+        freq_bins = STChannel._fft_freq_bins(n, samp_rate, device)
+        range_filt = STChannel._build_delay_filter_from_freq(
             freq_bins, timeshift_s, compensate_numpy_ifft=False
         )
-        azimuth_filt = StaticTargetSimulator._build_delay_filter_from_freq(
+        azimuth_filt = STChannel._build_delay_filter_from_freq(
             freq_bins, azimuth_shift_s, compensate_numpy_ifft=False
         )
 
-        # 时域 chirp → 频域乘距离/方位滤波器 → 回时域（compensate_numpy_ifft=False 对齐 torch.ifft）
         y = tx * doppler_filt
         y_fft = torch.fft.fft(y, dim=-1)
         y_fft = y_fft * range_filt * azimuth_filt
@@ -140,30 +142,15 @@ class StaticTargetSimulator:
 
         return y
 
-    def __call__(
-        self,
-        tx: torch.Tensor,
-        generator: torch.Generator | None = None,
-    ) -> torch.Tensor:
-        """模拟 gr-radar static_target_simulator_cc 接收 IQ。
+    def _apply_clean(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
+        if domain != "time":
+            raise ValueError("channel.type='rcs' 仅支持 domain='time'")
 
-        Parameters
-        ----------
-        tx:
-            时域发射 IQ，末维为样点；支持 ``(N,)`` 或 ``(..., N)``。
-        generator:
-            随机相位生成器（``rndm_phaseshift=True`` 时可选，用于可复现）。
-
-        Returns
-        -------
-        torch.Tensor
-            与 ``tx`` 同 shape 的接收 IQ。
-        """
         params = self.params
-        if tx.shape[-1] == 0:
+        if inputs.shape[-1] == 0:
             raise ValueError("tx 末维样点数须为正")
 
-        tx_c = tx.to(torch.complex64)
+        tx_c = inputs.to(torch.complex64)
         params.ensure_phy()
 
         out = self._apply_single_target_echo(
@@ -176,7 +163,7 @@ class StaticTargetSimulator:
             samp_rate=float(params.samp_rate),
             center_freq=params.center_freq,
             rndm_phaseshift=params.rndm_phaseshift,
-            generator=generator,
+            generator=self._generator,
         )
 
         if params.self_coupling:
@@ -184,3 +171,15 @@ class StaticTargetSimulator:
             out = out + coupling * tx_c
 
         return out
+
+    def __call__(
+        self,
+        inputs: torch.Tensor,
+        domain: str = "time",
+        *,
+        snr_db: Optional[float] = None,
+        generator: torch.Generator | None = None,
+    ) -> torch.Tensor:
+        """模拟 gr-radar static_target_simulator_cc 接收 IQ（可选 AWGN）。"""
+        self._generator = generator
+        return super().__call__(inputs, domain=domain, snr_db=snr_db)

@@ -1,20 +1,19 @@
-"""static_target_simulator 向量化回归：与 gr-radar 等价 loop 参考实现对比。"""
+"""STChannel 向量化回归：与 gr-radar 等价 loop 参考实现对比。"""
 import math
 
 import pytest
 import torch
 from scipy.constants import c
 
-from isac.channel.static_target_simulator import StaticTargetParams, StaticTargetSimulator
+from isac.channel.st_channel import STChannel
+from isac.data_structures.system_params import StaticTargetParams
 
 _TWO_PI = 2.0 * math.pi
 _SAMP_RATE = 30_720_000.0
 _DEVICE = torch.device("cpu")
 _ATOL = 1e-5
 _FULL_FRAME_N = 512 * 2560
-# fast chirp 与 loop fmod 在 N≈1.3M 时 complex64 最大偏差约 2^-10
 _CHIRP_ATOL = 1e-3
-# fast chirp 经 FFT 链后全帧 echo 相对偏差约 1e-3 量级
 _ECHO_RTOL = 2e-3
 _ECHO_ATOL = 0.5
 
@@ -69,10 +68,10 @@ def _apply_single_target_echo_loop_ref(
 ) -> torch.Tensor:
     n = tx.shape[-1]
     device = tx.device
-    doppler_hz = 2.0 * velocity_mps * center_freq / c
+    doppler_hz = -2.0 * velocity_mps * center_freq / c
     timeshift_s = 2.0 * range_m / c
     azimuth_shift_s = position_rx_m * math.sin(math.radians(azimuth_deg))
-    scale_ampl = StaticTargetSimulator._target_scale_ampl(range_m, rcs, center_freq)
+    scale_ampl = STChannel._target_scale_ampl(range_m, rcs, center_freq)
 
     doppler_filt = _build_doppler_filter_loop_ref(
         n, doppler_hz, scale_ampl, samp_rate, device
@@ -90,7 +89,7 @@ def _apply_single_target_echo_loop_ref(
     return torch.fft.ifft(y_fft, dim=-1)
 
 
-def _static_target_simulator_loop_ref(
+def _st_channel_loop_ref(
     tx: torch.Tensor,
     params: StaticTargetParams,
 ) -> torch.Tensor:
@@ -115,7 +114,7 @@ def _static_target_simulator_loop_ref(
 @pytest.mark.parametrize("doppler_hz", [200.0, -350.0, 0.0])
 def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
     scale = 1.23e4
-    vec = StaticTargetSimulator._build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
+    vec = STChannel._build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
     ref = _build_doppler_filter_loop_ref(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
     atol = _CHIRP_ATOL if n >= _FULL_FRAME_N else _ATOL
     assert torch.allclose(vec, ref, atol=atol, rtol=0.0)
@@ -127,7 +126,7 @@ def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
 def test_delay_filter_matches_loop(
     n: int, delay_s: float, compensate_numpy_ifft: bool
 ) -> None:
-    vec = StaticTargetSimulator._build_delay_filter(
+    vec = STChannel._build_delay_filter(
         n,
         delay_s,
         _SAMP_RATE,
@@ -159,7 +158,7 @@ def test_apply_single_target_echo(n: int) -> None:
         rndm_phaseshift=False,
         generator=None,
     )
-    vec = StaticTargetSimulator._apply_single_target_echo(tx, **kwargs)
+    vec = STChannel._apply_single_target_echo(tx, **kwargs)
     ref = _apply_single_target_echo_loop_ref(tx, **{k: v for k, v in kwargs.items() if k not in ("rndm_phaseshift", "generator")})
     if n >= _FULL_FRAME_N:
         assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)
@@ -167,7 +166,7 @@ def test_apply_single_target_echo(n: int) -> None:
         assert torch.allclose(vec, ref, atol=_ATOL, rtol=1e-6)
 
 
-def test_static_target_simulator_end2end() -> None:
+def test_st_channel_end2end() -> None:
     n = 512 * 2560
     torch.manual_seed(42)
     tx = torch.randn(n, dtype=torch.complex64, device=_DEVICE)
@@ -183,6 +182,6 @@ def test_static_target_simulator_end2end() -> None:
         self_coupling=True,
         self_coupling_db=-10.0,
     )
-    vec = StaticTargetSimulator(params)(tx)
-    ref = _static_target_simulator_loop_ref(tx, params)
+    vec = STChannel(params)(tx)
+    ref = _st_channel_loop_ref(tx, params)
     assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)

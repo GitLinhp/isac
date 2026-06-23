@@ -1,23 +1,17 @@
 # 标准库
 import argparse
-import csv
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Union
 import torch
-import numpy as np
 import sionna
 
 # 自定义模块
 from .utils import (
-    cartesian_direction_to_yaw_pitch_roll,
     load_config,
     match_peaks_and_compute_radial_rmse,
 )
 from .data_structures import SystemParams, SystemComponents
-from .utils.rt_doppler import align_rt_monostatic_doppler_phase
-from . import PROJECT_ROOT
-
 
 SensMode = Literal["monostatic", "bistatic"]
 MetricMode = Literal["delay_doppler", "range_velocity", "dd", "rv"]
@@ -119,56 +113,6 @@ class System:
 
         return b_hat
 
-    # 信道估计
-    def estimate_channel(
-        self, x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12
-    ) -> torch.Tensor:
-        """估计频域信道（LS）：``h = y * conj(x) / (|x|^2 + ``eps``)``。
-
-        对 ``x``/``y`` 做 ``squeeze`` 后，``x`` 为 ``(num_ofdm_symbols, fft_size)``；
-        ``y`` 为 ``(rx_num, num_ofdm_symbols, fft_size)``，``rx_num=1`` 时退化为 2D。
-        假定 ``batch_size=1``；squeeze 后 ``y.ndim > 3`` 将报错。
-        """
-        rg = self.components.rg
-        s, f = rg.num_ofdm_symbols, rg.fft_size
-
-        x = x.squeeze()
-        y = y.squeeze()
-
-        if x.shape[-2:] != (s, f):
-            raise ValueError(f"x 末两维须为 ({s}, {f})，收到 {tuple(x.shape)}")
-        x = x.reshape(s, f)
-
-        if y.shape[-2:] != (s, f):
-            raise ValueError(f"y 末两维须为 ({s}, {f})，收到 {tuple(y.shape)}")
-        if y.ndim == 2:
-            y = y.reshape(s, f)
-        elif y.ndim == 3:
-            y = y.reshape(y.shape[0], s, f)
-            if y.shape[0] == 1:
-                y = y.squeeze(0)
-        else:
-            raise ValueError(
-                f"y squeeze 后须为 2D (S,F) 或 3D (rx_num,S,F)，收到 ndim={y.ndim}"
-            )
-
-        denom = torch.abs(x) ** 2 + eps
-        h = y * torch.conj(x) / denom
-
-        return h
-
-    def _align_rt_monostatic_doppler_if_needed(
-        self,
-        h: torch.Tensor,
-        sens_mode: SensMode,
-        *,
-        axis: int,
-    ) -> torch.Tensor:
-        channel = self.params.channel
-        if channel is None or channel.type != "rt" or sens_mode != "monostatic":
-            return h
-        return align_rt_monostatic_doppler_phase(h, axis=axis)
-
     def sensing(
         self,
         x_rg: torch.Tensor,
@@ -201,8 +145,9 @@ class System:
         """
         comps = self.components
 
-        h = self.estimate_channel(x_rg, y_rg)
-        h = self._align_rt_monostatic_doppler_if_needed(h, sens_mode, axis=mti_axis)
+        if comps.ls_channel_estimator is None:
+            raise ValueError("sensing 要求已构建 ls_channel_estimator 组件")
+        h = comps.ls_channel_estimator(x_rg, y_rg)
         if apply_mti:
             h = comps.moving_target_indication(h, axis=mti_axis)
         h_delay_doppler = comps.delay_doppler_spectrum(h)
@@ -290,94 +235,3 @@ class System:
             rmse_range_m=rmse_range_m,
             rmse_velocity_mps=rmse_velocity_mps,
         )
-
-    def _update_rt_target_pose_from_velocity(
-        self,
-        target: object,
-        pos: np.ndarray | list[float],
-        vel: np.ndarray | list[float],
-    ) -> None:
-        """更新目标位置与速度"""
-        pos_a = np.asarray(pos, dtype=np.float64).reshape(-1)
-        vel_a = np.asarray(vel, dtype=np.float64).reshape(-1)
-        if pos_a.size != 3 or vel_a.size != 3:
-            raise ValueError("位置与速度须为三维向量")
-        v_eps = 1e-9
-        speed = float(np.linalg.norm(vel_a))
-        if speed > v_eps:
-            direction = (vel_a / speed).astype(np.float64)
-        else:
-            direction = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-        orientation = cartesian_direction_to_yaw_pitch_roll(direction)
-        target.update(
-            position=pos_a,
-            velocity=vel_a,
-            orientation=orientation,
-        )
-
-    def save_episodes_csv(
-        self,
-        *,
-        scene_slug: str,
-        rows: list[dict[str, str | int]],
-        run_sensing: bool,
-        csv_mode: Literal["unified", "legacy"] = "unified",
-        output_root: Path | None = None,
-    ) -> None:
-        """写入 Episode CSV：统一表或 legacy 分裂文件名。"""
-        if not rows:
-            print("无 CSV 行，跳过写入")
-            return
-        out_dir = output_root if output_root is not None else PROJECT_ROOT / "out"
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        if csv_mode == "unified":
-            path = out_dir / f"{scene_slug}_mc_dataset_episodes.csv"
-            keys_set: set[str] = set()
-            for r in rows:
-                keys_set.update(r.keys())
-            keys = sorted(keys_set)
-            with path.open("w", newline="", encoding="utf-8") as csv_f:
-                writer = csv.DictWriter(csv_f, fieldnames=keys, restval="")
-                writer.writeheader()
-                for r in rows:
-                    writer.writerow({k: r.get(k, "") for k in keys})
-            print(f"统一 Episode CSV 已写入: {path}")
-            return
-
-        if run_sensing:
-            path = out_dir / f"{scene_slug}_mc_dataset_sensing_metrics.csv"
-            fieldnames = [
-                "sample_idx",
-                "pos_x_m",
-                "pos_y_m",
-                "pos_z_m",
-                "vel_x_mps",
-                "vel_y_mps",
-                "vel_z_mps",
-                "true_range_m",
-                "est_range_m",
-                "rmse_range_m",
-                "true_radial_velocity_mps",
-                "est_radial_velocity_mps",
-                "rmse_radial_velocity_mps",
-            ]
-        else:
-            path = out_dir / f"{scene_slug}_mc_dataset_kinematics.csv"
-            fieldnames = [
-                "sample_idx",
-                "pos_x_m",
-                "pos_y_m",
-                "pos_z_m",
-                "vel_x_mps",
-                "vel_y_mps",
-                "vel_z_mps",
-                "true_range_m",
-                "true_radial_velocity_mps",
-            ]
-        slim = [{k: r[k] for k in fieldnames if k in r} for r in rows]
-        with path.open("w", newline="", encoding="utf-8") as csv_f:
-            writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(slim)
-        print(f"CSV 已写入: {path}")

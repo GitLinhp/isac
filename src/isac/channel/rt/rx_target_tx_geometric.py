@@ -6,13 +6,26 @@
 - 几何路径长度 ``range_tensor`` (m)；
 - 与路径定义配套的距离变化率 ``vel_tensor`` (m/s)。
 
-张量索引顺序为 ``[j, i, k]`` ↔ ``(rx_names[j], target_names[i], tx_names[k])``，
-形状均为 ``(n_rx, n_target, n_tx)``。底层公式见 ``isac.sensing.utils`` 中的
-``compute_path_type`` / ``compute_range`` / ``compute_vel``。
+符号约定（与 ``isac.sensing.utils`` 一致）：
 
-典型入口：``RTScene.rx_target_tx_geometric`` 根据当前 ``targets_states``、
-``rx_states``、``tx_states`` 调用 ``from_states`` 构造；感知脚本与数据集采集
-常以 ``[0, 0, 0]`` 切片作为单链路真值。
+- ``T``：目标位置/速度；``R``：接收机；``X``：发射机。
+- 单基地（``type_tensor=False``）：``range = ||R−T||``，
+  ``vel`` 为 ``(v_T−v_R)`` 在 ``T−R`` 方向上的投影。
+- 双基地（``type_tensor=True``）：``range = ||T−X|| + ||R−T||``（折叠路径），
+  ``vel = d/dt range``，TX/RX/目标均可运动。
+
+张量索引顺序为 ``[j, i, k]`` ↔ ``(rx_names[j], target_names[i], tx_names[k])``，
+形状均为 ``(n_rx, n_target, n_tx)``，dtype 为 ``float64`` / ``bool``。
+底层公式见 ``compute_path_type`` / ``compute_range`` / ``compute_vel``。
+
+典型入口与用法：
+
+- ``RTScene.rx_target_tx_geometric`` 根据当前 ``targets_states``、``rx_states``、
+  ``tx_states`` 调用 ``from_states`` 构造；属性每次读取时按最新状态重算。
+- 单链路仿真/数据集采集常以 ``geom.range_tensor[0, 0, 0]``、
+  ``geom.vel_tensor[0, 0, 0]`` 作为 MUSIC 匹配真值（见 ``run_dataset_collection``）。
+- ``System.run_sensing(..., compute_rmse=True)`` 可将完整 ``range_tensor`` /
+  ``vel_tensor`` 传入 ``match_peaks_and_compute_radial_rmse`` 做匈牙利多峰匹配。
 """
 
 from dataclasses import dataclass
@@ -32,31 +45,35 @@ from ...sensing.utils import (
 
 @dataclass(frozen=True)
 class RxTargetTxGeometric:
-    """Rx–Target–Tx 三元组几何快照（不可变，便于作为感知真值传递）。
+    """Rx–Target–Tx 三元组几何快照（不可变，便于作为感知真值在模块间传递）。
+
+    ``frozen=True`` 保证构造后张量引用与名称列表不被意外改写；若场景状态更新，
+    应通过 ``RTScene.rx_target_tx_geometric`` 或重新调用 ``from_states`` 获取新快照。
 
     Attributes
     ----------
     target_names, rx_names, tx_names
-        与 ``*_states`` 字典键顺序一致，决定张量各轴上的实体名称。
+        与传入 ``from_states`` 的 ``*_states`` 字典键顺序一致，决定张量各轴上的实体名称。
     type_tensor
         ``bool``，形状 ``(n_rx, n_target, n_tx)``。
-        ``False``：TX/RX 间距 ≤ ``tx_rx_colocated_eps_m``，视为单基地；
-        ``True``：双基地。
+        ``False``：``||R−X|| ≤ tx_rx_colocated_eps_m``，视为单基地；
+        ``True``：双基地。与目标位置无关，同一 ``(rx, tx)`` 列上各目标共享类型。
     range_tensor
-        几何路径长度 (m)。单基地为 ``||R−T||``；双基地为 ``||T−X|| + ||R−T||``
-        （折叠路径，不经遮挡判定）。
+        ``float64``，几何路径长度 (m)。单基地为 ``||R−T||``；双基地为
+        ``||T−X|| + ||R−T||``（折叠路径，不经遮挡判定）。
     vel_tensor
-        与 ``range_tensor`` 配套的距离变化率 (m/s)。
-        单基地为目标相对 RX 在 ``T−R`` 方向上的径向速度；
-        双基地为 ``d/dt (||T−X|| + ||R−T||)``。
+        ``float64``，与 ``range_tensor`` 路径定义配套的距离变化率 (m/s)。
+        单基地为 RX 视线径向速度；双基地为路径长对时间的一阶导数。
+        注意：双基地 ``vel_tensor`` 与 ``paths.doppler`` 的物理含义不同，
+        数据集脚本中双基地速度真值可能改用 ``paths.doppler``（见 ``bistatic_sensing_eval``）。
     """
 
-    target_names: list[str]
-    rx_names: list[str]
-    tx_names: list[str]
-    type_tensor: torch.Tensor
-    range_tensor: torch.Tensor
-    vel_tensor: torch.Tensor
+    target_names: list[str]  # 长度 n_target，张量轴 i
+    rx_names: list[str]  # 长度 n_rx，张量轴 j
+    tx_names: list[str]  # 长度 n_tx，张量轴 k
+    type_tensor: torch.Tensor  # (n_rx, n_target, n_tx), bool
+    range_tensor: torch.Tensor  # (n_rx, n_target, n_tx), float64, 单位 m
+    vel_tensor: torch.Tensor  # (n_rx, n_target, n_tx), float64, 单位 m/s
 
     def display(
         self,
@@ -64,7 +81,10 @@ class RxTargetTxGeometric:
         tablefmt: str = "simple_grid",
         floatfmt: str = ".2f",
     ) -> None:
-        """将各三元组的路径类型、路径长度与径向速度打印为表格。
+        """将各三元组的路径类型、路径长度与径向速度打印为表格（调试 / CLI 用）。
+
+        遍历顺序与张量轴 ``(j, i, k) = (rx, target, tx)`` 一致，与 ``display`` 表头
+        「接收机 / 目标 / 发射机」列顺序对应。
 
         Parameters
         ----------
@@ -117,17 +137,21 @@ class RxTargetTxGeometric:
         """由场景实体状态字典构造三元组几何。
 
         每个 ``states[name]`` 须含 ``pos``、``vel`` 键，值为形状 ``(3,)`` 的
-        ``numpy`` 向量（单位：m、m/s）。计算链：堆叠位置/速度 → 路径类型 →
-        路径长度 → 距离变化率。
+        ``numpy`` 向量（单位：m、m/s）。计算链：
+
+        1. ``stack_state_field`` → ``t_stack, r_stack, x_stack`` 及各 ``*_vel``，
+           形状 ``(n_entity, 3)``；
+        2. ``compute_path_type(r_stack, x_stack)`` → ``(n_rx, n_target, n_tx)``；
+        3. ``compute_range`` / ``compute_vel`` 按 ``type_tensor`` 分支广播到全三元组网格。
 
         Parameters
         ----------
         target_states, rx_states, tx_states
             目标、接收机、发射机的状态字典；三者均须非空。
         device
-            输出张量所在设备；``None`` 时使用 CPU。
+            输出张量所在设备；``None`` 时使用 CPU（与 ``RTScene.rx_target_tx_geometric`` 一致）。
         tx_rx_colocated_eps_m
-            判定单基地的 TX–RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``。
+            判定单基地的 TX–RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``（1 mm）。
 
         Returns
         -------
@@ -137,7 +161,11 @@ class RxTargetTxGeometric:
         Raises
         ------
         ValueError
-            任一状态字典为空时抛出。
+            任一状态字典为空，或 ``stack_state_field`` 缺少 ``pos``/``vel`` 时抛出。
+
+        See Also
+        --------
+        RTScene.rx_target_tx_geometric : 按当前场景状态构造并缓存的便捷属性。
         """
         if not target_states or not rx_states or not tx_states:
             raise ValueError("target_states、rx_states 与 tx_states 须均为非空字典。")
@@ -148,7 +176,7 @@ class RxTargetTxGeometric:
         tx_names = list(tx_states.keys())
         n_t = len(target_names)
 
-        # (n_entity, 3) 位置与速度张量，轴顺序与 names 列表对齐
+        # 堆叠为 (n_entity, 3)；names 列表顺序即张量第 0 维
         t_stack = stack_state_field(target_states, target_names, "pos", dev)
         t_vel = stack_state_field(target_states, target_names, "vel", dev)
         r_stack = stack_state_field(rx_states, rx_names, "pos", dev)
@@ -156,10 +184,13 @@ class RxTargetTxGeometric:
         x_stack = stack_state_field(tx_states, tx_names, "pos", dev)
         x_vel = stack_state_field(tx_states, tx_names, "vel", dev)
 
+        # (n_rx, n_target, n_tx)：先按 (rx, tx) 判单/双基地，再 expand 到所有目标
         type_tensor = compute_path_type(
             r_stack, x_stack, n_t, eps_m=tx_rx_colocated_eps_m
         )
+        # 按 type_tensor 分支：单基地 ||R−T||，双基地 ||T−X||+||R−T||
         range_tensor = compute_range(type_tensor, t_stack, r_stack, x_stack)
+        # 与 range 定义配套的 d(range)/dt
         vel_tensor = compute_vel(
             type_tensor, t_stack, t_vel, r_stack, r_vel, x_stack, x_vel
         )

@@ -1,4 +1,4 @@
-"""RT 单基地速度符号：DD→MUSIC 与 geom.vel_tensor 同号；静态目标链路不受影响。"""
+"""RT 单基地/双基地速度符号：DD→MUSIC 与 geom.vel_tensor 同号；静态目标链路不受影响。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import torch
 from isac.data_structures import SystemComponents, SystemParams
 from isac.system import System
 from isac.utils import load_config, set_random_seed
-from isac.utils.channel_paths import paths_cfr_per_tx_torch
+from isac.channel import RTScene
 
 
 def _build_cooperative_components(device: str = "cpu") -> SystemComponents:
@@ -47,7 +47,7 @@ def test_rt_monostatic_cfr_per_tx_velocity_sign_matches_geometry():
     geom = scene.rx_target_tx_geometric
     rg = comps.rg
 
-    h_per_tx = paths_cfr_per_tx_torch(rg, scene, device=torch.device("cpu"))
+    h_per_tx = scene.cfr_per_tx(rg, device=torch.device("cpu"))
     mono_idx = geom.tx_names.index("bs1_tx")
     true_v = float(geom.vel_tensor[0, 0, mono_idx].item())
     assert true_v > 0.0
@@ -58,20 +58,22 @@ def test_rt_monostatic_cfr_per_tx_velocity_sign_matches_geometry():
     assert abs(est_v - true_v) < 2.0 * v_res
 
 
-def test_rt_bistatic_cfr_per_tx_not_auto_flipped():
-    """双基地 bs2_tx 不施加单基地符号校正（仍与 geom 可能异号，但不应被 flip 成正值）。"""
+def test_rt_bistatic_cfr_per_tx_velocity_sign_matches_geometry():
+    """双基地 bs2_tx：``doppler_to_velocity`` 取反后与 ``geom.vel_tensor`` 同号。"""
     comps = _build_cooperative_components()
     scene = comps.rt_scene
     geom = scene.rx_target_tx_geometric
     rg = comps.rg
 
-    h_per_tx = paths_cfr_per_tx_torch(rg, scene, device=torch.device("cpu"))
+    h_per_tx = scene.cfr_per_tx(rg, device=torch.device("cpu"))
     bi_idx = geom.tx_names.index("bs2_tx")
     true_v = float(geom.vel_tensor[0, 0, bi_idx].item())
     assert true_v > 0.0
 
     est_v = _music_velocity(comps, h_per_tx["bs2_tx"], sens_mode="bistatic")
-    assert est_v * true_v < 0.0
+    v_res = float(comps.sensing_performance.velocity_resolution)
+    assert est_v * true_v > 0.0
+    assert abs(est_v - true_v) < 2.0 * v_res
 
 
 def test_static_target_sensing_velocity_stays_positive():

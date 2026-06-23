@@ -4,8 +4,6 @@ import numpy as np
 import torch
 from scipy.constants import c
 
-from ..utils.rt_doppler import align_rt_monostatic_doppler_phase
-
 
 # 判定 TX/RX 是否视为共址（monostatic）：间距小于等于该阈值 (m)
 MONOSTATIC_TX_RX_EPS_M = 1e-3
@@ -168,20 +166,21 @@ def doppler_to_velocity(
 ) -> torch.Tensor:
     r"""由多普勒频移 \(f_d\)（Hz）反推与 MUSIC/OFDM 网格配套的标量速度（m/s）。
 
-    传统单基地雷达约定：目标远离雷达（距离增大）为正径向速度，对应正多普勒频移。
-    省略 ``sens_mode`` 时默认为 ``monostatic``（\(v=f_d c/(2f_c)\)）。
+    速度语义：**靠近为负，远离为正**（与 ``geom.vel_tensor`` 一致）。
+    Sionna RT / OFDM DD 谱上的 \(f_d\) 符号与上述约定相反，故取负：
 
-    - ``monostatic``：\(v=f_d c/(2f_c)\)，适用于双程/colocated。
-    - ``bistatic``：\(v=f_d c/f_c\)，假定 \(f_d\) 已对应理想「单程」多普勒。
+    - ``monostatic``：\(v = -f_d c/(2f_c)\)，适用于双程/colocated。
+    - ``bistatic``：\(v = -f_d c/f_c\)，假定 \(f_d\) 已对应理想「单程」多普勒。
 
-    ``sens_mode`` 须与 ``delay_to_range``、``MUSICEstimator`` 等处一致；勿与 MUSIC **metric_mode**（``mode`` 参数）混淆。
+    省略 ``sens_mode`` 时默认为 ``monostatic``。
+    ``sens_mode`` 须与 ``delay_to_range``、``MUSICEstimator`` 等处一致；勿与 MUSIC **metric_mode** 混淆。
     """
 
     fc = float(carrier_frequency)
 
     if sens_mode == "monostatic":
-        return (doppler_hz * c) / (2.0 * fc)
+        return -(doppler_hz * c) / (2.0 * fc)
     elif sens_mode == "bistatic":
-        return (doppler_hz * c) / fc
+        return -(doppler_hz * c) / fc
     else:
         raise ValueError(f"不支持的速度模型: {sens_mode}")

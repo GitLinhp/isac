@@ -11,7 +11,7 @@ import plotly.graph_objs as go
 from .sensing_performance import SensingPerformance
 from ..utils import convert
 from ..utils.numerical import linear_to_db
-from ..utils.windows import WindowSpec, apply_window
+from ..utils.windows import apply_window
 
 class DelayDopplerSpectrum:
     """时延多普勒谱处理类
@@ -23,8 +23,8 @@ class DelayDopplerSpectrum:
         self,
         sensing_performance: SensingPerformance,
         device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        delay_window: Optional[Union[WindowSpec, Dict[str, Any]]] = None,
-        doppler_window: Optional[Union[WindowSpec, Dict[str, Any]]] = None,
+        delay_window: Optional[Union[str, tuple[Any, ...], Dict[str, Any]]] = None,
+        doppler_window: Optional[Union[str, tuple[Any, ...], Dict[str, Any]]] = None,
     ):
         self.sensing_performance = sensing_performance  # 感知性能
         self.device = device  # 设备

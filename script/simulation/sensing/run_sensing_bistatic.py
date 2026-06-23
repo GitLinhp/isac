@@ -63,10 +63,11 @@ def main() -> None:
     _, x_rg, x_time = system.transmit()
 
     # --- 应用信道 ---
+    snr_db = system.params.channel.snr_db
     if domain == "frequency":
-        y_rg = system.components.channel(x_rg, domain=domain)
+        y_rg = system.components.channel(x_rg, domain=domain, snr_db=snr_db)
     elif domain == "time":
-        y_time = system.components.channel(x_time, domain=domain)
+        y_time = system.components.channel(x_time, domain=domain, snr_db=snr_db)
         y_rg = system.components.demodulator(y_time).squeeze()
     else:
         raise ValueError(f"不支持的域: {domain}")

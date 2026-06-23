@@ -22,7 +22,6 @@
 | 方法                          | 功能概要                                                                                                                |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `__init__(args)`            | 加载配置、`SystemParams`、`SystemComponents`，设置 `sionna.phy.config.device`。                                   |
-| `estimate_channel(x, y)`    | 对 `x`/`y` squeeze 后做 LS 频域信道估计 `h = y·conj(x)/(|x|²+ε)`；`x` 为 `(S,F)`，`y` 为 `(rx_num,S,F)`，`rx_num=1` 时 `h` 退化为 `(S,F)`；多 RX 时对 `x` 在 leading 维广播。 |
 | `_paths_cfr_numpy()`        | 调用射线追踪 `paths.cfr`，按当前 RG 的子载波频率与符号参数得到 **CFR（numpy）**。                               |
 | `_paths_cir_numpy()`        | 调用 `paths.cir`，参数与 OFDM 符号对齐；返回 **`cir_a`**（最后一维 `[Re, Im]`）与 **`tau`**（秒）。 |
 
@@ -66,6 +65,15 @@
 
 - **`fmt_vec3`**：三维向量格式化为日志字符串。
 - **`csv_float2`**：标量/`torch.Tensor` 转为保留两位小数的 CSV 字符串。
+
+---
+
+## 相关感知组件（`SystemComponents`）
+
+| 字段 / 类 | 功能概要 |
+| --------- | -------- |
+| `ls_channel_estimator` / `LSChannelEstimator(rg)` | OFDM 配置存在时随 `rg` 构建；`__call__(x, y)` 做 LS 频域信道估计 `h = y·conj(x)/(|x|²+ε)`。`System.sensing` 与数据集脚本通过 `components.ls_channel_estimator(x_rg, y_rg)` 调用。 |
+| `channel` / `RTChannel` / `STChannel` | `Channel` 子类：RT 多径（时/频域）或 RCS 点目标（仅时域）；`SystemComponents.channel` 按 TOML `[channel].type` 构建其一。 |
 
 ---
 

@@ -6,7 +6,7 @@
 
 | 项目 | `run_sensing_monostatic.py` | `run_static_target_simulation.py` |
 |------|----------------------------|-----------------------------------|
-| 信道 | Sionna RT 射线追踪（`system.components.channel`） | `static_target_simulator` 点散射 |
+| 信道 | Sionna RT 射线追踪（`RTChannel` / `system.components.channel`） | `STChannel` 点散射 |
 | 配置 | 含 `[rt_scene]` | 无 RT，[`config/simulation/sensing/static_target_simulation.toml`](config/simulation/sensing/static_target_simulation.toml) |
 | 施加域 | 频域或时域（`--domain`） | **固定时域**（仿真器仅接受 IQ 样点流） |
 | 真值 | `RTScene.rx_target_tx_geometric` | CLI `--range_m` / `--velocity_mps` |
@@ -36,7 +36,7 @@ flowchart TB
     end
 
     subgraph channel [点目标信道]
-        Sim["static_target_simulator"]
+        Sim["STChannel"]
         AWGN["AWGN (接收端 SNR 定标)"]
         x_time --> Sim --> y_clean["y_time_clean"]
         y_clean --> AWGN --> y_time["y_time"]
@@ -44,7 +44,7 @@ flowchart TB
 
     subgraph rx [接收与感知]
         Dem["OFDMDemodulator"]
-        LS["estimate_channel (LS)"]
+        LS["LSChannelEstimator"]
         DD["DelayDopplerSpectrum"]
         MUSIC["MUSICEstimator"]
         y_time --> Dem --> y_rg["y_rg"]
@@ -88,7 +88,7 @@ flowchart TB
 - 目标：`range_m`、`velocity_mps`、`rcs`、`azimuth_deg`
 - 可选：`self_coupling`（默认 -10 dB 直达耦合）、`rndm_phaseshift`
 
-实现见 [`src/isac/channel/static_target_simulator.py`](src/isac/channel/static_target_simulator.py)。
+实现见 [`src/isac/channel/st_channel.py`](src/isac/channel/st_channel.py)。
 
 ### 3. 发射参考信号
 
@@ -103,7 +103,7 @@ _, x_rg, x_time = system.transmit()
 ### 4. 点目标信道（时域）
 
 ```
-y_time_clean = static_target_simulator(x_time, params)
+y_time_clean = st_channel(x_time)    # STChannel，domain='time'
 ```
 
 对每个目标回波：
@@ -124,7 +124,7 @@ y_time = AWGN(y_time_clean, no)
 
 ```
 y_rg = demodulator(y_time)
-h = estimate_channel(x_rg, y_rg)    # LS: h = y · conj(x) / (|x|² + ε)
+h = ls_channel_estimator(x_rg, y_rg)    # LS: h = y · conj(x) / (|x|² + ε)
 ```
 
 得到频域信道响应 **CFR** `h`，形状 `(S, F)`。
@@ -152,7 +152,7 @@ out/static_target_simulation/static_target_delay_doppler_spectrum.png
 est_ranges, est_velocities, _ = music_estimator(h_delay_doppler, metric_mode=...)
 ```
 
-- 2D-MUSIC 在 DD 谱上检峰，经 `doppler_to_velocity` 转为径向速度（**传统雷达约定**：远离为正，\(v = f_d c / (2f_c)\)）。
+- 2D-MUSIC 在 DD 谱上检峰，经 `doppler_to_velocity` 转为径向速度（**靠近为负、远离为正**：\(v = -f_d c / (2f_c)\)）。
 
 真值来自 CLI，匈牙利算法一对一匹配后打印 RMSE：
 
@@ -247,19 +247,19 @@ python script/run_static_target_simulation.py --range_m 1110 --velocity_mps 88 -
 | 模块 | 路径 |
 |------|------|
 | 仿真脚本 | [`script/run_static_target_simulation.py`](script/run_static_target_simulation.py) |
-| 点目标信道 | [`src/isac/channel/static_target_simulator.py`](src/isac/channel/static_target_simulator.py) |
+| 点目标信道 | [`src/isac/channel/st_channel.py`](src/isac/channel/st_channel.py) |
 | 系统编排 | [`src/isac/system.py`](src/isac/system.py) |
 | 时延–多普勒谱 | [`src/isac/sensing/delay_doppler_spectrum.py`](src/isac/sensing/delay_doppler_spectrum.py) |
 | MUSIC | [`src/isac/sensing/music_estimator.py`](src/isac/sensing/music_estimator.py) |
 | 速度符号约定 | [`src/isac/sensing/utils.py`](src/isac/sensing/utils.py)（`doppler_to_velocity`） |
-| 回归测试 | [`tests/test_static_target_simulator.py`](tests/test_static_target_simulator.py) |
+| 回归测试 | [`tests/test_st_channel.py`](tests/test_st_channel.py) |
 | GNU Radio 对照 | [`gnuradio/verify_dd_axis.py`](gnuradio/verify_dd_axis.py) |
 
 ---
 
 ## 注意事项
 
-1. **时域唯一路径**：`static_target_simulator` 不接受频域资源网格，必须经 modulator/demodulator。
+1. **时域唯一路径**：`STChannel` 不接受频域资源网格，必须经 modulator/demodulator。
 2. **自耦合**：默认 -10 dB 直达径会在 DD 谱零多普勒附近产生强峰及十字旁瓣；调参时可加 `--no_self_coupling`。
 3. **真值来源**：RMSE 对比的是 CLI 输入，不是 RT 几何；与谱图目视峰需在同一多普勒/速度切片上比较。
 4. **设备一致**：使用 `--device cpu` 时脚本会同步 DD 谱组件设备；默认 `cuda:0` 需可用 GPU 环境。

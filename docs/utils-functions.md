@@ -63,8 +63,8 @@
 | 模块 | 用到的 utils | 作用 |
 | ---- | ------------ | ---- |
 | [`src/isac/system.py`](src/isac/system.py) | `load_config`、`cartesian_direction_to_yaw_pitch_roll`、`convert`（经 `csv_float2_scalar`） | 加载 TOML；按笛卡尔方向设目标姿态；CSV 标量格式化。 |
-| [`src/isac/channel/channel.py`](src/isac/channel/channel.py) | `paths_cfr_per_tx_torch` | 按发射机切片 RT CFR，供多 TX 频域信道接口。 |
-| [`src/isac/sensing/delay_doppler_spectrum.py`](src/isac/sensing/delay_doppler_spectrum.py) | `convert`、`linear_to_db`、`apply_window`（及 `WindowSpec`） | CFR 转 torch；时延/多普勒维加窗；谱图 dB 显示。 |
+| [`src/isac/channel/rt_channel.py`](src/isac/channel/rt_channel.py) | `paths_cfr_per_tx_torch` | 按发射机切片 RT CFR，供多 TX 频域信道接口。 |
+| [`src/isac/sensing/delay_doppler_spectrum.py`](src/isac/sensing/delay_doppler_spectrum.py) | `convert`、`linear_to_db`、`apply_window` | CFR 转 torch；时延/多普勒维加窗；谱图 dB 显示。 |
 | [`src/isac/sensing/music_estimator.py`](src/isac/sensing/music_estimator.py) | `linear_to_db` | 伪谱功率转 dB 日志。 |
 | [`src/isac/sensing/processing.py`](src/isac/sensing/processing.py) | `convert` | DOA/MUSIC 等处理中 numpy ↔ torch 与标量提取。 |
 | [`src/isac/learning/torch_dataset.py`](src/isac/learning/torch_dataset.py) | `load_config` | 数据集类按配置名加载 TOML。 |
@@ -84,7 +84,7 @@ flowchart LR
   run_sensing_scripts --> misc
   system_py --> config_loader
   system_py --> misc
-  channel_py --> channel_paths
+  rt_channel --> channel_paths
   delay_doppler_spectrum --> windows
   delay_doppler_spectrum --> numerical
   delay_doppler_spectrum --> type_converter
@@ -103,7 +103,7 @@ flowchart LR
 | ---- | -------- |
 | `load_config` | 从 `config/` 目录读取指定 TOML 文件，返回配置字典。 |
 
-### [`channel_paths.py`](src/isac/utils/channel_paths.py)
+### [`channel_paths.py`](src/isac/channel/channel_paths.py)
 
 | 函数 | 功能概要 |
 | ---- | -------- |
@@ -178,11 +178,7 @@ flowchart LR
 
 | 函数 / 类型 | 功能概要 |
 | ----------- | -------- |
-| `WindowSpec` | 窗名、长度、对称性等规格。 |
-| `window_spec_from_config` | 从 `WindowConfig` 解析为 `WindowSpec`。 |
-| `get_window_tensor` | SciPy / `torch.signal.windows` 生成 1D 窗张量。 |
-| `apply_window` | 沿指定维对复数/实数张量加窗；支持 `WindowSpec` 或配置 dict。 |
-| `numpy_window_to_torch` / `get_named_window_tensor_1d` / `window_callable_to_tensor` | 窗函数与张量格式转换辅助。 |
+| `apply_window` | 沿指定维对张量加窗；``window`` 为 ``None`` / ``str`` / ``tuple`` / TOML 配置 ``dict``；``periodic`` 控制周期/对称窗。 |
 
 ### [`render.py`](src/isac/utils/render.py)
 
