@@ -89,7 +89,7 @@ def test_static_target_sensing_velocity_stays_positive():
     comps = system.components
     comps.delay_doppler_spectrum.device = torch.device("cpu")
 
-    true_v = float(comps.static_target_sim.params.velocity_mps)
+    true_v = float(comps.rcs_scene.target.velocity_mps)
     assert true_v > 0.0
 
     _, x_rg, x_time = system.transmit()

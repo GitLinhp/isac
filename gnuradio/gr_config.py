@@ -134,12 +134,6 @@ def merge_config(
             subcarrier_spacing=overrides.subcarrier_spacing,
         ),
     )
-    if effective_params.static_target is not None:
-        effective_params.static_target.apply_phy(
-            effective_params.carrier_frequency,
-            effective_params.ofdm,
-        )
-
     from isac.data_structures import SystemComponents
 
     rg = SystemComponents.build_from_params(

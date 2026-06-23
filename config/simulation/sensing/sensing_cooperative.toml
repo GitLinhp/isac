@@ -98,17 +98,13 @@ seed = 42                   # 随机种子
 filter_order = 1
 
 # 时延/多普勒窗参数
-[windows]
+[windows.delay_window]
+type = "general_hamming"
+alpha = 0.7
 
-# # 时延窗函数参数
-# [windows.delay_window]
-# type = "chebwin" # 窗函数类型
-# at = 60          # 窗函数衰减(dB)
-
-# # 多普勒窗函数参数
-# [windows.doppler_window]
-# type = "chebwin" # 窗函数类型
-# at = 50          # 窗函数衰减(dB)
+[windows.doppler_window]
+type = "general_hamming"
+alpha = 0.54
 
 # CFAR 参数
 [cfar]
@@ -122,3 +118,5 @@ detector = "linear" # 检测器: linear | squarelaw
 
 # MUSIC 参数
 [music]
+threshold = 0.1
+near_range_guard_m = 1.0

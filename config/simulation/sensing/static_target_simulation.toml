@@ -19,19 +19,27 @@ l_min = 0                    # OFDM 解调器最小时延抽头索引（Sionna O
 type = "rcs"
 snr_db = 10             # 信噪比(dB)
 
-# 静态目标参数
-[static_target]
+# RCS 点目标场景参数
+[rcs_scene]
+self_coupling_db = -10.0
+rndm_phaseshift = true
+self_coupling = true
+
+[rcs_scene.target]
 range_m = 95.0
 velocity_mps = 5.0
 rcs = 1e+25
 azimuth_deg = 0.0
 position_rx_m = 0.0
-self_coupling_db = -10.0
-rndm_phaseshift = true
-self_coupling = true
 
 # 时延/多普勒窗参数
-[windows]
+[windows.delay_window]
+type = "general_hamming"
+alpha = 0.7
+
+[windows.doppler_window]
+type = "general_hamming"
+alpha = 0.54
 
 # CFAR 参数
 [cfar]
@@ -43,3 +51,5 @@ detector = "linear" # 检测器: linear | squarelaw
 
 # MUSIC 参数
 [music]
+threshold = 0.1
+near_range_guard_m = 1.0

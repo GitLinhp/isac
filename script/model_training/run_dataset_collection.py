@@ -227,9 +227,13 @@ def _estimate_delay_doppler_spectrum(system: System, domain: str) -> torch.Tenso
     _, x_rg, x_time = system.transmit()
 
     if domain == "frequency":
-        y_rg = system.components.channel(x_rg, domain=domain, snr_db=system.params.channel.snr_db)
+        y_rg = system.components.channel(
+            x_rg, domain=domain, snr_db=system.params.channel.snr_db
+        )
     elif domain == "time":
-        y_time = system.components.channel(x_time, domain=domain, snr_db=system.params.channel.snr_db)
+        y_time = system.components.channel(
+            x_time, domain=domain, snr_db=system.params.channel.snr_db
+        )
         y_rg = system.components.demodulator(y_time)
     else:
         raise ValueError(f"不支持的域: {domain}")
@@ -643,7 +647,9 @@ def _export_h5(
     if cfg.save_cir:
         if not cir_a_list:
             raise RuntimeError("save_cir 已启用但主循环未采集 CIR")
-        cir_a_arr, cir_tau_arr = RTScene.stack_ragged_cir_samples(cir_a_list, cir_tau_list)
+        cir_a_arr, cir_tau_arr = RTScene.stack_ragged_cir_samples(
+            cir_a_list, cir_tau_list
+        )
 
     h5_path, desc_h5, scene_name = _resolve_h5_output(
         run_sensing=cfg.run_sensing,

@@ -22,7 +22,10 @@ import sionna.rt.scene
 # 本地模块
 from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
-from ...data_structures.rt_scene_params import RtSceneParams, AntennaArrayParams
+from ...data_structures.params.channel_params.rt_scene_params import (
+    RtSceneParams,
+    AntennaArrayParams,
+)
 from .rx_target_tx_geometric import RxTargetTxGeometric
 from ... import PROJECT_ROOT
 
@@ -190,6 +193,9 @@ class RTScene(Scene):
     def __init__(
         self,
         scene_params: RtSceneParams,
+        *,
+        frequency: Optional[float] = None,
+        bandwidth: Optional[float] = None,
     ):
         self.scene_params = scene_params
         self._paths = None
@@ -217,6 +223,11 @@ class RTScene(Scene):
         validate_transceivers_not_in_obstacles(self)
         self._init_target_material()  # 初始化目标材料
         self._init_targets()  # 初始化目标
+
+        if frequency is not None:
+            self.frequency = float(frequency)
+        if bandwidth is not None:
+            self.bandwidth = float(bandwidth)
 
     # ==================== 初始化方法 ====================
 

@@ -16,11 +16,11 @@ for _p in (_GRC, str(_SRC)):
     if _p not in sys.path:
         sys.path.insert(0, str(_p))
 
-from isac.channel import StaticTargetParams, STChannel
+from isac.channel import RCSScene, RCSTarget, RCSChannel
 
 
 class SionnaStaticTarget(gr.basic_block):
-    """Torch STChannel 的 GNU Radio 流块（packet_len tag 门控）。"""
+    """Torch RCSChannel 的 GNU Radio 流块（packet_len tag 门控）。"""
 
     def __init__(
         self,
@@ -61,19 +61,22 @@ class SionnaStaticTarget(gr.basic_block):
         self._burst_mode = bool(burst_mode)
         self._burst_armed = not self._burst_mode
 
-        self._sim = STChannel(
-            StaticTargetParams(
+        self._scene = RCSScene(
+            target=RCSTarget(
                 range_m=range_m,
                 velocity_mps=velocity_mps,
                 rcs=rcs,
                 azimuth_deg=azimuth_deg,
                 position_rx_m=position_rx_m,
-                samp_rate=int(samp_rate),
-                center_freq=float(center_freq),
-                self_coupling_db=float(self_coupling_db),
-                rndm_phaseshift=bool(rndm_phaseshift),
-                self_coupling=bool(self_coupling),
             ),
+            self_coupling_db=float(self_coupling_db),
+            rndm_phaseshift=bool(rndm_phaseshift),
+            self_coupling=bool(self_coupling),
+        )
+        self._sim = RCSChannel(
+            rcs_scene=lambda: self._scene,
+            center_freq=float(center_freq),
+            samp_rate=float(samp_rate),
         )
 
         self.set_min_output_buffer(max(4096, int(ofdm_symbols)))
@@ -92,20 +95,18 @@ class SionnaStaticTarget(gr.basic_block):
         self_coupling: bool,
     ) -> None:
         """GRC 滑块回调：运行时更新目标参数。"""
-        self._sim = STChannel(
-            StaticTargetParams(
-                range_m=range_m,
-                velocity_mps=velocity_mps,
-                rcs=rcs,
-                azimuth_deg=azimuth_deg,
-                position_rx_m=position_rx_m,
-                samp_rate=int(samp_rate),
-                center_freq=float(center_freq),
-                self_coupling_db=float(self_coupling_db),
-                rndm_phaseshift=bool(rndm_phaseshift),
-                self_coupling=bool(self_coupling),
-            ),
+        self._scene.target.update(
+            range_m=range_m,
+            velocity_mps=velocity_mps,
+            rcs=rcs,
+            azimuth_deg=azimuth_deg,
+            position_rx_m=position_rx_m,
         )
+        self._sim.samp_rate = float(samp_rate)
+        self._sim.center_freq = float(center_freq)
+        self._scene.self_coupling_db = float(self_coupling_db)
+        self._scene.rndm_phaseshift = bool(rndm_phaseshift)
+        self._scene.self_coupling = bool(self_coupling)
 
     def forecast(self, noutput_items: int, ninputs) -> List[int]:
         del noutput_items, ninputs

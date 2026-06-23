@@ -173,11 +173,6 @@ class System:
 
         if display_geometry:
             scene = comps.rt_scene
-            if scene is None:
-                raise ValueError(
-                    "display_geometry=True 要求已构建 rt_scene；"
-                    "或设 display_geometry=False 并传入 true_ranges/true_velocities"
-                )
             scene.rx_target_tx_geometric.display()
 
         est_ranges: Optional[torch.Tensor] = None

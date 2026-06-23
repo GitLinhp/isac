@@ -1,4 +1,4 @@
-"""gnuradio 薄封装：re-export ISAC Torch STChannel。"""
+"""gnuradio 薄封装：re-export ISAC Torch RCSChannel。"""
 import sys
 from pathlib import Path
 
@@ -12,11 +12,12 @@ for _p in (_GRC, str(_SRC)):
 import numpy as np
 import torch
 
-from isac.channel import StaticTargetParams, STChannel
+from isac.channel import RCSScene, RCSTarget, RCSChannel
 
 __all__ = [
-    "StaticTargetParams",
-    "STChannel",
+    "RCSScene",
+    "RCSTarget",
+    "RCSChannel",
     "apply_grc_default_channel",
 ]
 
@@ -36,19 +37,23 @@ def apply_grc_default_channel(
     generator: torch.Generator | None = None,
 ) -> np.ndarray:
     """用 simulator_ofdm.grc 默认参数对时域 IQ 施加 static_target 信道，返回 numpy complex64。"""
-    sim = STChannel(
-        StaticTargetParams(
-            range_m=range_m,
-            velocity_mps=velocity_mps,
-            rcs=rcs,
-            azimuth_deg=0.0,
-            position_rx_m=0.0,
-            center_freq=center_freq,
-            samp_rate=samp_rate,
-            self_coupling_db=self_coupling_db,
-            rndm_phaseshift=rndm_phaseshift,
-            self_coupling=self_coupling,
-        ),
+    target = RCSTarget(
+        range_m=range_m,
+        velocity_mps=velocity_mps,
+        rcs=rcs,
+        azimuth_deg=0.0,
+        position_rx_m=0.0,
+    )
+    scene = RCSScene(
+        target=target,
+        self_coupling_db=self_coupling_db,
+        rndm_phaseshift=rndm_phaseshift,
+        self_coupling=self_coupling,
+    )
+    sim = RCSChannel(
+        rcs_scene=lambda: scene,
+        center_freq=float(center_freq),
+        samp_rate=float(samp_rate),
     )
     if isinstance(tx, np.ndarray):
         tx_t = torch.from_numpy(np.asarray(tx, dtype=np.complex64)).to(device)

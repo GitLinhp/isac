@@ -51,9 +51,9 @@ def main() -> None:
     set_random_seed(args.seed)
     system = System(args)
 
-    static_sim = system.components.static_target_sim
-    if static_sim is None:
-        raise ValueError("channel.type='rcs' 要求已构建 static_target 组件")
+    rcs_scene = system.components.rcs_scene
+    if rcs_scene is None:
+        raise ValueError("channel.type='rcs' 要求已构建 rcs_scene 组件")
 
     script_out_dir = PROJECT_ROOT / "out" / "static_target_simulation"
     script_out_dir.mkdir(parents=True, exist_ok=True)
@@ -61,13 +61,15 @@ def main() -> None:
     comps = system.components
     comps.delay_doppler_spectrum.device = torch.device(args.device)
 
-    params = static_sim.params
-    range_m = params.range_m
-    velocity_mps = params.velocity_mps
+    target = rcs_scene.target
+    range_m = target.range_m
+    velocity_mps = target.velocity_mps
+    samp_rate = system.params.ofdm.samp_rate
+    center_freq = system.params.carrier_frequency
 
     print(
         f"静态目标参数: range={range_m:.2f} m, velocity={velocity_mps:.2f} m/s, "
-        f"samp_rate={params.samp_rate}, center_freq={params.center_freq:.3e} Hz"
+        f"samp_rate={samp_rate}, center_freq={center_freq:.3e} Hz"
     )
 
     # --- 发射 ---

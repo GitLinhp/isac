@@ -9,13 +9,13 @@
 #   - 发射/接收：carrier_frequency, [source], [ofdm]
 #   - binary 源须在 [source] 中写 num_bits_per_symbol（见下方注释）
 #   - 通信解调：另需 [stream_management]
-#   - 信道： [channel] + [rt_scene] 或 [static_target]
+#   - 信道： [channel] + [rt_scene] 或 [rcs_scene]
 #   - 感知： [mti], [mtd], [windows], [cfar], [music]
 #
 # 若改用 channel.type = "rcs"：
 #   1. 将 [channel].type 改为 "rcs"
 #   2. 注释或删除 [rt_scene] 整段
-#   3. 启用文件末尾 [static_target] 注释块中的配置
+#   3. 启用文件末尾 [rcs_scene] 注释块中的配置
 # =============================================================================
 
 # --- 载波（SystemParams 顶层）---
@@ -39,7 +39,7 @@ num_streams = 1           # 流数
 num_symbols = 512            # OFDM 符号数
 fft_size = 2048              # FFT 大小
 subcarrier_spacing = 30000.0 # 子载波间隔 (Hz)
-cyclic_prefix_length = 512   # 循环前缀长度；别名 num_cyclic_prefix
+cyclic_prefix_length = 512   # 循环前缀长度
 l_min = -6                   # OFDM 解调器最小时延抽头索引
 dc_null = false              # 资源网格是否置空 DC 子载波
 
@@ -168,19 +168,21 @@ near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
 
 # =============================================================================
 # --- RCS 点目标信道（将 channel.type 改为 rcs 并注释 [rt_scene] 后启用）---
-# samp_rate / center_freq 由 apply_phy(carrier_frequency, ofdm) 自动派生，无需手写
+# samp_rate / center_freq 在 RCSChannel 构建时由 ofdm.samp_rate 与 carrier_frequency 注入
 #
 # [channel]
 # type = "rcs"
 # snr_db = 10.0
 #
-# [static_target]
+# [rcs_scene]
+# self_coupling_db = -10.0
+# rndm_phaseshift = true
+# self_coupling = true
+#
+# [rcs_scene.target]
 # range_m = 95.0
 # velocity_mps = 5.0
 # rcs = 1e25
 # azimuth_deg = 0.0
 # position_rx_m = 0.0
-# self_coupling_db = -10.0
-# rndm_phaseshift = true
-# self_coupling = true
 # =============================================================================

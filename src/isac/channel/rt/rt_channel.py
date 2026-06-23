@@ -15,7 +15,7 @@ from sionna.phy.config import Precision
 from sionna.phy.ofdm import ResourceGrid
 from sionna.rt import Paths
 
-from .channel import Channel
+from ..channel import Channel
 
 
 class RTChannel(Channel):

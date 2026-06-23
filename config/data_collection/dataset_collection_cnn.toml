@@ -79,7 +79,13 @@ synthetic_array = true
 seed = 42
 
 # 时延/多普勒窗参数
-[windows]
+[windows.delay_window]
+type = "general_hamming"
+alpha = 0.7
+
+[windows.doppler_window]
+type = "general_hamming"
+alpha = 0.54
 
 # CFAR 参数
 [cfar]
@@ -91,3 +97,5 @@ detector = "linear"
 
 # MUSIC 参数
 [music]
+threshold = 0.1
+near_range_guard_m = 1.0

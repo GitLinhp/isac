@@ -1,12 +1,12 @@
-"""STChannel 向量化回归：与 gr-radar 等价 loop 参考实现对比。"""
+"""RCSChannel 向量化回归：与 gr-radar 等价 loop 参考实现对比。"""
 import math
 
 import pytest
 import torch
 from scipy.constants import c
 
-from isac.channel.st_channel import STChannel
-from isac.data_structures.system_params import StaticTargetParams
+from isac.channel import RCSChannel, RCSScene
+from isac.data_structures import RCSSceneParams, RCSTargetParams
 
 _TWO_PI = 2.0 * math.pi
 _SAMP_RATE = 30_720_000.0
@@ -71,7 +71,7 @@ def _apply_single_target_echo_loop_ref(
     doppler_hz = -2.0 * velocity_mps * center_freq / c
     timeshift_s = 2.0 * range_m / c
     azimuth_shift_s = position_rx_m * math.sin(math.radians(azimuth_deg))
-    scale_ampl = STChannel._target_scale_ampl(range_m, rcs, center_freq)
+    scale_ampl = RCSChannel._target_scale_ampl(range_m, rcs, center_freq)
 
     doppler_filt = _build_doppler_filter_loop_ref(
         n, doppler_hz, scale_ampl, samp_rate, device
@@ -91,18 +91,22 @@ def _apply_single_target_echo_loop_ref(
 
 def _st_channel_loop_ref(
     tx: torch.Tensor,
-    params: StaticTargetParams,
+    params: RCSSceneParams,
+    *,
+    samp_rate: float,
+    center_freq: float,
 ) -> torch.Tensor:
     tx_c = tx.to(torch.complex64)
+    target = params.target
     out = _apply_single_target_echo_loop_ref(
         tx_c,
-        range_m=params.range_m,
-        velocity_mps=params.velocity_mps,
-        rcs=params.rcs,
-        azimuth_deg=params.azimuth_deg,
-        position_rx_m=params.position_rx_m,
-        samp_rate=float(params.samp_rate),
-        center_freq=params.center_freq,
+        range_m=target.range_m,
+        velocity_mps=target.velocity_mps,
+        rcs=target.rcs,
+        azimuth_deg=target.azimuth_deg,
+        position_rx_m=target.position_rx_m,
+        samp_rate=float(samp_rate),
+        center_freq=center_freq,
     )
     if params.self_coupling:
         coupling = 10.0 ** (params.self_coupling_db / 20.0)
@@ -114,7 +118,7 @@ def _st_channel_loop_ref(
 @pytest.mark.parametrize("doppler_hz", [200.0, -350.0, 0.0])
 def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
     scale = 1.23e4
-    vec = STChannel._build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
+    vec = RCSChannel._build_doppler_filter(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
     ref = _build_doppler_filter_loop_ref(n, doppler_hz, scale, _SAMP_RATE, _DEVICE)
     atol = _CHIRP_ATOL if n >= _FULL_FRAME_N else _ATOL
     assert torch.allclose(vec, ref, atol=atol, rtol=0.0)
@@ -126,7 +130,7 @@ def test_doppler_filter_matches_loop(n: int, doppler_hz: float) -> None:
 def test_delay_filter_matches_loop(
     n: int, delay_s: float, compensate_numpy_ifft: bool
 ) -> None:
-    vec = STChannel._build_delay_filter(
+    vec = RCSChannel._build_delay_filter(
         n,
         delay_s,
         _SAMP_RATE,
@@ -158,7 +162,7 @@ def test_apply_single_target_echo(n: int) -> None:
         rndm_phaseshift=False,
         generator=None,
     )
-    vec = STChannel._apply_single_target_echo(tx, **kwargs)
+    vec = RCSChannel._apply_single_target_echo(tx, **kwargs)
     ref = _apply_single_target_echo_loop_ref(tx, **{k: v for k, v in kwargs.items() if k not in ("rndm_phaseshift", "generator")})
     if n >= _FULL_FRAME_N:
         assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)
@@ -170,18 +174,26 @@ def test_st_channel_end2end() -> None:
     n = 512 * 2560
     torch.manual_seed(42)
     tx = torch.randn(n, dtype=torch.complex64, device=_DEVICE)
-    params = StaticTargetParams(
-        range_m=100.0,
-        velocity_mps=5.0,
-        rcs=1e25,
-        azimuth_deg=0.0,
-        position_rx_m=0.0,
-        samp_rate=int(_SAMP_RATE),
-        center_freq=6e9,
+    params = RCSSceneParams(
+        target=RCSTargetParams(
+            range_m=100.0,
+            velocity_mps=5.0,
+            rcs=1e25,
+            azimuth_deg=0.0,
+            position_rx_m=0.0,
+        ),
         rndm_phaseshift=False,
         self_coupling=True,
         self_coupling_db=-10.0,
     )
-    vec = STChannel(params)(tx)
-    ref = _st_channel_loop_ref(tx, params)
+    center_freq = 6e9
+    scene = RCSScene.from_params(params)
+    vec = RCSChannel(
+        rcs_scene=lambda: scene,
+        center_freq=center_freq,
+        samp_rate=_SAMP_RATE,
+    )(tx)
+    ref = _st_channel_loop_ref(
+        tx, params, samp_rate=_SAMP_RATE, center_freq=center_freq
+    )
     assert torch.allclose(vec, ref, atol=_ECHO_ATOL, rtol=_ECHO_RTOL)

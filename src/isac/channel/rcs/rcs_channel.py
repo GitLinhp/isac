@@ -6,34 +6,46 @@
 """
 
 import math
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 from scipy.constants import c
 from sionna.phy.config import Precision
 
-from ..data_structures.system_params import StaticTargetParams
-from .channel import Channel
+from .rcs_scene import RCSScene
+from .rcs_target import RCSTarget
+from ..channel import Channel
 
 _FOUR_PI_CUBED_SQRT = math.sqrt((4.0 * math.pi) ** 3)
 _TWO_PI = 2.0 * math.pi
 
 
-class STChannel(Channel):
+class RCSChannel(Channel):
     """gr-radar static_target_simulator_cc 的 Torch 复现。
 
-    用法：``STChannel(params)(tx)``；``tx`` 为时域复基带，末维长度须与
-    CPI 样点数一致（如 ``num_ofdm_symbols * (fft_size + cp_len)``）。
+    用法：``RCSChannel(rcs_scene, center_freq=..., samp_rate=...)(tx)``；``rcs_scene`` 为
+    ``Callable[[], RCSScene]``，每次施加信道时读取当前场景与点目标状态（与 ``RTChannel.paths`` 同模式）。
     """
 
     def __init__(
         self,
-        params: StaticTargetParams,
+        rcs_scene: Callable[[], RCSScene],
+        *,
+        center_freq: float,
+        samp_rate: float,
         precision: Optional[Precision] = None,
         device: Optional[str] = None,
     ) -> None:
         super().__init__(precision=precision, device=device)
-        self.params = params
+        if not callable(rcs_scene):
+            raise TypeError("rcs_scene 必须是可调用对象：Callable[[], RCSScene]")
+        self.rcs_scene = rcs_scene
+        if center_freq <= 0:
+            raise ValueError("center_freq 须为正")
+        if samp_rate <= 0:
+            raise ValueError("samp_rate 须为正")
+        self.center_freq = float(center_freq)
+        self.samp_rate = float(samp_rate)
         self._generator: torch.Generator | None = None
 
     @staticmethod
@@ -83,8 +95,8 @@ class STChannel(Channel):
         device: torch.device,
     ) -> torch.Tensor:
         """频域分数时延滤波器。"""
-        freq = STChannel._fft_freq_bins(n, samp_rate, device)
-        return STChannel._build_delay_filter_from_freq(
+        freq = RCSChannel._fft_freq_bins(n, samp_rate, device)
+        return RCSChannel._build_delay_filter_from_freq(
             freq, delay_s, compensate_numpy_ifft=compensate_numpy_ifft
         )
 
@@ -114,16 +126,16 @@ class STChannel(Channel):
         doppler_hz = -2.0 * velocity_mps * center_freq / c
         timeshift_s = 2.0 * range_m / c
         azimuth_shift_s = position_rx_m * math.sin(math.radians(azimuth_deg))
-        scale_ampl = STChannel._target_scale_ampl(range_m, rcs, center_freq)
+        scale_ampl = RCSChannel._target_scale_ampl(range_m, rcs, center_freq)
 
-        doppler_filt = STChannel._build_doppler_filter(
+        doppler_filt = RCSChannel._build_doppler_filter(
             n, doppler_hz, scale_ampl, samp_rate, device
         )
-        freq_bins = STChannel._fft_freq_bins(n, samp_rate, device)
-        range_filt = STChannel._build_delay_filter_from_freq(
+        freq_bins = RCSChannel._fft_freq_bins(n, samp_rate, device)
+        range_filt = RCSChannel._build_delay_filter_from_freq(
             freq_bins, timeshift_s, compensate_numpy_ifft=False
         )
-        azimuth_filt = STChannel._build_delay_filter_from_freq(
+        azimuth_filt = RCSChannel._build_delay_filter_from_freq(
             freq_bins, azimuth_shift_s, compensate_numpy_ifft=False
         )
 
@@ -146,28 +158,28 @@ class STChannel(Channel):
         if domain != "time":
             raise ValueError("channel.type='rcs' 仅支持 domain='time'")
 
-        params = self.params
         if inputs.shape[-1] == 0:
             raise ValueError("tx 末维样点数须为正")
 
         tx_c = inputs.to(torch.complex64)
-        params.ensure_phy()
+        scene = self.rcs_scene()
+        tgt = scene.target
 
         out = self._apply_single_target_echo(
             tx_c,
-            range_m=params.range_m,
-            velocity_mps=params.velocity_mps,
-            rcs=params.rcs,
-            azimuth_deg=params.azimuth_deg,
-            position_rx_m=params.position_rx_m,
-            samp_rate=float(params.samp_rate),
-            center_freq=params.center_freq,
-            rndm_phaseshift=params.rndm_phaseshift,
+            range_m=tgt.range_m,
+            velocity_mps=tgt.velocity_mps,
+            rcs=tgt.rcs,
+            azimuth_deg=tgt.azimuth_deg,
+            position_rx_m=tgt.position_rx_m,
+            samp_rate=self.samp_rate,
+            center_freq=self.center_freq,
+            rndm_phaseshift=scene.rndm_phaseshift,
             generator=self._generator,
         )
 
-        if params.self_coupling:
-            coupling = 10.0 ** (params.self_coupling_db / 20.0)
+        if scene.self_coupling:
+            coupling = 10.0 ** (scene.self_coupling_db / 20.0)
             out = out + coupling * tx_c
 
         return out

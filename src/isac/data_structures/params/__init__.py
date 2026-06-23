@@ -1,24 +1,18 @@
-from .params import (
+from .basic_params import OFDMParams, SourceParams, StreamManagementParams
+from .channel_params import (
     AntennaArrayParams,
     CameraParams,
-    CFARParams,
     ChannelParams,
-    MTDParams,
-    MTIParams,
-    MusicParams,
-    OFDMParams,
     PathSolverParams,
     RCSSceneParams,
     RCSTargetParams,
     RtSceneParams,
-    SourceParams,
-    StreamManagementParams,
-    SystemParams,
     TargetMaterialParams,
     TargetParams,
     TransceiverParams,
-    WindowParams,
 )
+from .sensing_params import CFARParams, MTDParams, MTIParams, MusicParams, WindowParams
+from .system_params import SystemParams
 
 __all__ = [
     "AntennaArrayParams",
@@ -30,23 +24,14 @@ __all__ = [
     "MusicParams",
     "OFDMParams",
     "PathSolverParams",
-    "RtSceneParams",
-    "SourceParams",
     "RCSSceneParams",
     "RCSTargetParams",
+    "RtSceneParams",
+    "SourceParams",
     "StreamManagementParams",
-    "SystemComponents",
     "SystemParams",
     "TargetMaterialParams",
     "TargetParams",
     "TransceiverParams",
     "WindowParams",
 ]
-
-
-def __getattr__(name: str):
-    if name == "SystemComponents":
-        from .system_components import SystemComponents
-
-        return SystemComponents
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
