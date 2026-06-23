@@ -92,7 +92,14 @@ class RxTargetTxGeometric:
                             float(vv[j, i, k].item()),
                         ]
                     )
-        headers = ["接收机", "目标", "发射机", "路径类型", "路径长度_m", "径向速度_mps"]
+        headers = [
+            "接收机",
+            "目标",
+            "发射机",
+            "路径类型",
+            "路径长度(m)",
+            "径向速度(m/s)",
+        ]
         table = tabulate(rows, headers=headers, tablefmt=tablefmt, floatfmt=floatfmt)
         print("接收机–目标–发射机三元组几何：")
         print(table)
@@ -149,9 +156,13 @@ class RxTargetTxGeometric:
         x_stack = stack_state_field(tx_states, tx_names, "pos", dev)
         x_vel = stack_state_field(tx_states, tx_names, "vel", dev)
 
-        type_tensor = compute_path_type(r_stack, x_stack, n_t, eps_m=tx_rx_colocated_eps_m)
+        type_tensor = compute_path_type(
+            r_stack, x_stack, n_t, eps_m=tx_rx_colocated_eps_m
+        )
         range_tensor = compute_range(type_tensor, t_stack, r_stack, x_stack)
-        vel_tensor = compute_vel(type_tensor, t_stack, t_vel, r_stack, r_vel, x_stack, x_vel)
+        vel_tensor = compute_vel(
+            type_tensor, t_stack, t_vel, r_stack, r_vel, x_stack, x_vel
+        )
 
         return cls(
             target_names=target_names,

@@ -93,6 +93,10 @@ edge_diffraction = true     # 是否考虑边缘衍射
 synthetic_array = true      # 是否使用合成阵列
 seed = 42                   # 随机种子
 
+# MTI 参数
+[mti]
+filter_order = 1
+
 # 时延/多普勒窗参数
 [windows]
 

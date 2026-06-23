@@ -15,6 +15,7 @@ from .utils import (
     match_peaks_and_compute_radial_rmse,
 )
 from .data_structures import SystemParams, SystemComponents
+from .utils.rt_doppler import align_rt_monostatic_doppler_phase
 from . import PROJECT_ROOT
 
 
@@ -156,6 +157,18 @@ class System:
 
         return h
 
+    def _align_rt_monostatic_doppler_if_needed(
+        self,
+        h: torch.Tensor,
+        sens_mode: SensMode,
+        *,
+        axis: int,
+    ) -> torch.Tensor:
+        channel = self.params.channel
+        if channel is None or channel.type != "rt" or sens_mode != "monostatic":
+            return h
+        return align_rt_monostatic_doppler_phase(h, axis=axis)
+
     def sensing(
         self,
         x_rg: torch.Tensor,
@@ -189,6 +202,7 @@ class System:
         comps = self.components
 
         h = self.estimate_channel(x_rg, y_rg)
+        h = self._align_rt_monostatic_doppler_if_needed(h, sens_mode, axis=mti_axis)
         if apply_mti:
             h = comps.moving_target_indication(h, axis=mti_axis)
         h_delay_doppler = comps.delay_doppler_spectrum(h)

@@ -2,10 +2,12 @@
 
 import numpy as np
 import torch
-from sionna.phy.channel import subcarrier_frequencies
+from sionna.phy.channel import cir_to_ofdm_channel, subcarrier_frequencies
 
 
 from sionna.phy.ofdm import ResourceGrid
+
+from .rt_doppler import align_rt_monostatic_doppler_phase
 
 
 def scene_slug_from_rt_scene(scene: object) -> str:
@@ -61,36 +63,46 @@ def paths_cfr_per_tx_torch(
     *,
     device: torch.device | None = None,
     dtype: torch.dtype = torch.complex64,
+    align_monostatic_doppler: bool = True,
 ) -> dict[str, torch.Tensor]:
-    """按发射机在 RT ``Paths.cfr`` 上切片，得到各 TX 到唯一 RX 的频域信道 ``(S, F)``。
+    """按发射机分离 OFDM 频域信道 ``(S, F)``，与 ``Channel.h_freq`` 一致（``cir`` → ``cir_to_ofdm_channel``）。
 
-    形状约定（与 Sionna RT 一致）：``cfr`` 为
-    ``(batch, num_rx, num_tx, num_rx_ant, num_time_steps, fft_size)``。
+    假定单 RX / 单 RX 天线（``h[0, 0, 0, tx, 0]``）。``align_monostatic_doppler=True`` 时，
+    对 ``rx_target_tx_geometric`` 判定为单基地的路径施加 ``align_rt_monostatic_doppler_phase``。
     """
     freqs = subcarrier_frequencies(rg.fft_size, rg.subcarrier_spacing)
-    h = rt_scene.paths.cfr(
-        frequencies=freqs,
+    a, tau = rt_scene.paths.cir(
         num_time_steps=rg.num_ofdm_symbols,
         sampling_frequency=1 / rg.ofdm_symbol_duration,
         normalize_delays=False,
-        normalize=True,
         out_type="torch",
     )
-    if h.ndim != 6:
+    h = cir_to_ofdm_channel(
+        freqs,
+        torch.unsqueeze(a, dim=0),
+        torch.unsqueeze(tau, dim=0),
+        normalize=False,
+    )
+    s, f = rg.num_ofdm_symbols, rg.fft_size
+    if h.ndim != 7 or h.shape[-2:] != (s, f):
         raise ValueError(
-            f"paths.cfr 须为 6D (batch, rx, tx, rx_ant, S, F)，收到 {tuple(h.shape)}"
+            "cir_to_ofdm_channel 须为 7D (batch, rx, rx_ant, tx, tx_ant, S, F)，"
+            f"收到 {tuple(h.shape)}，末两维期望 ({s}, {f})"
         )
     tx_names = list(rt_scene.tx_states.keys())
-    num_tx = int(h.shape[2])
+    num_tx = int(h.shape[3])
     if num_tx != len(tx_names):
         raise ValueError(
-            f"CFR 的 tx 维 ({num_tx}) 与 tx_states 数量 ({len(tx_names)}) 不一致"
+            f"OFDM 信道的 tx 维 ({num_tx}) 与 tx_states 数量 ({len(tx_names)}) 不一致"
         )
+    geom = rt_scene.rx_target_tx_geometric if align_monostatic_doppler else None
     out: dict[str, torch.Tensor] = {}
     for i, name in enumerate(tx_names):
-        slab = h[0, 0, i, 0]
+        slab = h[0, 0, 0, i, 0]
         if device is not None or dtype != slab.dtype:
             slab = slab.to(device=device, dtype=dtype)
+        if geom is not None and not bool(geom.type_tensor[0, 0, i].item()):
+            slab = align_rt_monostatic_doppler_phase(slab)
         out[name] = slab
     return out
 
