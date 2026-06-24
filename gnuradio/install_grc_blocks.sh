@@ -4,7 +4,7 @@ set -euo pipefail
 GRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE="${GRC_HIER_PATH:-${HOME}/.local/state/gnuradio}"
 mkdir -p "$STATE"
-for f in sionna_bootstrap sionna_ofdm_tx sionna_dd_rx sionna_static_target; do
+for f in sionna_bootstrap sionna_ofdm_tx sionna_dd_rx sionna_static_target sionna_rt_channel; do
   rm -f "$STATE/${f}.block.yml"
   cp -f "$GRC_DIR/${f}.block.yml" "$STATE/${f}.block.yml"
   echo "installed $STATE/${f}.block.yml"

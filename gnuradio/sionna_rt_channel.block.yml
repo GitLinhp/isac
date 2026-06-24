@@ -1,5 +1,5 @@
-id: sionna_ofdm_tx
-label: Sionna OFDM Tx
+id: sionna_rt_channel
+label: Sionna RT Channel
 category: '[Sionna]'
 flags: [python]
 
@@ -7,27 +7,27 @@ parameters:
 - id: config_file
   label: Config file
   dtype: string
-  default: '"config/simulation/sensing/sensing_monostatic.toml"'
+  default: '"config/simulation/sensing/sensing_baseline.toml"'
 - id: fft_len
   label: FFT length
   dtype: int
-  default: '2048'
+  default: '1024'
 - id: ofdm_symbols
   label: OFDM symbols
   dtype: int
-  default: '512'
+  default: '1024'
 - id: cp_len
   label: CP length
   dtype: int
-  default: '512'
+  default: '0'
 - id: subcarrier_spacing
   label: Subcarrier spacing
   dtype: real
-  default: '15000'
+  default: '30000'
 - id: center_freq
   label: Center frequency
   dtype: real
-  default: '6e9'
+  default: '3.5e9'
 - id: length_tag_key
   label: Length tag key
   dtype: string
@@ -40,38 +40,35 @@ parameters:
   label: Device
   dtype: string
   default: '"cuda:0"'
-- id: idle_ms
-  label: Style1 idle [ms]
+- id: snr_db
+  label: SNR (dB)
   dtype: real
-  default: '0'
-- id: time_lead_s
-  label: tx_time lead [s]
-  dtype: real
-  default: '0.05'
-- id: uhd_burst_tags
-  label: UHD burst tags
+  default: '-5'
+- id: burst_mode
+  label: Burst mode
   dtype: bool
   default: 'False'
   options: ['True', 'False']
   option_labels: ['Enabled', 'Disabled']
-- id: samp_rate
-  label: Sample rate
-  dtype: int
-  default: '30720000'
 - id: minoutbuf
   label: Min output buffer
   dtype: int
   default: '0'
   hide: part
 
+inputs:
+- domain: stream
+  dtype: complex
+
 outputs:
 - domain: stream
   dtype: complex
 
 templates:
-  imports: from sionna_tx import SionnaOFDMTx
-  make: SionnaOFDMTx(config_file=${config_file}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq}, length_tag_key=${length_tag_key}, seed=${seed}, device=${device}, idle_ms=${idle_ms}, time_lead_s=${time_lead_s}, uhd_burst_tags=${uhd_burst_tags}, samp_rate=${samp_rate})
+  imports: from sionna_rt_channel import SionnaRTChannel
+  make: SionnaRTChannel(config_file=${config_file}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq}, length_tag_key=${length_tag_key}, seed=${seed}, device=${device}, snr_db=${snr_db}, burst_mode=${burst_mode})
   callbacks:
   - set_min_output_buffer(${minoutbuf})
+  - set_snr_db(${snr_db})
 
 file_format: 1

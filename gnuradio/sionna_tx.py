@@ -2,6 +2,7 @@
 import os
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -35,7 +36,7 @@ import pmt
 from gnuradio import gr
 
 from isac.data_structures import SystemParams
-from isac.utils import load_config, set_random_seed
+from isac.utils import load_config
 
 
 @dataclass(frozen=True)
@@ -159,18 +160,15 @@ def bootstrap_sionna(
     overrides: Optional[GrcOverrides] = None,
     **grc_kw,
 ) -> TxPacket:
-    """启动时一次性预热发端与收端 GPU 上下文。"""
-    from sionna_rx import prewarm_sionna_rx
+    """启动时一次性预热 GrSystemContext（发端 + RT 信道 + DD）。"""
+    from gr_system import prewarm_gr_system
 
     print("=== Sionna 信号引导（仅执行一次）===")
-    pkt = prewarm_sionna_tx(
+    ctx = prewarm_gr_system(
         config_file, seed=seed, device=device, overrides=overrides, **grc_kw
     )
-    prewarm_sionna_rx(
-        config_file, seed=seed, device=device, tx_packet=pkt, overrides=overrides, **grc_kw
-    )
     print("=== Sionna 引导完成，后续帧将复用缓存 ===")
-    return pkt
+    return ctx.transmit_packet()
 
 
 def prewarm_sionna_tx(
@@ -222,50 +220,10 @@ def prewarm_sionna_tx(
 
 
 def _build_tx_packet_impl(effective: EffectiveConfig) -> TxPacket:
-    import sionna
+    from gr_system import _get_context_cached
 
-    from isac.data_structures import SystemComponents
-
-    params = effective.system_params
-    seed = effective.seed
-    device = effective.device
-    set_random_seed(seed)
-    sionna.phy.config.device = device
-
-    from isac.data_structures import SystemComponents
-    rg = comps.rg
-
-    if params.source.type != "zc":
-        raise ValueError(
-            f"sionna_tx only supports source.type='zc', "
-            f"got {params.source.type!r}"
-        )
-    if comps.zc_source is None:
-        raise RuntimeError("zc_source missing for ZC sensing source")
-
-    x = comps.zc_source([1, 1, 1, rg.num_data_symbols])
-    x_rg_t = comps.rg_mapper(x).squeeze()
-    x_rg = x_rg_t.cpu().numpy().astype(np.complex64)
-
-    x_batch = x_rg_t.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-    x_time = comps.modulator(x_batch).squeeze().cpu().numpy().astype(np.complex64)
-
-    cp = params.ofdm.cyclic_prefix_length
-    n_sym = params.ofdm.num_symbols
-    fft_size = params.ofdm.fft_size
-    expected_time = n_sym * (fft_size + cp)
-    if x_time.size != expected_time:
-        raise RuntimeError(
-            f"unexpected time length {x_time.size}, expected {expected_time}"
-        )
-
-    return TxPacket(
-        x_rg=x_rg,
-        time=x_time,
-        freq_ref=np.fft.fftshift(x_rg, axes=-1),
-        packet_len_time=expected_time,
-        packet_len_freq=n_sym,
-    )
+    ctx = _get_context_cached(effective.cache_key())
+    return ctx.transmit_packet()
 
 
 _logged_override_keys: set[Tuple[str, int, int, int, int, float, float, int, str]] = set()
@@ -353,7 +311,15 @@ class SionnaBootstrap(gr.basic_block):
 
 
 class SionnaOFDMTx(gr.basic_block):
-    """输出缓存时域波形，带 ``packet_len`` tag；可选 PRI burst（CPI + 静默零填充）。"""
+    """输出缓存时域波形，带 ``packet_len`` tag。
+
+    - Style 1 burst（``idle_ms > 0``）：与 style1_usrp_txrx 相同墙钟静默语义
+    - 连续（``idle_ms == 0``）：循环输出 CPI
+    """
+
+    _TAG_SOB = pmt.intern("tx_sob")
+    _TAG_EOB = pmt.intern("tx_eob")
+    _TAG_TIME = pmt.intern("tx_time")
 
     def __init__(
         self,
@@ -367,8 +333,10 @@ class SionnaOFDMTx(gr.basic_block):
         seed: int = 42,
         device: str = "cuda:0",
         packet: Optional[TxPacket] = None,
-        burst_pri_sec: float = 0.0,
         samp_rate: int = 0,
+        idle_ms: float = 0.0,
+        time_lead_s: float = 0.05,
+        uhd_burst_tags: bool = False,
     ) -> None:
         gr.basic_block.__init__(
             self,
@@ -401,69 +369,105 @@ class SionnaOFDMTx(gr.basic_block):
         )
 
         self._time = np.ascontiguousarray(pkt.time, dtype=np.complex64)
-        self._packet_len_time = pkt.packet_len_time
-        self._time_idx = 0
+        self._burst_len = pkt.packet_len_time
         self._tag_key = pmt.intern(length_tag_key)
-        self._burst_mode = float(burst_pri_sec) > 0.0
-        self._phase = "tx"
-        self._idle_remaining = 0
+        self._style1_burst = float(idle_ms) > 0.0
+        self._idle_s = max(0.0, float(idle_ms) / 1000.0)
+        self._samp_rate = float(samp_rate)
+        self._time_lead_s = float(time_lead_s)
+        self._uhd_burst_tags = bool(uhd_burst_tags)
 
-        if self._burst_mode:
-            if int(samp_rate) <= 0:
-                raise ValueError("burst 模式须指定 samp_rate > 0")
-            pri_samples = int(float(burst_pri_sec) * int(samp_rate))
-            if pri_samples <= self._packet_len_time:
-                raise ValueError(
-                    f"PRI 样点数 {pri_samples} 须大于 CPI 样点数 "
-                    f"{self._packet_len_time}（增大 burst_pri_sec 或检查 samp_rate）"
-                )
-            self._idle_samples = pri_samples - self._packet_len_time
+        self._burst_active = False
+        self._burst_idx = 0
+        self._next_burst_at = 0.0
+        self._time_idx = 0
 
-        gr_cp = max(int(cp_len), 1)
-        self.set_min_output_buffer(int(2 * int(ofdm_symbols) * (int(fft_len) + gr_cp)))
+        if self._style1_burst and int(samp_rate) <= 0:
+            raise ValueError("Style 1 burst 模式须指定 samp_rate > 0")
+
+        gr_cp = max(int(cp_len), 0)
+        buf = int(2 * int(ofdm_symbols) * (int(fft_len) + gr_cp))
+        self.set_min_output_buffer(max(buf, self._burst_len * 2))
 
     def forecast(self, noutput_items, ninputs):
         return []
 
-    def _emit_tx_sample(self, out, produced: int) -> None:
-        if self._time_idx == 0:
+    def _schedule_delay_s(self) -> float:
+        burst_s = self._burst_len / self._samp_rate
+        period_s = max(self._idle_s + burst_s, burst_s)
+        return max(0.0, period_s - burst_s)
+
+    def _tx_time_pmt(self):
+        t = time.time() + self._time_lead_s
+        sec = int(t)
+        frac = t - sec
+        return pmt.make_tuple(pmt.from_uint64(sec), pmt.from_double(frac))
+
+    def _style1_work(self, out, max_out: int) -> int:
+        if not self._burst_active:
+            if time.monotonic() < self._next_burst_at:
+                return 0
+            self._burst_active = True
+            self._burst_idx = 0
+
+        n_remain = self._burst_len - self._burst_idx
+        n = min(max_out, n_remain)
+        if n <= 0:
+            return 0
+
+        out[:n] = self._time[self._burst_idx : self._burst_idx + n]
+        abs_out = self.nitems_written(0)
+
+        if self._burst_idx == 0:
             self.add_item_tag(
                 0,
-                self.nitems_written(0) + produced,
+                abs_out,
                 self._tag_key,
-                pmt.from_long(self._packet_len_time),
+                pmt.from_long(self._burst_len),
             )
-        out[produced] = self._time[self._time_idx]
-        self._time_idx += 1
+            if self._uhd_burst_tags:
+                self.add_item_tag(0, abs_out, self._TAG_SOB, pmt.PMT_T)
+                self.add_item_tag(0, abs_out, self._TAG_TIME, self._tx_time_pmt())
+
+        self._burst_idx += n
+        if self._burst_idx >= self._burst_len:
+            if self._uhd_burst_tags:
+                self.add_item_tag(0, abs_out + n - 1, self._TAG_EOB, pmt.PMT_T)
+            self._burst_active = False
+            self._next_burst_at = time.monotonic() + self._schedule_delay_s()
+
+        return n
+
+    def _continuous_work(self, out, max_out: int) -> int:
+        produced = 0
+        while produced < max_out:
+            abs_out = self.nitems_written(0) + produced
+            if self._time_idx == 0:
+                self.add_item_tag(
+                    0,
+                    abs_out,
+                    self._tag_key,
+                    pmt.from_long(self._burst_len),
+                )
+                if self._uhd_burst_tags:
+                    self.add_item_tag(0, abs_out, self._TAG_SOB, pmt.PMT_T)
+                    self.add_item_tag(0, abs_out, self._TAG_TIME, self._tx_time_pmt())
+            out[produced] = self._time[self._time_idx]
+            self._time_idx += 1
+            if self._uhd_burst_tags and self._time_idx >= self._burst_len:
+                self.add_item_tag(0, abs_out, self._TAG_EOB, pmt.PMT_T)
+            self._time_idx %= self._burst_len
+            produced += 1
+        return produced
 
     def general_work(self, input_items, output_items):
         out = output_items[0]
         max_out = len(out)
-        produced = 0
 
-        if not self._burst_mode:
-            while produced < max_out:
-                self._emit_tx_sample(out, produced)
-                self._time_idx %= self._packet_len_time
-                produced += 1
+        if self._style1_burst:
+            produced = self._style1_work(out, max_out)
         else:
-            while produced < max_out:
-                if self._phase == "tx":
-                    self._emit_tx_sample(out, produced)
-                    produced += 1
-                    if self._time_idx >= self._packet_len_time:
-                        self._time_idx = 0
-                        self._phase = "idle"
-                        self._idle_remaining = self._idle_samples
-                else:
-                    n_idle = min(max_out - produced, self._idle_remaining)
-                    if n_idle > 0:
-                        out[produced : produced + n_idle] = 0
-                        produced += n_idle
-                        self._idle_remaining -= n_idle
-                    if self._idle_remaining == 0:
-                        self._phase = "tx"
-                        self._time_idx = 0
+            produced = self._continuous_work(out, max_out)
 
         if produced:
             self.produce(0, produced)
