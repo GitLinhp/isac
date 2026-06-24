@@ -40,7 +40,7 @@ from isac.data_collection.quality_filter import (
     QualityFilterStats,
     run_monte_carlo_with_quality_filter,
 )
-from isac.utils.metrics import doppler_to_velocity
+from isac.sensing.utils import doppler_to_velocity
 from isac.system import System
 from isac.channel import RTScene
 from isac.utils import csv_float2_scalar

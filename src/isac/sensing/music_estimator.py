@@ -11,7 +11,7 @@ from tabulate import tabulate
 
 from ..utils import linear_to_db
 from .sensing_performance import SensingPerformance
-from isac.utils.metrics import delay_to_range, doppler_to_velocity
+from .utils import delay_to_range, doppler_to_velocity
 
 # 常量定义
 _MIN_SEARCH_DIMENSION = 8  # 最小搜索维度

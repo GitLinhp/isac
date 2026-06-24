@@ -5,7 +5,7 @@ from typing import Sequence
 
 import numpy as np
 
-from isac.channel.rt.rx_target_tx_geometric import MONOSTATIC_TX_RX_EPS_M
+from .utils import MONOSTATIC_TX_RX_EPS_M
 
 
 def ground_circle_radius_sq(
