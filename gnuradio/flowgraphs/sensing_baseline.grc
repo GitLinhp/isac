@@ -36,37 +36,13 @@ blocks:
 - name: burst_mode
   id: variable
   parameters:
-    comment: "Style 1 burst 门控（Channel/Rx tag）"
+    comment: "Style 1 burst \u95E8\u63A7\uFF08Channel/Rx tag\uFF09"
     value: 'True'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [40, 112.0]
-    rotation: 0
-    state: enabled
-- name: idle_ms
-  id: variable
-  parameters:
-    comment: "Style 1 静默间隔 (ms)，与 style1_usrp_txrx 一致"
-    value: '400'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [648, 128.0]
-    rotation: 0
-    state: enabled
-- name: time_lead_s
-  id: variable
-  parameters:
-    comment: "tx_time tag 提前量 [s]，与 style1_usrp_txrx 一致"
-    value: '0.05'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [760, 128.0]
     rotation: 0
     state: enabled
 - name: center_freq
@@ -115,6 +91,19 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [176, 16.0]
+    rotation: 0
+    state: enabled
+- name: idle_ms
+  id: variable
+  parameters:
+    comment: "Style 1 \u9759\u9ED8\u95F4\u9694 (ms)\uFF0C\u4E0E style1_usrp_txrx \u4E00\
+      \u81F4"
+    value: '400'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [648, 128.0]
     rotation: 0
     state: enabled
 - name: length_tag_key
@@ -166,19 +155,6 @@ blocks:
     coordinate: [880, 32.0]
     rotation: 0
     state: enabled
-- name: spectrogram_interval
-  id: variable
-  parameters:
-    comment: "Qt 谱图刷新 (ms)；Style 1 burst 须晚于首帧 GPU RT+DD"
-    value: max(180000, int((idle_ms + 1000.0*ofdm_symbols*(fft_len+cp_len)/samp_rate)
-      * 600))
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1032, 24.0]
-    rotation: 0
-    state: enabled
 - name: subcarrier_spacing
   id: variable
   parameters:
@@ -189,6 +165,19 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [272, 120.0]
+    rotation: 0
+    state: enabled
+- name: time_lead_s
+  id: variable
+  parameters:
+    comment: "tx_time tag \u63D0\u524D\u91CF [s]\uFF0C\u4E0E style1_usrp_txrx \u4E00\
+      \u81F4"
+    value: '0.05'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [760, 128.0]
     rotation: 0
     state: enabled
 - name: tx_device
@@ -227,11 +216,14 @@ blocks:
     comment: ''
     imports: "import numpy as np\nimport sys\nimport os\nfrom pathlib import Path\n\
       _GRC_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir()\
-      \ else os.getcwd()\n_root = str(Path(_GRC_DIR).parent)\nif _root not in sys.path:\n\
-      \    sys.path.insert(0, _root)\nfrom bootstrap import setup_gnuradio_paths_from\n\
-      setup_gnuradio_paths_from(_GRC_DIR)\n# \u8C03\u53C2\u4F18\u5148\u6539 GRC\
-      \ \u53D8\u91CF\uFF1BSionna \u5757\u5185 merge_config(TOML, GRC) \u8986\u76D6\
-      \u540C\u540D\u5B57\u6BB5"
+      \ else os.getcwd()\n_root = None\nfor _h in (_GRC_DIR, os.getcwd()):\n    _d\
+      \ = Path(_h).resolve()\n    if _d.is_file():\n        _d = _d.parent\n    for\
+      \ _c in (_d, _d / 'gnuradio', *_d.parents):\n        if (_c / 'bootstrap.py').is_file():\n\
+      \            _root = str(_c)\n            break\n    if _root:\n        break\n\
+      if _root:\n    if _root not in sys.path:\n        sys.path.insert(0, _root)\n\
+      \    from bootstrap import setup_gnuradio_paths\n    setup_gnuradio_paths()\n\
+      # \u8C03\u53C2\u4F18\u5148\u6539 GRC \u53D8\u91CF\uFF1BSionna \u5757\u5185 merge_config(TOML,\
+      \ GRC) \u8986\u76D6\u540C\u540D\u5B57\u6BB5"
   states:
     bus_sink: false
     bus_source: false
@@ -239,18 +231,17 @@ blocks:
     coordinate: [1280, 48.0]
     rotation: 0
     state: enabled
-- name: radar_qtgui_spectrogram_plot_0
-  id: radar_qtgui_spectrogram_plot
+- name: sionna_dd_spectrogram_0
+  id: sionna_dd_spectrogram
   parameters:
-    affinity: ''
     alias: ''
     autoscale_z: 'True'
     axis_x: '[0, 10000]'
     axis_y: '[-150, 150]'
     axis_z: '[-15,-12]'
-    comment: "DD \u8C31\u56FE\uFF1B\u7CBE\u786E R_max/v_max \u7531 merge_config \u6253\
+    comment: "DD \u8C31\u56FE\uFF1B\u6BCF\u5E27 packet_len \u5230\u8FBE\u540E\u4E8B\
+      \u4EF6\u5237\u65B0\uFF1B\u7CBE\u786E R_max/v_max \u7531 merge_config \u6253\
       \u5370"
-    interval: spectrogram_interval
     label: '''ISAC Baseline DD'''
     len_key: '"packet_len"'
     vlen: fft_len
@@ -336,7 +327,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [128, 420.0]
+    coordinate: [328, 404.0]
     rotation: 0
     state: enabled
 - name: sionna_rt_channel_0
@@ -369,7 +360,7 @@ blocks:
 
 connections:
 - [sionna_dd_rx_0, '0', blocks_null_sink_0, '0']
-- [sionna_dd_rx_0, '1', radar_qtgui_spectrogram_plot_0, '0']
+- [sionna_dd_rx_0, '1', sionna_dd_spectrogram_0, '0']
 - [sionna_ofdm_tx_0, '0', sionna_rt_channel_0, '0']
 - [sionna_rt_channel_0, '0', sionna_dd_rx_0, '0']
 

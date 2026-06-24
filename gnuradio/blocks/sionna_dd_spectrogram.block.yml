@@ -1,0 +1,54 @@
+id: sionna_dd_spectrogram
+label: Sionna DD Spectrogram
+category: '[Sionna]'
+flags: [python]
+
+parameters:
+- id: vlen
+  label: Input vector length
+  dtype: int
+  default: '1024'
+- id: xlabel
+  label: Label x
+  dtype: string
+  default: '"target_range"'
+- id: ylabel
+  label: Label y
+  dtype: string
+  default: '"target_velocity"'
+- id: label
+  label: Label title
+  dtype: string
+  default: '"DD Spectrogram"'
+- id: axis_x
+  label: Axis x
+  dtype: real_vector
+  default: 0, 10000
+- id: axis_y
+  label: Axis y
+  dtype: real_vector
+  default: -150, 150
+- id: axis_z
+  label: Axis z
+  dtype: real_vector
+  default: -15, -12
+- id: autoscale_z
+  label: Autoscale z axis
+  dtype: bool
+  default: 'True'
+  options: ['True', 'False']
+- id: len_key
+  label: Packet length key
+  dtype: string
+  default: '"packet_len"'
+
+inputs:
+- domain: stream
+  dtype: float
+  vlen: ${ vlen }
+
+templates:
+  imports: from sionna_dd_spectrogram import SionnaDDSpectrogramPlot
+  make: SionnaDDSpectrogramPlot(vlen=${vlen}, xlabel=${xlabel}, ylabel=${ylabel}, label=${label}, axis_x=${axis_x}, axis_y=${axis_y}, axis_z=${axis_z}, autoscale_z=${autoscale_z}, len_key=${len_key})
+
+file_format: 1

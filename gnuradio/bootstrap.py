@@ -12,14 +12,42 @@ _GNURADIO_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = _GNURADIO_ROOT.parent
 
 
+def find_gnuradio_root(*hints: PathLike) -> Path:
+    """从若干起始路径向上（及 gnuradio/ 子目录）查找含 bootstrap.py 的目录。"""
+    seen: set[str] = set()
+    for hint in hints:
+        if not hint:
+            continue
+        start = Path(hint).resolve()
+        if start.is_file():
+            start = start.parent
+        candidates = [start, start / "gnuradio", *start.parents]
+        for directory in candidates:
+            key = str(directory)
+            if key in seen:
+                continue
+            seen.add(key)
+            if (directory / "bootstrap.py").is_file():
+                return directory
+    raise ImportError(
+        "无法定位 gnuradio 根目录（缺少 bootstrap.py）。"
+        "请在 isac 仓库内打开 GRC，或 cd 到 gnuradio/flowgraphs 后再运行。"
+    )
+
+
 def _resolve_gnuradio_root(caller_file: PathLike) -> Path:
-    start = Path(caller_file).resolve()
-    if start.is_file():
-        start = start.parent
-    for directory in (start, *start.parents):
-        if (directory / "bootstrap.py").is_file():
-            return directory
-    raise ImportError(f"无法从 {caller_file} 定位 gnuradio 根目录（缺少 bootstrap.py）")
+    return find_gnuradio_root(caller_file)
+
+
+def setup_grc_import_paths(grc_hint: str = "") -> tuple[Path, Path]:
+    """供 GRC import_0 块调用（编译期无 ``__file__``，依赖 cwd / grc_hint）。"""
+    import os
+
+    root = find_gnuradio_root(grc_hint, os.getcwd())
+    gnuradio_str = str(root)
+    if gnuradio_str not in sys.path:
+        sys.path.insert(0, gnuradio_str)
+    return setup_gnuradio_paths()
 
 
 def ensure_isac_importable() -> None:

@@ -4,8 +4,11 @@ import numpy as np
 import pytest
 import torch
 
-from isac.channel.rt.rx_target_tx_geometric import RxTargetTxGeometric
-from isac.sensing.utils import MONOSTATIC_TX_RX_EPS_M, compute_range
+from isac.channel.rt.rx_target_tx_geometric import (
+    MONOSTATIC_TX_RX_EPS_M,
+    RxTargetTxGeometric,
+    compute_range,
+)
 
 
 def _state(pos: list[float], vel: list[float] | None = None) -> dict[str, np.ndarray]:

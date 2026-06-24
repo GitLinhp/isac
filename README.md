@@ -55,7 +55,7 @@ flowchart TB
 
 | 路径 | 说明 |
 |------|------|
-| [`src/isac/`](src/isac/) | 核心包：`system`、`channel/`（RT / 点目标 / AWGN）、`sensing/`、`data_structures/`、`utils/`、`datasets.py` |
+| [`src/isac/`](src/isac/) | 核心包：`system`、`channel/`（RT 几何 [`rx_target_tx_geometric`](src/isac/channel/rt/rx_target_tx_geometric.py)、点目标 / AWGN）、`sensing/`、`data_collection/`（采集质量过滤）、`data_structures/`、`utils/`（含 [`metrics`](src/isac/utils/metrics.py)）、`datasets.py` |
 | [`script/simulation/`](script/simulation/) | 通信 / 感知仿真入口脚本 |
 | [`script/model_training/`](script/model_training/) | 蒙特卡洛数据集采集 |
 | [`config/`](config/) | TOML 配置（`simulation/`、`data_collection/`） |
@@ -151,7 +151,9 @@ python gnuradio/flowgraphs/run_simulator_ofdm.py
 |------|------|------|
 | [`script/model_training/run_dataset_collection.py`](script/model_training/run_dataset_collection.py) | [`config/data_collection/data_collection.toml`](config/data_collection/data_collection.toml)、[`dataset_collection_cnn.toml`](config/data_collection/dataset_collection_cnn.toml) | `out/dataset_collection/` |
 
-蒙特卡洛 ROI 采样 → RT 目标位姿 → CFR / CIR → 可选逐步感知 → 写出 CSV / HDF5 / GIF。
+蒙特卡洛 ROI 采样 → RT 目标位姿 → CFR / CIR → 可选逐步感知 → 写出 CSV / HDF5 / GIF。默认启用质量过滤（[`isac.data_collection.quality_filter`](src/isac/data_collection/quality_filter.py)）；几何真值与路径类型由 [`RxTargetTxGeometric`](src/isac/channel/rt/rx_target_tx_geometric.py) 提供；MUSIC 距离/速度换算见 [`isac.utils.metrics`](src/isac/utils/metrics.py)（`delay_to_range`、`doppler_to_velocity`）。
+
+运行逻辑详见 [docs/run_dataset_collection.md](docs/run_dataset_collection.md)。
 
 ```bash
 python script/model_training/run_dataset_collection.py
@@ -200,6 +202,7 @@ USRP 对接参考：[docs/GNU_Radio_USRP_Source_Sink_总结.md](docs/GNU_Radio_U
 
 | 文档 | 内容 |
 |------|------|
+| [docs/run_dataset_collection.md](docs/run_dataset_collection.md) | 蒙特卡洛数据集采集脚本流程、CLI、质量过滤与输出约定 |
 | [docs/system-py-functions.md](docs/system-py-functions.md) | `System` 类 API、蒙特卡洛数据集、组件说明 |
 | [docs/utils-functions.md](docs/utils-functions.md) | `isac.utils` 各函数及在脚本中的用法 |
 | [docs/STATIC_TARGET_SIMULATION.md](docs/STATIC_TARGET_SIMULATION.md) | 静态点目标仿真端到端流程 |

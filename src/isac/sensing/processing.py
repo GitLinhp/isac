@@ -13,7 +13,6 @@
 
 from typing import List, Optional, Union
 import math
-
 import numpy as np
 import torch
 from numpy.typing import NDArray

@@ -69,19 +69,6 @@ blocks:
     coordinate: [880, 144.0]
     rotation: 0
     state: enabled
-- name: spectrogram_interval
-  id: variable
-  parameters:
-    comment: "Style 1 burst 下须晚于首帧 GPU DD，否则 gr-radar 谱图空缓冲崩溃"
-    value: max(60000, int((idle_ms + 1000.0*ofdm_symbols*(fft_len+cp_len)/samp_rate)
-      * 600))
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [920, 144.0]
-    rotation: 0
-    state: enabled
 - name: center_freq
   id: variable
   parameters:
@@ -294,11 +281,14 @@ blocks:
     comment: ''
     imports: "import numpy as np\nimport sys\nimport os\nfrom pathlib import Path\n\
       _GRC_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir()\
-      \ else os.getcwd()\n_root = str(Path(_GRC_DIR).parent)\nif _root not in sys.path:\n\
-      \    sys.path.insert(0, _root)\nfrom bootstrap import setup_gnuradio_paths_from\n\
-      setup_gnuradio_paths_from(_GRC_DIR)\n# \u8C03\u53C2\u4F18\u5148\u6539 GRC\
-      \ \u53D8\u91CF\uFF1BSionna \u5757\u5185 merge_config(TOML, GRC) \u8986\u76D6\
-      \u540C\u540D\u5B57\u6BB5"
+      \ else os.getcwd()\n_root = None\nfor _h in (_GRC_DIR, os.getcwd()):\n    _d\
+      \ = Path(_h).resolve()\n    if _d.is_file():\n        _d = _d.parent\n   \
+      \ for _c in (_d, _d / 'gnuradio', *_d.parents):\n        if (_c / 'bootstrap.py').is_file():\n\
+      \            _root = str(_c)\n            break\n    if _root:\n        break\n\
+      if _root:\n    if _root not in sys.path:\n        sys.path.insert(0, _root)\n\
+      \    from bootstrap import setup_gnuradio_paths\n    setup_gnuradio_paths()\n\
+      # \u8C03\u53C2\u4F18\u5148\u6539 GRC \u53D8\u91CF\uFF1BSionna \u5757\u5185\
+      \ merge_config(TOML, GRC) \u8986\u76D6\u540C\u540D\u5B57\u6BB5"
   states:
     bus_sink: false
     bus_source: false
@@ -365,18 +355,17 @@ blocks:
     coordinate: [1528, 384.0]
     rotation: 0
     state: disabled
-- name: radar_qtgui_spectrogram_plot_0
-  id: radar_qtgui_spectrogram_plot
+- name: sionna_dd_spectrogram_0
+  id: sionna_dd_spectrogram
   parameters:
-    affinity: ''
     alias: ''
     autoscale_z: 'True'
     axis_x: '[0, 10000]'
     axis_y: '[-150, 150]'
     axis_z: '[-15,-12]'
-    comment: "\u8F74\u6807\u9ED8\u8BA4\u503C\uFF1B\u7CBE\u786E R_max/v_max \u7531 Python merge_config\
-      \ \u6253\u5370\u5E76\u5237\u65B0\u6ED1\u5757"
-    interval: spectrogram_interval
+    comment: "\u8F74\u6807\u9ED8\u8BA4\u503C\uFF1B\u6BCF\u5E27 packet_len \u5230\
+      \u8FBE\u540E\u4E8B\u4EF6\u5237\u65B0\uFF1BR_max/v_max \u7531 merge_config \u6253\
+      \u5370"
     label: '''OFDM Radar'''
     len_key: '"packet_len"'
     vlen: fft_len
@@ -506,7 +495,7 @@ connections:
 - [sionna_static_target_0, '0', blocks_add_xx_0, '1']
 - [sionna_static_target_0, '0', sionna_dd_rx_0, '0']
 - [sionna_dd_rx_0, '0', blocks_null_sink_0, '0']
-- [sionna_dd_rx_0, '1', radar_qtgui_spectrogram_plot_0, '0']
+- [sionna_dd_rx_0, '1', sionna_dd_spectrogram_0, '0']
 - [sionna_ofdm_tx_0, '0', sionna_static_target_0, '0']
 
 metadata:
