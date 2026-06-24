@@ -120,7 +120,7 @@ class _DDSpectrogramDisplay(QObject):
         self._plot.setTitle(f"{self._title}  [#{self._frame_count}]")
 
 
-class SionnaDDSpectrogramPlot(gr.basic_block):
+class SionnaDDSpectrogramPlot(gr.sync_block):
     """DD log-magnitude 谱图：按 packet_len tag 帧边界事件刷新。"""
 
     def __init__(
@@ -135,13 +135,12 @@ class SionnaDDSpectrogramPlot(gr.basic_block):
         autoscale_z: bool = True,
         len_key: str = "packet_len",
     ) -> None:
-        gr.basic_block.__init__(
+        gr.sync_block.__init__(
             self,
             name="Sionna DD Spectrogram",
             in_sig=[(np.float32, int(vlen))],
             out_sig=None,
         )
-        self.set_tag_propagation_policy(gr.TPP_DONT)
         self._vlen = int(vlen)
         self._tag_key = pmt.intern(len_key)
         self._expected_rows = 0
@@ -180,16 +179,11 @@ class SionnaDDSpectrogramPlot(gr.basic_block):
     def set_autoscale_z(self, enabled: bool) -> None:
         self._display.set_autoscale_z(enabled)
 
-    def forecast(self, noutput_items, ninputs):
-        return [4096]
-
-    def general_work(self, input_items, output_items):
+    def work(self, input_items, output_items):
         inp = input_items[0]
         n = len(inp)
-        if n == 0:
-            return gr.WORK_DONE
-
         base = self.nitems_read(0)
+
         for i in range(n):
             abs_idx = base + i
             for tag in self.get_tags_in_range(0, abs_idx, abs_idx + 1):
@@ -207,5 +201,4 @@ class SionnaDDSpectrogramPlot(gr.basic_block):
                 self._expected_rows = 0
                 self._display.post_frame(matrix)
 
-        self.consume(0, n)
-        return gr.WORK_DONE
+        return n

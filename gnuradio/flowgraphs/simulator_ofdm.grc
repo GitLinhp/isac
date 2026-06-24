@@ -472,7 +472,7 @@ blocks:
     idle_ms: idle_ms
     length_tag_key: length_tag_key
     maxoutbuf: '0'
-    minoutbuf: int(2*ofdm_symbols*(fft_len+max(cp_len, 1)))
+    minoutbuf: max(4096, int(2*ofdm_symbols))
     ofdm_symbols: ofdm_symbols
     samp_rate: samp_rate
     seed: '42'
