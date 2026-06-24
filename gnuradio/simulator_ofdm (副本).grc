@@ -33,11 +33,10 @@ options:
     state: enabled
 
 blocks:
-- name: burst_pri_sec
+- name: idle_ms
   id: variable
   parameters:
-    comment: "PRI [s]\uFF1B0= \u8FDE\u7EED\u53D1\u9001\uFF08\u9ED8\u8BA4\uFF0C\u517C\u5BB9 static_target\
-      \ tag \u95E8\u63A7\uFF09"
+    comment: "Style 1 静默 (ms)；0 = 连续发送"
     value: '0'
   states:
     bus_sink: false
@@ -49,9 +48,8 @@ blocks:
 - name: burst_mode
   id: variable
   parameters:
-    comment: burst_pri_sec > 0 \u65F6\u542F\u7528\uFF08\u4E0E static_target \u5171\u7528\
-      \u987B burst_pri_sec=0\uFF09
-    value: burst_pri_sec > 0
+    comment: "Style 1 burst 门控（idle_ms > 0 时启用）"
+    value: idle_ms > 0
   states:
     bus_sink: false
     bus_source: false
@@ -444,13 +442,13 @@ blocks:
   parameters:
     affinity: ''
     alias: ''
-    burst_pri_sec: burst_pri_sec
     comment: ''
     config_file: config_file
     center_freq: center_freq
     cp_len: cp_len
     device: tx_device
     fft_len: fft_len
+    idle_ms: idle_ms
     length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: int(2*ofdm_symbols*(fft_len+max(cp_len, 1)))
@@ -458,6 +456,8 @@ blocks:
     samp_rate: samp_rate
     seed: '42'
     subcarrier_spacing: subcarrier_spacing
+    time_lead_s: '0.05'
+    uhd_burst_tags: 'False'
   states:
     bus_sink: false
     bus_source: false

@@ -20,10 +20,6 @@ def recommended_spectrogram_interval_ms(tb, eff: EffectiveConfig) -> int:
         cpi_ms = 1000.0 * n_sym * (fft_len + cp_len) / samp_rate
         pri_ms = idle_ms + cpi_ms
         return max(gpu_floor, int(pri_ms * 600))
-
-    burst = float(getattr(tb, "burst_pri_sec", 0.0))
-    if burst > 0:
-        return max(gpu_floor, int(burst * 1000 * 600))
     return gpu_floor
 
 
@@ -76,7 +72,6 @@ def apply_sensing_perf_ui(tb) -> EffectiveConfig:
     spec_ms = recommended_spectrogram_interval_ms(tb, eff)
     ensure_spectrogram_interval(tb, spec_ms, eff)
 
-    burst = float(getattr(tb, "burst_pri_sec", 0.0))
     idle_ms = float(getattr(tb, "idle_ms", 0.0))
     if idle_ms > 0:
         cpi_ms = (
@@ -88,11 +83,6 @@ def apply_sensing_perf_ui(tb) -> EffectiveConfig:
         print(
             f"Style 1 burst: idle_ms={idle_ms:.0f}, CPI≈{cpi_ms:.1f} ms, "
             f"谱图刷新间隔={spec_ms} ms"
-        )
-    elif burst > 0:
-        print(
-            f"legacy burst: PRI={burst:.3f}s, 谱图刷新间隔={spec_ms} ms "
-            f"(须晚于首帧 GPU DD 完成，否则 gr-radar 谱图可能崩溃)"
         )
     else:
         print(

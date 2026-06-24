@@ -57,6 +57,18 @@ blocks:
     coordinate: [40, 112.0]
     rotation: 0
     state: enabled
+- name: time_lead_s
+  id: variable
+  parameters:
+    comment: "tx_time tag 提前量 [s]"
+    value: '0.05'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [880, 144.0]
+    rotation: 0
+    state: enabled
 - name: spectrogram_interval
   id: variable
   parameters:
@@ -461,13 +473,13 @@ blocks:
   parameters:
     affinity: ''
     alias: ''
-    burst_pri_sec: burst_pri_sec
     comment: ''
     config_file: config_file
     center_freq: center_freq
     cp_len: cp_len
     device: tx_device
     fft_len: fft_len
+    idle_ms: idle_ms
     length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: int(2*ofdm_symbols*(fft_len+max(cp_len, 1)))
@@ -475,6 +487,8 @@ blocks:
     samp_rate: samp_rate
     seed: '42'
     subcarrier_spacing: subcarrier_spacing
+    time_lead_s: time_lead_s
+    uhd_burst_tags: 'True'
   states:
     bus_sink: false
     bus_source: false

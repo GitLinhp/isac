@@ -4,7 +4,6 @@ from isac import PROJECT_ROOT
 from isac.system import System
 from isac.utils import set_random_seed
 from sionna.phy.utils import compute_ber
-import torch
 
 
 def argument_parser() -> argparse.Namespace:
