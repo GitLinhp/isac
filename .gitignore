@@ -18,5 +18,6 @@ gnuradio/flowgraphs/*_sionna_*_0.py
 .pytest_cache/
 
 # Project dirs (excluded from repo)
+/backup/radarsimpy/
 data/
 out/
