@@ -40,9 +40,9 @@ bash gnuradio/tools/install_grc_blocks.sh
 # grcc sensing_baseline.grc
 # grcc simulator_ofdm.grc
 
-# 带 GPU 预热与感知 UI 的入口
-python gnuradio/flowgraphs/run_sensing_baseline_grc.py
-python gnuradio/flowgraphs/run_simulator_ofdm.py
+# 带 GPU 预热与感知 UI 的入口（须在 ISAC conda 环境中运行）
+/home/caict/radioconda/envs/ISAC/bin/python gnuradio/flowgraphs/run_sensing_baseline_grc.py
+/home/caict/radioconda/envs/ISAC/bin/python gnuradio/flowgraphs/run_simulator_ofdm.py
 
 # 离线验证
 python gnuradio/tools/verify_baseline_grc.py

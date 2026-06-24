@@ -1,0 +1,1768 @@
+options:
+  parameters:
+    author: Lin Haopeng
+    catch_exceptions: 'True'
+    category: Custom
+    cmake_opt: ''
+    comment: ''
+    copyright: Caict
+    description: Style1 burst OFDM TX (Sionna) + GR OFDM RX sensing (X410 OTA)
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: style1_ofdm_sensing
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: Style1 Burst OFDM Sensing (X410)
+    window_size: 1280, 1024
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 12.0]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: RX_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: 0,1,1,1
+    label: rx_gain
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '40'
+    value: '20'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 12.0]
+    rotation: 0
+    state: true
+- name: TX_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: 0,0,1,1
+    label: tx_gain
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '40'
+    value: '20'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1032, 12.0]
+    rotation: 0
+    state: true
+- name: cp_len
+  id: variable
+  parameters:
+    comment: ''
+    value: fft_len//4
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [368, 24.0]
+    rotation: 0
+    state: enabled
+- name: fft_len
+  id: variable
+  parameters:
+    comment: "Must exceed n_carriers so GR pilot tones (-n/2-2 \u2026) stay in-band"
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [472, 40.0]
+    rotation: 0
+    state: enabled
+- name: frame_len_tag
+  id: variable
+  parameters:
+    comment: OFDM symbol length tag for CP block
+    value: '"frame_len"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [200, 16.0]
+    rotation: 0
+    state: enabled
+- name: gui_update_period
+  id: variable
+  parameters:
+    comment: ''
+    value: '0.10'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1688, 176.0]
+    rotation: 0
+    state: enabled
+- name: hdr_ack_msg
+  id: variable
+  parameters:
+    comment: "HPD header_data; scheme A\u65E0\u5305\u5934, \u544A\u77E5\u8D85\u5927\
+      payload"
+    value: pmt.dict_add(pmt.make_dict(), pmt.intern("frame_len"), pmt.from_long(hdr_payload_syms))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [336, 216.0]
+    rotation: 0
+    state: enabled
+- name: hdr_payload_syms
+  id: variable
+  parameters:
+    comment: "HPD payload\u7B26\u53F7\u6570, \u5E94\u7B49\u4E8ETX\u6BCF\u6807\u7B7E\
+      \u5E27\u6570\u636E\u7B26\u53F7\u6570(ofdm_syms_per_tag)"
+    value: ofdm_syms_per_tag
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [336, 320.0]
+    rotation: 0
+    state: enabled
+- name: n_carriers
+  id: variable
+  parameters:
+    comment: ''
+    value: '512'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [760, 192.0]
+    rotation: 0
+    state: enabled
+- name: occupied_carriers
+  id: variable
+  parameters:
+    comment: ''
+    value: (tuple(range(-n_carriers//2, 0)) + tuple(range(1, n_carriers//2+1)),)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [872, 192.0]
+    rotation: 0
+    state: enabled
+- name: ofdm_syms_per_tag
+  id: variable
+  parameters:
+    comment: OFDM symbols per allocator tagged frame
+    value: '32'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [352, 112.0]
+    rotation: 0
+    state: enabled
+- name: payload_equalizer
+  id: variable
+  parameters:
+    comment: ''
+    value: digital.ofdm_equalizer_simpledfe(fft_len, payload_mod.base(), occupied_carriers,
+      pilot_carriers, pilot_symbols, 1, 0.1)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1656, 24.0]
+    rotation: 0
+    state: enabled
+- name: payload_mod
+  id: variable
+  parameters:
+    comment: ''
+    value: digital.constellation_qpsk()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1336, 32.0]
+    rotation: 0
+    state: enabled
+- name: pilot_carriers
+  id: variable
+  parameters:
+    comment: ''
+    value: (tuple(range(-n_carriers//2-2, -n_carriers//2)) + tuple(range(n_carriers//2+1,
+      n_carriers//2+3)),)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 192.0]
+    rotation: 0
+    state: enabled
+- name: pilot_symbols
+  id: variable
+  parameters:
+    comment: ''
+    value: ((-1,1,-1,1),)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1312, 192.0]
+    rotation: 0
+    state: enabled
+- name: rx_chain_min_buf
+  id: variable
+  parameters:
+    comment: min output buffer for sync/HPD/multiply (one frame in time-domain samples)
+    value: max(65536, int((2 + 1 + ofdm_syms_per_tag) * (fft_len + cp_len)))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 112.0]
+    rotation: 0
+    state: enabled
+- name: rx_vlen_buf
+  id: variable
+  parameters:
+    comment: min output buffer for fft_len-vector RX blocks (one full frame)
+    value: int((2 + 1 + ofdm_syms_per_tag) * fft_len * 16)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [584, 280.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: Sample rate derived from subcarrier_spacing * fft_len
+    value: subcarrier_spacing * fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [576, 56.0]
+    rotation: 0
+    state: enabled
+- name: sionna_device
+  id: variable
+  parameters:
+    comment: ''
+    value: '"cuda:0"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [624, 184.0]
+    rotation: 0
+    state: enabled
+- name: spectrum_decim
+  id: variable
+  parameters:
+    comment: keep-1-in-N before spectrum GUI (reduces RX overflow)
+    value: '4'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [496, 208.0]
+    rotation: 0
+    state: enabled
+- name: subcarrier_spacing
+  id: variable
+  parameters:
+    comment: OFDM subcarrier spacing (Hz); samp_rate = spacing * fft_len
+    value: 15e3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [208, 152.0]
+    rotation: 0
+    state: enabled
+- name: sync_word1
+  id: variable
+  parameters:
+    comment: Schmidl-Cox preamble 1 (GR seed=42)
+    value: list(digital.ofdm_txrx._make_sync_word1(fft_len, occupied_carriers, pilot_carriers))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1856, 80.0]
+    rotation: 0
+    state: enabled
+- name: sync_word2
+  id: variable
+  parameters:
+    comment: Schmidl-Cox preamble 2 (GR seed=42)
+    value: list(digital.ofdm_txrx._make_sync_word2(fft_len, occupied_carriers, pilot_carriers))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1888, 192.0]
+    rotation: 0
+    state: enabled
+- name: tx_amp
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: ''
+    label: ''
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: 1e-3
+    stop: 200e-3
+    value: 50e-3
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [64, 180.0]
+    rotation: 0
+    state: enabled
+- name: tx_repeat_period_ms
+  id: variable_qtgui_range
+  parameters:
+    comment: UHD hardware burst repeat period (ms); SOB/EOB frame then RF idle until
+      next period
+    gui_hint: ''
+    label: tx_repeat_ms
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '20'
+    step: '1'
+    stop: '2000'
+    value: '1000'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [112, 324.0]
+    rotation: 0
+    state: enabled
+- name: address
+  id: parameter
+  parameters:
+    alias: ''
+    comment: RJ45 mgmt 1.100 + QSFP sfp0 10.2; host needs 192.168.10.1 on enp1s0f0np0
+    hide: none
+    label: UHD dev args
+    short_id: ''
+    type: str
+    value: '"type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1472, 108.0]
+    rotation: 0
+    state: enabled
+- name: analog_frequency_modulator_fc_0
+  id: analog_frequency_modulator_fc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sensitivity: -2.0/fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [704, 624.0]
+    rotation: 0
+    state: enabled
+- name: blocks_delay_0
+  id: blocks_delay
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    delay: fft_len+cp_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_ports: '1'
+    showports: 'False'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [456, 784.0]
+    rotation: 0
+    state: enabled
+- name: blocks_keep_one_in_n_spectrum
+  id: blocks_keep_one_in_n
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: decimate before spectrum GUI
+    maxoutbuf: '0'
+    minoutbuf: '8192'
+    n: spectrum_decim
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [376, 992.0]
+    rotation: 0
+    state: enabled
+- name: blocks_message_strobe_0
+  id: blocks_message_strobe
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: HPD header_data; keep aligned with tx_repeat_ms
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    msg: hdr_ack_msg
+    period: int(tx_repeat_period_ms)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [712, 944.0]
+    rotation: 0
+    state: enabled
+- name: blocks_multiply_xx_0
+  id: blocks_multiply_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: rx_chain_min_buf
+    num_inputs: '2'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [912, 632.0]
+    rotation: 0
+    state: enabled
+- name: blocks_null_sink_hdr
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: discard unused header port
+    num_inputs: '1'
+    type: complex
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1928, 576.0]
+    rotation: 0
+    state: enabled
+- name: digital_header_payload_demux_0
+  id: digital_header_payload_demux
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 2 sync + 1 placeholder header, then continuous payload
+    guard_interval: cp_len
+    header_len: '3'
+    header_padding: '0'
+    items_per_symbol: fft_len
+    length_tag_key: frame_len_tag
+    maxoutbuf: '0'
+    minoutbuf: rx_chain_min_buf
+    output_symbols: 'True'
+    samp_rate: samp_rate
+    special_tags: ()
+    timing_tag_key: '"rx_time"'
+    trigger_tag_key: '""'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1024, 848.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_chanest_vcvc_0
+  id: digital_ofdm_chanest_vcvc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: coarse sync + channel estimate from preamble
+    eq_noise_red_len: '0'
+    force_one_symbol: 'False'
+    max_carr_offset: '3'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n_data_symbols: '1'
+    sync_symbol1: sync_word1
+    sync_symbol2: sync_word2
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1640, 540.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_frame_equalizer_vcvc_0
+  id: digital_ofdm_frame_equalizer_vcvc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    cp_len: cp_len
+    equalizer: payload_equalizer.base()
+    fft_len: fft_len
+    fixed_frame_len: '0'
+    len_tag_key: frame_len_tag
+    maxoutbuf: '0'
+    minoutbuf: int(rx_vlen_buf // 4)
+    propagate_channel_state: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1616, 900.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_serializer_vcc_0
+  id: digital_ofdm_serializer_vcc
+  parameters:
+    affinity: ''
+    alias: ''
+    carr_offset_key: '""'
+    comment: ''
+    fft_len: fft_len
+    input_is_shifted: 'True'
+    len_tag_key: frame_len_tag
+    maxoutbuf: '0'
+    minoutbuf: int(n_carriers * ofdm_syms_per_tag * 16)
+    occupied_carriers: occupied_carriers
+    packet_len_tag_key: '""'
+    symbols_skipped: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1848, 916.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_sync_sc_cfb_0
+  id: digital_ofdm_sync_sc_cfb
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Schmidl-Cox sync
+    cp_len: cp_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: rx_chain_min_buf
+    threshold: '0.6'
+    use_even_carriers: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [400, 620.0]
+    rotation: 0
+    state: enabled
+- name: epy_fft_batch_hdr
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nEmbedded Python Block: Torch batch FFT (GR fft_vxx replacement)\n\
+      \nVector in/out (vlen = fft_len). Set the GRC variable fft_len, then run\nsync_ofdm_loopback_sionna_epy.py\
+      \ and grcc before starting the flowgraph.\n\"\"\"\n\nfrom __future__ import\
+      \ annotations\n\nimport sys\n\nimport numpy as np\nimport torch\nfrom gnuradio\
+      \ import gr\n\n_UHD_TEST_DIR = \"/home/caict/Desktop/gunradio_test/uhd_test\"\
+      \nif _UHD_TEST_DIR not in sys.path:\n    sys.path.insert(0, _UHD_TEST_DIR)\n\
+      \n\nclass blk(gr.sync_block):\n    \"\"\"Batch parallel FFT for HPD header/payload\
+      \ vector streams.\"\"\"\n\n    def __init__(self, fft_len=2048, device=\"cpu\"\
+      ):\n        self._fft_len = int(fft_len)\n        self._device = str(device)\n\
+      \        gr.sync_block.__init__(\n            self,\n            name=\"Torch\
+      \ Batch FFT\",\n            in_sig=[(np.complex64, self._fft_len)],\n      \
+      \      out_sig=[(np.complex64, self._fft_len)],\n        )\n        torch.set_num_threads(1)\n\
+      \n    @property\n    def device(self) -> str:\n        return self._device\n\
+      \n    @device.setter\n    def device(self, value: str) -> None:\n        self._device\
+      \ = str(value)\n\n    def work(self, input_items, output_items):\n        inp\
+      \ = input_items[0]\n        out = output_items[0]\n        n = min(len(inp),\
+      \ len(out))\n        if n <= 0:\n            return 0\n\n        batch = np.stack(\n\
+      \            [np.asarray(inp[i], dtype=np.complex64) for i in range(n)], axis=0\n\
+      \        )\n        x = torch.from_numpy(batch)\n        dev = self._device\n\
+      \        if dev != \"cpu\":\n            x = x.to(dev)\n        with torch.inference_mode():\n\
+      \            freq = torch.fft.fftshift(torch.fft.fft(x, dim=-1), dim=-1)\n \
+      \       if dev != \"cpu\":\n            freq = freq.cpu()\n        freq_np =\
+      \ freq.numpy().astype(np.complex64, copy=False)\n        for i in range(n):\n\
+      \            out[i][:] = freq_np[i]\n        return n\n"
+    affinity: ''
+    alias: ''
+    comment: Header/sync Torch batch FFT (replaces fft_vxx_hdr)
+    device: sionna_device
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: int(rx_vlen_buf // 4)
+  states:
+    _io_cache: ('Torch Batch FFT', 'blk', [('fft_len', '2048'), ('device', "'cpu'")],
+      [('0', 'complex', 2048)], [('0', 'complex', 2048)], 'Batch parallel FFT for
+      HPD header/payload vector streams.', ['device'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1432, 540.0]
+    rotation: 0
+    state: enabled
+- name: epy_fft_batch_rx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nEmbedded Python Block: Torch batch FFT (GR fft_vxx replacement)\n\
+      \nVector in/out (vlen = fft_len). Set the GRC variable fft_len, then run\nsync_ofdm_loopback_sionna_epy.py\
+      \ and grcc before starting the flowgraph.\n\"\"\"\n\nfrom __future__ import\
+      \ annotations\n\nimport sys\n\nimport numpy as np\nimport torch\nfrom gnuradio\
+      \ import gr\n\n_UHD_TEST_DIR = \"/home/caict/Desktop/gunradio_test/uhd_test\"\
+      \nif _UHD_TEST_DIR not in sys.path:\n    sys.path.insert(0, _UHD_TEST_DIR)\n\
+      \n\nclass blk(gr.sync_block):\n    \"\"\"Batch parallel FFT for HPD header/payload\
+      \ vector streams.\"\"\"\n\n    def __init__(self, fft_len=2048, device=\"cpu\"\
+      ):\n        self._fft_len = int(fft_len)\n        self._device = str(device)\n\
+      \        gr.sync_block.__init__(\n            self,\n            name=\"Torch\
+      \ Batch FFT\",\n            in_sig=[(np.complex64, self._fft_len)],\n      \
+      \      out_sig=[(np.complex64, self._fft_len)],\n        )\n        torch.set_num_threads(1)\n\
+      \n    @property\n    def device(self) -> str:\n        return self._device\n\
+      \n    @device.setter\n    def device(self, value: str) -> None:\n        self._device\
+      \ = str(value)\n\n    def work(self, input_items, output_items):\n        inp\
+      \ = input_items[0]\n        out = output_items[0]\n        n = min(len(inp),\
+      \ len(out))\n        if n <= 0:\n            return 0\n\n        batch = np.stack(\n\
+      \            [np.asarray(inp[i], dtype=np.complex64) for i in range(n)], axis=0\n\
+      \        )\n        x = torch.from_numpy(batch)\n        dev = self._device\n\
+      \        if dev != \"cpu\":\n            x = x.to(dev)\n        with torch.inference_mode():\n\
+      \            freq = torch.fft.fftshift(torch.fft.fft(x, dim=-1), dim=-1)\n \
+      \       if dev != \"cpu\":\n            freq = freq.cpu()\n        freq_np =\
+      \ freq.numpy().astype(np.complex64, copy=False)\n        for i in range(n):\n\
+      \            out[i][:] = freq_np[i]\n        return n\n"
+    affinity: ''
+    alias: ''
+    comment: Payload Torch batch FFT (replaces fft_vxx_rx)
+    device: sionna_device
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: int(rx_vlen_buf // 4)
+  states:
+    _io_cache: ('Torch Batch FFT', 'blk', [('fft_len', '2048'), ('device', "'cpu'")],
+      [('0', 'complex', 2048)], [('0', 'complex', 2048)], 'Batch parallel FFT for
+      HPD header/payload vector streams.', ['device'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1432, 648.0]
+    rotation: 0
+    state: enabled
+- name: epy_sionna_phy_tx
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nEmbedded Python Block: Style 1 Sionna PHY TX (GR-aligned,\
+      \ UHD hardware burst)\n\nGenerate one OFDM frame at block construction, then\
+      \ reload that same waveform\nbefore each UHD burst (tx_sob / tx_time / tx_eob).\
+      \ Requires USRP Sink\nlen_tag_name empty and sync=pc_clock with set_time_now().\n\
+      \"\"\"\n\nfrom __future__ import annotations\n\nimport sys\nimport time\n\n\
+      import numpy as np\nimport pmt\nimport sionna as sn\nimport torch\nfrom gnuradio\
+      \ import gr\n\n_UHD_TEST_DIR = \"/home/caict/Desktop/gunradio_test/uhd_test\"\
+      \nif _UHD_TEST_DIR not in sys.path:\n    sys.path.insert(0, _UHD_TEST_DIR)\n\
+      \nfrom ofdm_loopback_phy_context import PhyContext\n\n_TAG_SOB = pmt.intern(\"\
+      tx_sob\")\n_TAG_EOB = pmt.intern(\"tx_eob\")\n_TAG_TIME = pmt.intern(\"tx_time\"\
+      )\n\n\nclass blk(gr.basic_block):\n    \"\"\"Generate one frame at init; reload\
+      \ and replay on repeat_period_ms.\"\"\"\n\n    def __init__(\n        self,\n\
+      \        device=\"cpu\",\n        tx_amp=0.05,\n        repeat_period_ms=50.0,\n\
+      \        fft_len=2048,\n        subcarrier_spacing=15e3,\n        n_carriers=512,\n\
+      \        ofdm_syms_per_tag=32,\n        time_lead_s=0.05,\n    ):\n        gr.basic_block.__init__(\n\
+      \            self,\n            name=\"Style1 Sionna PHY TX\",\n           \
+      \ in_sig=[],\n            out_sig=[np.complex64],\n        )\n        self._device\
+      \ = str(device)\n        self._tx_amp = float(tx_amp)\n        self._repeat_period_ms\
+      \ = float(repeat_period_ms)\n        self._time_lead_s = float(time_lead_s)\n\
+      \        self._burst_active = False\n        self._burst_idx = 0\n        self._next_burst_time\
+      \ = 0.0\n        self._frame: np.ndarray | None = None\n        self._burst_buffer:\
+      \ np.ndarray | None = None\n        self._phy = PhyContext.from_grc(\n     \
+      \       fft_len, subcarrier_spacing, n_carriers, ofdm_syms_per_tag\n       \
+      \ )\n        sn.phy.config.device = self._device\n        torch.set_num_threads(1)\n\
+      \        self.set_tag_propagation_policy(gr.TPP_DONT)\n        self._initialize_frame()\n\
+      \n    @property\n    def phy(self) -> PhyContext:\n        return self._phy\n\
+      \n    @property\n    def device(self):\n        return self._device\n\n    @property\n\
+      \    def tx_amp(self):\n        return self._tx_amp\n\n    @property\n    def\
+      \ repeat_period_ms(self):\n        return self._repeat_period_ms\n\n    @property\n\
+      \    def time_lead_s(self):\n        return self._time_lead_s\n\n    @property\n\
+      \    def fft_len(self) -> int:\n        return self._phy.fft_len\n\n    @property\n\
+      \    def subcarrier_spacing(self) -> float:\n        return self._phy.subcarrier_spacing\n\
+      \n    @subcarrier_spacing.setter\n    def subcarrier_spacing(self, value):\n\
+      \        self.reconfigure_phy(subcarrier_spacing=float(value))\n\n    @property\n\
+      \    def n_carriers(self) -> int:\n        return self._phy.n_carriers\n\n \
+      \   @n_carriers.setter\n    def n_carriers(self, value):\n        self.reconfigure_phy(n_carriers=int(value))\n\
+      \n    @property\n    def ofdm_syms_per_tag(self) -> int:\n        return self._phy.ofdm_syms_data\n\
+      \n    @ofdm_syms_per_tag.setter\n    def ofdm_syms_per_tag(self, value):\n \
+      \       self.reconfigure_phy(ofdm_syms_per_tag=int(value))\n\n    @tx_amp.setter\n\
+      \    def tx_amp(self, value):\n        self._tx_amp = float(value)\n\n    @repeat_period_ms.setter\n\
+      \    def repeat_period_ms(self, value):\n        self._repeat_period_ms = float(value)\n\
+      \n    @time_lead_s.setter\n    def time_lead_s(self, value):\n        self._time_lead_s\
+      \ = float(value)\n\n    @device.setter\n    def device(self, device):\n    \
+      \    self._device = str(device)\n        sn.phy.config.device = self._device\n\
+      \        self._rebuild_frame()\n\n    def reconfigure_phy(\n        self,\n\
+      \        fft_len=None,\n        subcarrier_spacing=None,\n        n_carriers=None,\n\
+      \        ofdm_syms_per_tag=None,\n    ) -> None:\n        self._phy = PhyContext.from_grc(\n\
+      \            fft_len if fft_len is not None else self._phy.fft_len,\n      \
+      \      subcarrier_spacing\n            if subcarrier_spacing is not None\n \
+      \           else self._phy.subcarrier_spacing,\n            n_carriers if n_carriers\
+      \ is not None else self._phy.n_carriers,\n            ofdm_syms_per_tag\n  \
+      \          if ofdm_syms_per_tag is not None\n            else self._phy.ofdm_syms_data,\n\
+      \        )\n        self._rebuild_frame()\n\n    def forecast(self, noutput_items,\
+      \ ninput_items):\n        del noutput_items, ninput_items\n        return []\n\
+      \n    def _idle_gap_seconds(self) -> float:\n        assert self._frame is not\
+      \ None\n        frame_s = self._frame.size / self._phy.samp_rate\n        period_s\
+      \ = max(self._repeat_period_ms / 1000.0, frame_s)\n        return max(0.0, period_s\
+      \ - frame_s)\n\n    def _tx_time_pmt(self):\n        t = time.time() + self._time_lead_s\n\
+      \        sec = int(t)\n        frac = t - sec\n        return pmt.make_tuple(pmt.from_uint64(sec),\
+      \ pmt.from_double(frac))\n\n    def _reset_burst_schedule(self, *, immediate:\
+      \ bool) -> None:\n        self._burst_active = False\n        self._burst_idx\
+      \ = 0\n        self._next_burst_time = 0.0 if immediate else time.monotonic()\
+      \ + self._idle_gap_seconds()\n\n    def _initialize_frame(self) -> None:\n \
+      \       \"\"\"Generate random payload and OFDM waveform once at startup.\"\"\
+      \"\n        self._frame = self._build_frame_once()\n        self._load_burst_buffer()\n\
+      \        self._reset_burst_schedule(immediate=True)\n        self.set_min_output_buffer(int(self._frame.size)\
+      \ * 2)\n\n    def _rebuild_frame(self) -> None:\n        \"\"\"Regenerate waveform\
+      \ only when PHY dimensions or device change.\"\"\"\n        self._initialize_frame()\n\
+      \n    def _load_burst_buffer(self) -> None:\n        \"\"\"Load the cached frame\
+      \ before each burst (same data, scaled by tx_amp).\"\"\"\n        assert self._frame\
+      \ is not None\n        self._burst_buffer = (self._frame * self._tx_amp).astype(\n\
+      \            np.complex64, copy=True\n        )\n\n    def _build_frame_once(self)\
+      \ -> np.ndarray:\n        p = self._phy\n        with torch.inference_mode():\n\
+      \            binary_source = sn.phy.mapping.BinarySource(device=self._device)\n\
+      \            mapper = sn.phy.mapping.Mapper(\"qam\", 2, device=self._device)\n\
+      \            modulator = sn.phy.ofdm.OFDMModulator(\n                cyclic_prefix_length=p.cp_len,\
+      \ device=self._device\n            )\n            bits = binary_source([p.bits_per_tag])\n\
+      \            syms = mapper(bits).reshape(p.ofdm_syms_data, p.n_carriers)\n \
+      \           grid = p.build_tx_freq_grid_torch(syms, device=self._device)\n \
+      \           x = grid.unsqueeze(0).unsqueeze(0).unsqueeze(0)\n            y =\
+      \ modulator(x)\n            if self._device.startswith(\"cuda\"):\n        \
+      \        torch.cuda.synchronize()\n            frame = y.squeeze()\n       \
+      \     if self._device != \"cpu\":\n                frame = frame.cpu()\n   \
+      \         return frame.detach().numpy().astype(np.complex64, copy=False)\n\n\
+      \    def general_work(self, input_items, output_items):\n        del input_items\n\
+      \        out = output_items[0]\n        assert self._frame is not None and self._burst_buffer\
+      \ is not None\n\n        if not self._burst_active:\n            if time.monotonic()\
+      \ < self._next_burst_time:\n                return 0\n            self._load_burst_buffer()\n\
+      \            self._burst_active = True\n            self._burst_idx = 0\n\n\
+      \        frame_len = self._frame.size\n        n_remain = frame_len - self._burst_idx\n\
+      \        n = min(len(out), n_remain)\n        if n <= 0:\n            return\
+      \ 0\n\n        out[:n] = self._burst_buffer[self._burst_idx : self._burst_idx\
+      \ + n]\n        abs_out = self.nitems_written(0)\n\n        if self._burst_idx\
+      \ == 0:\n            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)\n  \
+      \          self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())\n\n\
+      \        self._burst_idx += n\n        if self._burst_idx >= frame_len:\n  \
+      \          self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)\n    \
+      \        self._burst_active = False\n            self._next_burst_time = time.monotonic()\
+      \ + self._idle_gap_seconds()\n\n        return n\n"
+    affinity: ''
+    alias: ''
+    comment: Style1 Sionna PHY TX (tx_sob/tx_time/tx_eob)
+    device: sionna_device
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: max(65536, int((2 + 1 + ofdm_syms_per_tag) * (fft_len + cp_len) * 2))
+    n_carriers: n_carriers
+    ofdm_syms_per_tag: ofdm_syms_per_tag
+    repeat_period_ms: tx_repeat_period_ms
+    subcarrier_spacing: subcarrier_spacing
+    time_lead_s: '0.05'
+    tx_amp: tx_amp
+  states:
+    _io_cache: ('Style1 Sionna PHY TX', 'blk', [('device', "'cpu'"), ('tx_amp', '0.05'),
+      ('repeat_period_ms', '50.0'), ('fft_len', '2048'), ('subcarrier_spacing', '15000.0'),
+      ('n_carriers', '512'), ('ofdm_syms_per_tag', '32'), ('time_lead_s', '0.05')],
+      [], [('0', 'complex', 1)], 'Generate one frame at init; reload and replay on
+      repeat_period_ms.', ['device', 'n_carriers', 'ofdm_syms_per_tag', 'repeat_period_ms',
+      'subcarrier_spacing', 'time_lead_s', 'tx_amp'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [744, 384.0]
+    rotation: 0
+    state: enabled
+- name: freq
+  id: parameter
+  parameters:
+    alias: ''
+    comment: ''
+    hide: none
+    label: Default Frequency
+    short_id: f
+    type: eng_float
+    value: 6.0e9
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [840, 36.0]
+    rotation: 0
+    state: enabled
+- name: note_style1_ofdm
+  id: note
+  parameters:
+    alias: ''
+    comment: ''
+    note: 'Style1 burst OFDM sensing: Sionna TX (tx_sob/tx_time/tx_eob) + GR OFDM
+      RX. samp_rate=30.72 MS/s. OTA: start with low tx_amp/TX_gain. Use ISAC conda
+      env (/home/caict/radioconda/envs/ISAC) for grcc and run. USRP sync=pc_clock.
+      No GPU: set sionna_device to cpu. Burst interval: tx_repeat_period_ms (default
+      50 ms). Success: QPSK clusters in constellation sink.'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 80]
+    rotation: 0
+    state: true
+- name: qtgui_const_sink_x_0
+  id: qtgui_const_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    grid: 'False'
+    gui_hint: ''
+    label1: ''
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    marker1: '0'
+    marker10: '0'
+    marker2: '0'
+    marker3: '0'
+    marker4: '0'
+    marker5: '0'
+    marker6: '0'
+    marker7: '0'
+    marker8: '0'
+    marker9: '0'
+    name: '"OFDM RX symbols"'
+    nconnections: '1'
+    size: '16384'
+    style1: '0'
+    style10: '0'
+    style2: '0'
+    style3: '0'
+    style4: '0'
+    style5: '0'
+    style6: '0'
+    style7: '0'
+    style8: '0'
+    style9: '0'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: gui_update_period
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    xmax: '2'
+    xmin: '-2'
+    ymax: '2'
+    ymin: '-2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2064, 916.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_freq_sink_x_0_0
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    average: '0.2'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: fft_len
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label: Relative Gain
+    label1: Rx Spectrum
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '8192'
+    minoutbuf: '0'
+    name: Rx Spectrum
+    nconnections: '1'
+    norm_window: 'True'
+    showports: 'True'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: gui_update_period
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 1020.0]
+    rotation: 0
+    state: enabled
+- name: uhd_usrp_sink_0
+  id: uhd_usrp_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    ant0: '"TX/RX"'
+    ant1: '"TX/RX"'
+    ant10: '"TX/RX"'
+    ant11: '"TX/RX"'
+    ant12: '"TX/RX"'
+    ant13: '"TX/RX"'
+    ant14: '"TX/RX"'
+    ant15: '"TX/RX"'
+    ant16: '"TX/RX"'
+    ant17: '"TX/RX"'
+    ant18: '"TX/RX"'
+    ant19: '"TX/RX"'
+    ant2: '"TX/RX"'
+    ant20: '"TX/RX"'
+    ant21: '"TX/RX"'
+    ant22: '"TX/RX"'
+    ant23: '"TX/RX"'
+    ant24: '"TX/RX"'
+    ant25: '"TX/RX"'
+    ant26: '"TX/RX"'
+    ant27: '"TX/RX"'
+    ant28: '"TX/RX"'
+    ant29: '"TX/RX"'
+    ant3: '"TX/RX"'
+    ant30: '"TX/RX"'
+    ant31: '"TX/RX"'
+    ant4: '"TX/RX"'
+    ant5: '"TX/RX"'
+    ant6: '"TX/RX"'
+    ant7: '"TX/RX"'
+    ant8: '"TX/RX"'
+    ant9: '"TX/RX"'
+    bw0: '0'
+    bw1: '0'
+    bw10: '0'
+    bw11: '0'
+    bw12: '0'
+    bw13: '0'
+    bw14: '0'
+    bw15: '0'
+    bw16: '0'
+    bw17: '0'
+    bw18: '0'
+    bw19: '0'
+    bw2: '0'
+    bw20: '0'
+    bw21: '0'
+    bw22: '0'
+    bw23: '0'
+    bw24: '0'
+    bw25: '0'
+    bw26: '0'
+    bw27: '0'
+    bw28: '0'
+    bw29: '0'
+    bw3: '0'
+    bw30: '0'
+    bw31: '0'
+    bw4: '0'
+    bw5: '0'
+    bw6: '0'
+    bw7: '0'
+    bw8: '0'
+    bw9: '0'
+    center_freq0: freq
+    center_freq1: '0'
+    center_freq10: '0'
+    center_freq11: '0'
+    center_freq12: '0'
+    center_freq13: '0'
+    center_freq14: '0'
+    center_freq15: '0'
+    center_freq16: '0'
+    center_freq17: '0'
+    center_freq18: '0'
+    center_freq19: '0'
+    center_freq2: '0'
+    center_freq20: '0'
+    center_freq21: '0'
+    center_freq22: '0'
+    center_freq23: '0'
+    center_freq24: '0'
+    center_freq25: '0'
+    center_freq26: '0'
+    center_freq27: '0'
+    center_freq28: '0'
+    center_freq29: '0'
+    center_freq3: '0'
+    center_freq30: '0'
+    center_freq31: '0'
+    center_freq4: '0'
+    center_freq5: '0'
+    center_freq6: '0'
+    center_freq7: '0'
+    center_freq8: '0'
+    center_freq9: '0'
+    clock_rate: '0'
+    clock_source0: ''
+    clock_source1: ''
+    clock_source2: ''
+    clock_source3: ''
+    clock_source4: ''
+    clock_source5: ''
+    clock_source6: ''
+    clock_source7: ''
+    comment: ''
+    dev_addr: address
+    dev_args: '""'
+    gain0: TX_gain
+    gain1: '0'
+    gain10: '0'
+    gain11: '0'
+    gain12: '0'
+    gain13: '0'
+    gain14: '0'
+    gain15: '0'
+    gain16: '0'
+    gain17: '0'
+    gain18: '0'
+    gain19: '0'
+    gain2: '0'
+    gain20: '0'
+    gain21: '0'
+    gain22: '0'
+    gain23: '0'
+    gain24: '0'
+    gain25: '0'
+    gain26: '0'
+    gain27: '0'
+    gain28: '0'
+    gain29: '0'
+    gain3: '0'
+    gain30: '0'
+    gain31: '0'
+    gain4: '0'
+    gain5: '0'
+    gain6: '0'
+    gain7: '0'
+    gain8: '0'
+    gain9: '0'
+    gain_type0: default
+    gain_type1: default
+    gain_type10: default
+    gain_type11: default
+    gain_type12: default
+    gain_type13: default
+    gain_type14: default
+    gain_type15: default
+    gain_type16: default
+    gain_type17: default
+    gain_type18: default
+    gain_type19: default
+    gain_type2: default
+    gain_type20: default
+    gain_type21: default
+    gain_type22: default
+    gain_type23: default
+    gain_type24: default
+    gain_type25: default
+    gain_type26: default
+    gain_type27: default
+    gain_type28: default
+    gain_type29: default
+    gain_type3: default
+    gain_type30: default
+    gain_type31: default
+    gain_type4: default
+    gain_type5: default
+    gain_type6: default
+    gain_type7: default
+    gain_type8: default
+    gain_type9: default
+    len_tag_name: ''
+    lo_export0: 'False'
+    lo_export1: 'False'
+    lo_export10: 'False'
+    lo_export11: 'False'
+    lo_export12: 'False'
+    lo_export13: 'False'
+    lo_export14: 'False'
+    lo_export15: 'False'
+    lo_export16: 'False'
+    lo_export17: 'False'
+    lo_export18: 'False'
+    lo_export19: 'False'
+    lo_export2: 'False'
+    lo_export20: 'False'
+    lo_export21: 'False'
+    lo_export22: 'False'
+    lo_export23: 'False'
+    lo_export24: 'False'
+    lo_export25: 'False'
+    lo_export26: 'False'
+    lo_export27: 'False'
+    lo_export28: 'False'
+    lo_export29: 'False'
+    lo_export3: 'False'
+    lo_export30: 'False'
+    lo_export31: 'False'
+    lo_export4: 'False'
+    lo_export5: 'False'
+    lo_export6: 'False'
+    lo_export7: 'False'
+    lo_export8: 'False'
+    lo_export9: 'False'
+    lo_source0: internal
+    lo_source1: internal
+    lo_source10: internal
+    lo_source11: internal
+    lo_source12: internal
+    lo_source13: internal
+    lo_source14: internal
+    lo_source15: internal
+    lo_source16: internal
+    lo_source17: internal
+    lo_source18: internal
+    lo_source19: internal
+    lo_source2: internal
+    lo_source20: internal
+    lo_source21: internal
+    lo_source22: internal
+    lo_source23: internal
+    lo_source24: internal
+    lo_source25: internal
+    lo_source26: internal
+    lo_source27: internal
+    lo_source28: internal
+    lo_source29: internal
+    lo_source3: internal
+    lo_source30: internal
+    lo_source31: internal
+    lo_source4: internal
+    lo_source5: internal
+    lo_source6: internal
+    lo_source7: internal
+    lo_source8: internal
+    lo_source9: internal
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nchan: '1'
+    num_mboards: '1'
+    otw: ''
+    samp_rate: samp_rate
+    sd_spec0: ''
+    sd_spec1: ''
+    sd_spec2: ''
+    sd_spec3: ''
+    sd_spec4: ''
+    sd_spec5: ''
+    sd_spec6: ''
+    sd_spec7: ''
+    show_lo_controls: 'False'
+    start_time: '-1.0'
+    stream_args: ''
+    stream_chans: '[0]'
+    sync: pc_clock
+    time_source0: ''
+    time_source1: ''
+    time_source2: ''
+    time_source3: ''
+    time_source4: ''
+    time_source5: ''
+    time_source6: ''
+    time_source7: ''
+    type: fc32
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [992, 376.0]
+    rotation: 0
+    state: true
+- name: uhd_usrp_source_0
+  id: uhd_usrp_source
+  parameters:
+    affinity: ''
+    alias: ''
+    ant0: '"RX1"'
+    ant1: RX2
+    ant10: RX2
+    ant11: RX2
+    ant12: RX2
+    ant13: RX2
+    ant14: RX2
+    ant15: RX2
+    ant16: RX2
+    ant17: RX2
+    ant18: RX2
+    ant19: RX2
+    ant2: RX2
+    ant20: RX2
+    ant21: RX2
+    ant22: RX2
+    ant23: RX2
+    ant24: RX2
+    ant25: RX2
+    ant26: RX2
+    ant27: RX2
+    ant28: RX2
+    ant29: RX2
+    ant3: RX2
+    ant30: RX2
+    ant31: RX2
+    ant4: RX2
+    ant5: RX2
+    ant6: RX2
+    ant7: RX2
+    ant8: RX2
+    ant9: RX2
+    bw0: '0'
+    bw1: '0'
+    bw10: '0'
+    bw11: '0'
+    bw12: '0'
+    bw13: '0'
+    bw14: '0'
+    bw15: '0'
+    bw16: '0'
+    bw17: '0'
+    bw18: '0'
+    bw19: '0'
+    bw2: '0'
+    bw20: '0'
+    bw21: '0'
+    bw22: '0'
+    bw23: '0'
+    bw24: '0'
+    bw25: '0'
+    bw26: '0'
+    bw27: '0'
+    bw28: '0'
+    bw29: '0'
+    bw3: '0'
+    bw30: '0'
+    bw31: '0'
+    bw4: '0'
+    bw5: '0'
+    bw6: '0'
+    bw7: '0'
+    bw8: '0'
+    bw9: '0'
+    center_freq0: freq
+    center_freq1: '0'
+    center_freq10: '0'
+    center_freq11: '0'
+    center_freq12: '0'
+    center_freq13: '0'
+    center_freq14: '0'
+    center_freq15: '0'
+    center_freq16: '0'
+    center_freq17: '0'
+    center_freq18: '0'
+    center_freq19: '0'
+    center_freq2: '0'
+    center_freq20: '0'
+    center_freq21: '0'
+    center_freq22: '0'
+    center_freq23: '0'
+    center_freq24: '0'
+    center_freq25: '0'
+    center_freq26: '0'
+    center_freq27: '0'
+    center_freq28: '0'
+    center_freq29: '0'
+    center_freq3: '0'
+    center_freq30: '0'
+    center_freq31: '0'
+    center_freq4: '0'
+    center_freq5: '0'
+    center_freq6: '0'
+    center_freq7: '0'
+    center_freq8: '0'
+    center_freq9: '0'
+    clock_rate: '0'
+    clock_source0: ''
+    clock_source1: ''
+    clock_source2: ''
+    clock_source3: ''
+    clock_source4: ''
+    clock_source5: ''
+    clock_source6: ''
+    clock_source7: ''
+    comment: ''
+    dc_offs0: 0+0j
+    dc_offs1: 0+0j
+    dc_offs10: 0+0j
+    dc_offs11: 0+0j
+    dc_offs12: 0+0j
+    dc_offs13: 0+0j
+    dc_offs14: 0+0j
+    dc_offs15: 0+0j
+    dc_offs16: 0+0j
+    dc_offs17: 0+0j
+    dc_offs18: 0+0j
+    dc_offs19: 0+0j
+    dc_offs2: 0+0j
+    dc_offs20: 0+0j
+    dc_offs21: 0+0j
+    dc_offs22: 0+0j
+    dc_offs23: 0+0j
+    dc_offs24: 0+0j
+    dc_offs25: 0+0j
+    dc_offs26: 0+0j
+    dc_offs27: 0+0j
+    dc_offs28: 0+0j
+    dc_offs29: 0+0j
+    dc_offs3: 0+0j
+    dc_offs30: 0+0j
+    dc_offs31: 0+0j
+    dc_offs4: 0+0j
+    dc_offs5: 0+0j
+    dc_offs6: 0+0j
+    dc_offs7: 0+0j
+    dc_offs8: 0+0j
+    dc_offs9: 0+0j
+    dc_offs_enb0: default
+    dc_offs_enb1: default
+    dc_offs_enb10: default
+    dc_offs_enb11: default
+    dc_offs_enb12: default
+    dc_offs_enb13: default
+    dc_offs_enb14: default
+    dc_offs_enb15: default
+    dc_offs_enb16: default
+    dc_offs_enb17: default
+    dc_offs_enb18: default
+    dc_offs_enb19: default
+    dc_offs_enb2: default
+    dc_offs_enb20: default
+    dc_offs_enb21: default
+    dc_offs_enb22: default
+    dc_offs_enb23: default
+    dc_offs_enb24: default
+    dc_offs_enb25: default
+    dc_offs_enb26: default
+    dc_offs_enb27: default
+    dc_offs_enb28: default
+    dc_offs_enb29: default
+    dc_offs_enb3: default
+    dc_offs_enb30: default
+    dc_offs_enb31: default
+    dc_offs_enb4: default
+    dc_offs_enb5: default
+    dc_offs_enb6: default
+    dc_offs_enb7: default
+    dc_offs_enb8: default
+    dc_offs_enb9: default
+    dev_addr: address
+    dev_args: '""'
+    gain0: RX_gain
+    gain1: '0'
+    gain10: '0'
+    gain11: '0'
+    gain12: '0'
+    gain13: '0'
+    gain14: '0'
+    gain15: '0'
+    gain16: '0'
+    gain17: '0'
+    gain18: '0'
+    gain19: '0'
+    gain2: '0'
+    gain20: '0'
+    gain21: '0'
+    gain22: '0'
+    gain23: '0'
+    gain24: '0'
+    gain25: '0'
+    gain26: '0'
+    gain27: '0'
+    gain28: '0'
+    gain29: '0'
+    gain3: '0'
+    gain30: '0'
+    gain31: '0'
+    gain4: '0'
+    gain5: '0'
+    gain6: '0'
+    gain7: '0'
+    gain8: '0'
+    gain9: '0'
+    gain_type0: default
+    gain_type1: default
+    gain_type10: default
+    gain_type11: default
+    gain_type12: default
+    gain_type13: default
+    gain_type14: default
+    gain_type15: default
+    gain_type16: default
+    gain_type17: default
+    gain_type18: default
+    gain_type19: default
+    gain_type2: default
+    gain_type20: default
+    gain_type21: default
+    gain_type22: default
+    gain_type23: default
+    gain_type24: default
+    gain_type25: default
+    gain_type26: default
+    gain_type27: default
+    gain_type28: default
+    gain_type29: default
+    gain_type3: default
+    gain_type30: default
+    gain_type31: default
+    gain_type4: default
+    gain_type5: default
+    gain_type6: default
+    gain_type7: default
+    gain_type8: default
+    gain_type9: default
+    iq_imbal0: 0+0j
+    iq_imbal1: 0+0j
+    iq_imbal10: 0+0j
+    iq_imbal11: 0+0j
+    iq_imbal12: 0+0j
+    iq_imbal13: 0+0j
+    iq_imbal14: 0+0j
+    iq_imbal15: 0+0j
+    iq_imbal16: 0+0j
+    iq_imbal17: 0+0j
+    iq_imbal18: 0+0j
+    iq_imbal19: 0+0j
+    iq_imbal2: 0+0j
+    iq_imbal20: 0+0j
+    iq_imbal21: 0+0j
+    iq_imbal22: 0+0j
+    iq_imbal23: 0+0j
+    iq_imbal24: 0+0j
+    iq_imbal25: 0+0j
+    iq_imbal26: 0+0j
+    iq_imbal27: 0+0j
+    iq_imbal28: 0+0j
+    iq_imbal29: 0+0j
+    iq_imbal3: 0+0j
+    iq_imbal30: 0+0j
+    iq_imbal31: 0+0j
+    iq_imbal4: 0+0j
+    iq_imbal5: 0+0j
+    iq_imbal6: 0+0j
+    iq_imbal7: 0+0j
+    iq_imbal8: 0+0j
+    iq_imbal9: 0+0j
+    iq_imbal_enb0: default
+    iq_imbal_enb1: default
+    iq_imbal_enb10: default
+    iq_imbal_enb11: default
+    iq_imbal_enb12: default
+    iq_imbal_enb13: default
+    iq_imbal_enb14: default
+    iq_imbal_enb15: default
+    iq_imbal_enb16: default
+    iq_imbal_enb17: default
+    iq_imbal_enb18: default
+    iq_imbal_enb19: default
+    iq_imbal_enb2: default
+    iq_imbal_enb20: default
+    iq_imbal_enb21: default
+    iq_imbal_enb22: default
+    iq_imbal_enb23: default
+    iq_imbal_enb24: default
+    iq_imbal_enb25: default
+    iq_imbal_enb26: default
+    iq_imbal_enb27: default
+    iq_imbal_enb28: default
+    iq_imbal_enb29: default
+    iq_imbal_enb3: default
+    iq_imbal_enb30: default
+    iq_imbal_enb31: default
+    iq_imbal_enb4: default
+    iq_imbal_enb5: default
+    iq_imbal_enb6: default
+    iq_imbal_enb7: default
+    iq_imbal_enb8: default
+    iq_imbal_enb9: default
+    lo_export0: 'False'
+    lo_export1: 'False'
+    lo_export10: 'False'
+    lo_export11: 'False'
+    lo_export12: 'False'
+    lo_export13: 'False'
+    lo_export14: 'False'
+    lo_export15: 'False'
+    lo_export16: 'False'
+    lo_export17: 'False'
+    lo_export18: 'False'
+    lo_export19: 'False'
+    lo_export2: 'False'
+    lo_export20: 'False'
+    lo_export21: 'False'
+    lo_export22: 'False'
+    lo_export23: 'False'
+    lo_export24: 'False'
+    lo_export25: 'False'
+    lo_export26: 'False'
+    lo_export27: 'False'
+    lo_export28: 'False'
+    lo_export29: 'False'
+    lo_export3: 'False'
+    lo_export30: 'False'
+    lo_export31: 'False'
+    lo_export4: 'False'
+    lo_export5: 'False'
+    lo_export6: 'False'
+    lo_export7: 'False'
+    lo_export8: 'False'
+    lo_export9: 'False'
+    lo_source0: internal
+    lo_source1: internal
+    lo_source10: internal
+    lo_source11: internal
+    lo_source12: internal
+    lo_source13: internal
+    lo_source14: internal
+    lo_source15: internal
+    lo_source16: internal
+    lo_source17: internal
+    lo_source18: internal
+    lo_source19: internal
+    lo_source2: internal
+    lo_source20: internal
+    lo_source21: internal
+    lo_source22: internal
+    lo_source23: internal
+    lo_source24: internal
+    lo_source25: internal
+    lo_source26: internal
+    lo_source27: internal
+    lo_source28: internal
+    lo_source29: internal
+    lo_source3: internal
+    lo_source30: internal
+    lo_source31: internal
+    lo_source4: internal
+    lo_source5: internal
+    lo_source6: internal
+    lo_source7: internal
+    lo_source8: internal
+    lo_source9: internal
+    maxoutbuf: '0'
+    minoutbuf: '262144'
+    nchan: '1'
+    num_mboards: '1'
+    otw: ''
+    rx_agc0: Default
+    rx_agc1: Default
+    rx_agc10: Default
+    rx_agc11: Default
+    rx_agc12: Default
+    rx_agc13: Default
+    rx_agc14: Default
+    rx_agc15: Default
+    rx_agc16: Default
+    rx_agc17: Default
+    rx_agc18: Default
+    rx_agc19: Default
+    rx_agc2: Default
+    rx_agc20: Default
+    rx_agc21: Default
+    rx_agc22: Default
+    rx_agc23: Default
+    rx_agc24: Default
+    rx_agc25: Default
+    rx_agc26: Default
+    rx_agc27: Default
+    rx_agc28: Default
+    rx_agc29: Default
+    rx_agc3: Default
+    rx_agc30: Default
+    rx_agc31: Default
+    rx_agc4: Default
+    rx_agc5: Default
+    rx_agc6: Default
+    rx_agc7: Default
+    rx_agc8: Default
+    rx_agc9: Default
+    samp_rate: samp_rate
+    sd_spec0: ''
+    sd_spec1: ''
+    sd_spec2: ''
+    sd_spec3: ''
+    sd_spec4: ''
+    sd_spec5: ''
+    sd_spec6: ''
+    sd_spec7: ''
+    show_lo_controls: 'False'
+    start_time: '-1.0'
+    stream_args: num_recv_frames=512,recv_buff_size=25000000
+    stream_chans: '[2]'
+    sync: pc_clock
+    time_source0: ''
+    time_source1: ''
+    time_source2: ''
+    time_source3: ''
+    time_source4: ''
+    time_source5: ''
+    time_source6: ''
+    time_source7: ''
+    type: fc32
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [80, 608.0]
+    rotation: 0
+    state: true
+
+connections:
+- [analog_frequency_modulator_fc_0, '0', blocks_multiply_xx_0, '0']
+- [blocks_delay_0, '0', blocks_multiply_xx_0, '1']
+- [blocks_keep_one_in_n_spectrum, '0', qtgui_freq_sink_x_0_0, '0']
+- [blocks_message_strobe_0, strobe, digital_header_payload_demux_0, header_data]
+- [blocks_multiply_xx_0, '0', digital_header_payload_demux_0, '0']
+- [digital_header_payload_demux_0, '0', epy_fft_batch_hdr, '0']
+- [digital_header_payload_demux_0, '1', epy_fft_batch_rx, '0']
+- [digital_ofdm_chanest_vcvc_0, '0', blocks_null_sink_hdr, '0']
+- [digital_ofdm_frame_equalizer_vcvc_0, '0', digital_ofdm_serializer_vcc_0, '0']
+- [digital_ofdm_serializer_vcc_0, '0', qtgui_const_sink_x_0, '0']
+- [digital_ofdm_sync_sc_cfb_0, '0', analog_frequency_modulator_fc_0, '0']
+- [digital_ofdm_sync_sc_cfb_0, '1', digital_header_payload_demux_0, '1']
+- [epy_fft_batch_hdr, '0', digital_ofdm_chanest_vcvc_0, '0']
+- [epy_fft_batch_rx, '0', digital_ofdm_frame_equalizer_vcvc_0, '0']
+- [epy_sionna_phy_tx, '0', uhd_usrp_sink_0, '0']
+- [uhd_usrp_source_0, '0', blocks_delay_0, '0']
+- [uhd_usrp_source_0, '0', blocks_keep_one_in_n_spectrum, '0']
+- [uhd_usrp_source_0, '0', digital_ofdm_sync_sc_cfb_0, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0
