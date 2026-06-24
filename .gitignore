@@ -18,12 +18,5 @@ gnuradio/flowgraphs/*_sionna_*_0.py
 .pytest_cache/
 
 # Project dirs (excluded from repo)
-src/radarsimpy/
-backup/
-CISSIR/
 data/
-radarsimnb/
-SkySense-ISAC-Dataset-Generator-for-UAV-Localization-with-Sionna/
-labview/
-ISAC-Intelligent-Transportation-/
 out/
