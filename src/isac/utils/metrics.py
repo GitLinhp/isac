@@ -1,4 +1,5 @@
 import torch
+from scipy.constants import c
 from scipy.optimize import linear_sum_assignment
 
 from .type_converter import convert
@@ -101,3 +102,62 @@ def compute_mse(estimate: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     est = convert(estimate, "torch", dtype=torch.float64, device=estimate.device)
     tgt = convert(target, "torch", dtype=torch.float64, device=target.device)
     return torch.mean((est - tgt) ** 2)
+
+
+def delay_to_range(
+    tau_s: torch.Tensor,
+    carrier_frequency: float,
+    sens_mode: str = "monostatic",
+) -> torch.Tensor:
+    r"""由时延 \(\tau\)（s）换算距离 (m)，调用形态与 ``doppler_to_velocity`` 一致。
+
+    ``doppler_to_velocity(doppler_hz, carrier_frequency, sens_mode)``
+    ``delay_to_range(tau_s, carrier_frequency, sens_mode)``
+
+    ``carrier_frequency`` 与速度换算共用同一 ``SensingPerformance`` 标量；本函数当前换算**不依赖**频率，
+    仅校验为正数，以保持参数列表与物理配置对齐。
+
+    - ``monostatic``：``tau_s * c / 2``，与 ``SensingPerformance.range_resolution = c * delay_resolution / 2``
+      及 ``k · Δr`` 网格一致（\(Δτ\) 对应往返）。
+    - ``bistatic``：``tau_s * c``，折叠路径单程几何长度 \(cτ\)（与 MUSIC ``sens_mode='bistatic'`` 配套）。
+
+    ``sens_mode`` 由调用方（如 ``MUSICEstimator(..., sens_mode=...)``）指定，勿与谱图 **metric_mode**
+    （``delay_doppler`` / ``range_velocity``）混淆。
+    """
+    fc = float(carrier_frequency)
+    if fc <= 0:
+        raise ValueError("carrier_frequency 必须为正数")
+    if sens_mode == "monostatic":
+        return tau_s * (c / 2.0)
+    elif sens_mode == "bistatic":
+        return tau_s * c
+    else:
+        raise ValueError(
+            f"不支持的 sens_mode: {sens_mode}，须为 'monostatic' 或 'bistatic'"
+        )
+
+
+def doppler_to_velocity(
+    doppler_hz: torch.Tensor,
+    carrier_frequency: float,
+    sens_mode: str = "monostatic",
+) -> torch.Tensor:
+    r"""由多普勒频移 \(f_d\)（Hz）反推与 MUSIC/OFDM 网格配套的标量速度（m/s）。
+
+    速度语义：**靠近为负，远离为正**（与 ``geom.vel_tensor`` 一致）。
+    Sionna RT / OFDM DD 谱上的 \(f_d\) 符号与上述约定相反，故取负：
+
+    - ``monostatic``：\(v = -f_d c/(2f_c)\)，适用于双程/colocated。
+    - ``bistatic``：\(v = -f_d c/f_c\)，假定 \(f_d\) 已对应理想「单程」多普勒。
+
+    省略 ``sens_mode`` 时默认为 ``monostatic``。
+    ``sens_mode`` 须与 ``delay_to_range``、``MUSICEstimator`` 等处一致；勿与 MUSIC **metric_mode** 混淆。
+    """
+    fc = float(carrier_frequency)
+
+    if sens_mode == "monostatic":
+        return -(doppler_hz * c) / (2.0 * fc)
+    elif sens_mode == "bistatic":
+        return -(doppler_hz * c) / fc
+    else:
+        raise ValueError(f"不支持的速度模型: {sens_mode}")

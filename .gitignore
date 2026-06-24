@@ -8,9 +8,11 @@
 __pycache__/
 
 # GRC 生成（本地 grcc 后运行）
-gnuradio/simulator_ofdm.py
-gnuradio/simulator_ofdm_impl*.py
-gnuradio/*_sionna_*_0.py
+gnuradio/flowgraphs/simulator_ofdm.py
+gnuradio/flowgraphs/sensing_baseline.py
+gnuradio/flowgraphs/simulator_ofdm_impl*.py
+gnuradio/flowgraphs/sensing_baseline_impl*.py
+gnuradio/flowgraphs/*_sionna_*_0.py
 
 # Python test
 .pytest_cache/

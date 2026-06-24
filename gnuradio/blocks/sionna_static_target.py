@@ -4,17 +4,17 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import List
 
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from bootstrap import setup_gnuradio_paths_from
+
+setup_gnuradio_paths_from(__file__)
+
 import numpy as np
 import pmt
 import torch
 from gnuradio import gr
-
-_GRC = Path(__file__).resolve().parent
-_REPO = _GRC.parent
-_SRC = _REPO / "src"
-for _p in (_GRC, str(_SRC)):
-    if _p not in sys.path:
-        sys.path.insert(0, str(_p))
 
 from isac.channel import RCSScene, RCSTarget, RCSChannel
 

@@ -40,10 +40,20 @@ parameters:
   label: Device
   dtype: string
   default: '"cuda:0"'
-- id: burst_pri_sec
-  label: Burst PRI [s]
+- id: idle_ms
+  label: Style1 idle [ms]
   dtype: real
   default: '0'
+- id: time_lead_s
+  label: tx_time lead [s]
+  dtype: real
+  default: '0.05'
+- id: uhd_burst_tags
+  label: UHD burst tags
+  dtype: bool
+  default: 'False'
+  options: ['True', 'False']
+  option_labels: ['Enabled', 'Disabled']
 - id: samp_rate
   label: Sample rate
   dtype: int
@@ -60,7 +70,7 @@ outputs:
 
 templates:
   imports: from sionna_tx import SionnaOFDMTx
-  make: SionnaOFDMTx(config_file=${config_file}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq}, length_tag_key=${length_tag_key}, seed=${seed}, device=${device}, burst_pri_sec=${burst_pri_sec}, samp_rate=${samp_rate})
+  make: SionnaOFDMTx(config_file=${config_file}, fft_len=${fft_len}, ofdm_symbols=${ofdm_symbols}, cp_len=${cp_len}, subcarrier_spacing=${subcarrier_spacing}, center_freq=${center_freq}, length_tag_key=${length_tag_key}, seed=${seed}, device=${device}, idle_ms=${idle_ms}, time_lead_s=${time_lead_s}, uhd_burst_tags=${uhd_burst_tags}, samp_rate=${samp_rate})
   callbacks:
   - set_min_output_buffer(${minoutbuf})
 

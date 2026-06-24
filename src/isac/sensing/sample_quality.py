@@ -1,6 +1,6 @@
 """采集样本可检测性质量门控：LoS 路径强度 + 时延–多普勒谱峰突出度。"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -41,29 +41,6 @@ class SampleQualityResult:
     peak_prominence_db: float | None = None
     peak_delay_offset: int | None = None
     peak_doppler_offset: int | None = None
-
-
-@dataclass
-class QualityFilterStats:
-    """采集期拒绝采样统计。"""
-
-    accepted: int = 0
-    rejected: int = 0
-    reject_counts: dict[str, int] = field(default_factory=dict)
-
-    def record_reject(self, reason: RejectReason) -> None:
-        self.rejected += 1
-        self.reject_counts[reason] = self.reject_counts.get(reason, 0) + 1
-
-    def record_accept(self) -> None:
-        self.accepted += 1
-
-    def summary_line(self) -> str:
-        parts = ", ".join(f"{k}={v}" for k, v in sorted(self.reject_counts.items()))
-        return (
-            f"质量过滤: accepted={self.accepted}, rejected={self.rejected}"
-            + (f" ({parts})" if parts else "")
-        )
 
 
 def _extract_path_slices(
@@ -309,3 +286,6 @@ def evaluate_sample_quality(
         peak_doppler_offset=dd.peak_doppler_offset,
         peak_delay_offset=dd.peak_delay_offset,
     )
+
+
+from isac.data_collection.quality_filter import QualityFilterStats  # noqa: E402,F401

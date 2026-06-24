@@ -7,16 +7,19 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from bootstrap import setup_gnuradio_paths_from
+
+setup_gnuradio_paths_from(__file__)
+
 import numpy as np
 import pmt
 from gnuradio import gr
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_SRC = _REPO_ROOT / "src"
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
-
 from gr_config import GrcOverrides, grc_overrides_from_grc_vars, merge_config, resolve_config_path
+from gr_system import GrSystemContext, _get_context_cached, get_gr_system_context
 from sionna_tx import (
     TxPacket,
     get_tx_packet,
@@ -28,15 +31,33 @@ _warmed_rx_keys: set[Tuple[str, int, int, int, int, float, float, int, str]] = s
 
 @dataclass(frozen=True)
 class RxContext:
-    """缓存的 Sionna 接收处理上下文（GPU）。"""
+    """缓存的 GrSystemContext（接收 / DD 与 System.sensing 同源）。"""
 
-    x_rg: object
-    demodulator: object
-    delay_doppler: object
-    packet_len_time: int
-    packet_len_freq: int
-    fft_len: int
-    device: str
+    gr_ctx: GrSystemContext
+
+    @property
+    def packet_len_time(self) -> int:
+        return self.gr_ctx.packet_len_time
+
+    @property
+    def rx_packet_len(self) -> int:
+        return self.gr_ctx.rx_packet_len
+
+    @property
+    def packet_len_freq(self) -> int:
+        return self.gr_ctx.packet_len_freq
+
+    @property
+    def fft_len(self) -> int:
+        return self.gr_ctx.fft_len
+
+    @property
+    def device(self) -> str:
+        return self.gr_ctx.device
+
+    @property
+    def delay_doppler(self):
+        return self.gr_ctx.system.components.delay_doppler_spectrum
 
 
 def _cache_key_rx(
@@ -142,7 +163,8 @@ def prewarm_sionna_rx(
     )
     if first:
         print(
-            f"  时域包 {ctx.packet_len_time} 样点 → "
+            f"  TX 时域 {ctx.packet_len_time} 样点, "
+            f"RX 时域 {ctx.rx_packet_len} 样点 → "
             f"谱矩阵 {ctx.packet_len_freq}×{ctx.fft_len}"
         )
     return ctx
@@ -154,64 +176,21 @@ def _build_rx_context_impl_from_toml(
     device: str,
     tx_packet: TxPacket,
 ) -> RxContext:
-    import sionna
-
-    from isac.data_structures import SystemComponents, SystemParams
-    from isac.utils import load_config, set_random_seed
-
-    config = load_config(config_path)
-    params = SystemParams.from_dict(config)
-    set_random_seed(seed)
-    sionna.phy.config.device = device
-
-    comps = SystemComponents.build_from_params(params, device=device)
-
-    import torch
-
-    x_rg_t = torch.from_numpy(tx_packet.x_rg).to(device=device, dtype=torch.complex64)
-    cp = params.ofdm.cyclic_prefix_length
-    n_sym = params.ofdm.num_symbols
-    fft_size = params.ofdm.fft_size
-
-    return RxContext(
-        x_rg=x_rg_t,
-        demodulator=comps.demodulator,
-        delay_doppler=comps.delay_doppler_spectrum,
-        packet_len_time=n_sym * (fft_size + cp),
-        packet_len_freq=n_sym,
-        fft_len=fft_size,
-        device=device,
-    )
+    del tx_packet
+    gr_ctx = get_gr_system_context(str(config_path), seed=seed, device=device)
+    if gr_ctx._x_rg is None:
+        gr_ctx.transmit_tensors()
+    gr_ctx.ensure_rx_geometry()
+    return RxContext(gr_ctx=gr_ctx)
 
 
 def _build_rx_context_impl(effective, tx_packet: TxPacket) -> RxContext:
-    import sionna
-    import torch
-
-    from isac.data_structures import SystemComponents
-    from isac.utils import set_random_seed
-
-    params = effective.system_params
-    device = effective.device
-    set_random_seed(effective.seed)
-    sionna.phy.config.device = device
-
-    comps = SystemComponents.build_from_params(params, device=device)
-
-    x_rg_t = torch.from_numpy(tx_packet.x_rg).to(device=device, dtype=torch.complex64)
-    cp = params.ofdm.cyclic_prefix_length
-    n_sym = params.ofdm.num_symbols
-    fft_size = params.ofdm.fft_size
-
-    return RxContext(
-        x_rg=x_rg_t,
-        demodulator=comps.demodulator,
-        delay_doppler=comps.delay_doppler_spectrum,
-        packet_len_time=n_sym * (fft_size + cp),
-        packet_len_freq=n_sym,
-        fft_len=fft_size,
-        device=device,
-    )
+    del tx_packet
+    gr_ctx = _get_context_cached(effective.cache_key())
+    if gr_ctx._x_rg is None:
+        gr_ctx.transmit_tensors()
+    gr_ctx.ensure_rx_geometry()
+    return RxContext(gr_ctx=gr_ctx)
 
 
 def dd_matrix_to_log_magnitude(
@@ -243,36 +222,8 @@ def compute_delay_doppler_matrix(
     device: str,
 ) -> np.ndarray:
     """时域 RX → 距离-多普勒复数矩阵 (num_symbols, fft_size)。"""
-    import torch
-
-    y = np.ascontiguousarray(y_time, dtype=np.complex64).reshape(-1)
-    if y.size != ctx.packet_len_time:
-        raise ValueError(f"RX 长度 {y.size} != 期望 {ctx.packet_len_time}")
-
-    dev = device or ctx.device
-    y_t = torch.from_numpy(y).to(device=dev, dtype=torch.complex64)
-    y_batch = y_t.reshape(1, 1, 1, -1)
-    ctx_mgr = (
-        torch.cuda.device(dev) if str(dev).startswith("cuda") else _nullcontext()
-    )
-    with ctx_mgr:
-        y_rg = ctx.demodulator(y_batch).squeeze()
-        h = _estimate_channel_torch(ctx.x_rg, y_rg)
-        h_dd = ctx.delay_doppler(h)
-    return h_dd.detach().cpu().numpy().astype(np.complex64)
-
-
-def _estimate_channel_torch(x_rg, y_rg, eps: float = 1e-12):
-    denom = x_rg.abs().square() + eps
-    return y_rg * x_rg.conj() / denom
-
-
-class _nullcontext:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
+    del device
+    return ctx.gr_ctx.compute_delay_doppler(y_time)
 
 
 class _CudaRxWorker:
@@ -310,8 +261,11 @@ class _CudaRxWorker:
             idx = int(str(self._device).split(":")[1]) if ":" in str(self._device) else 0
             torch.cuda.set_device(idx)
 
-        dummy = np.zeros(self._ctx.packet_len_time, dtype=np.complex64)
-        compute_delay_doppler_matrix(dummy, self._ctx, self._device)
+        gr_ctx = self._ctx.gr_ctx
+        if not gr_ctx._rx_packet_len:
+            gr_ctx.ensure_rx_geometry()
+        y_warm = np.zeros(gr_ctx.rx_packet_len, dtype=np.complex64)
+        compute_delay_doppler_matrix(y_warm, self._ctx, self._device)
         self._ready.set()
 
         while True:
@@ -387,7 +341,7 @@ class SionnaDelayDopplerRx(gr.basic_block):
             cfg, seed=int(seed), device=str(device), tx_packet=pkt, **gr_kw
         )
         self._worker = _CudaRxWorker.get(self._ctx)
-        self._packet_len_time = self._ctx.packet_len_time
+        self._packet_len_time = self._ctx.rx_packet_len
         self._packet_len_out = self._ctx.packet_len_freq
         self._fft_len = int(fft_len)
         self._log_eps = float(log_eps)
@@ -423,6 +377,7 @@ class SionnaDelayDopplerRx(gr.basic_block):
                         if self._burst_mode:
                             self._burst_armed = False
                     self._in_buf.clear()
+                    self._packet_len_time = int(pmt.to_long(tag.value))
                     if self._burst_mode:
                         self._burst_armed = True
             if self._burst_mode and not self._burst_armed:

@@ -25,7 +25,6 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
-
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -35,12 +34,13 @@ from tqdm import tqdm
 from isac import PROJECT_ROOT
 from isac.datasets import CollectionMetadata, Dataset
 from isac.channel.rt.rx_target_tx_geometric import RxTargetTxGeometric
-from isac.sensing.sample_quality import (
+from isac.data_collection.quality_filter import (
+    MonteCarloSamplingParams,
+    QualityFilterConfig,
     QualityFilterStats,
-    SampleQualityConfig,
-    evaluate_sample_quality,
+    run_monte_carlo_with_quality_filter,
 )
-from isac.sensing.utils import doppler_to_velocity
+from isac.utils.metrics import doppler_to_velocity
 from isac.system import System
 from isac.channel import RTScene
 from isac.utils import csv_float2_scalar
@@ -91,11 +91,7 @@ class CollectionConfig:
     sensing_domain: str
     sensing_layout: SensingLayout
     log_per_step_sensing: bool
-    quality_filter: bool
-    require_los: bool
-    min_los_ratio: float
-    min_peak_prominence_db: float
-    max_bin_offset: int
+    quality: QualityFilterConfig
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> "CollectionConfig":
@@ -117,21 +113,7 @@ class CollectionConfig:
             sensing_domain=args.sensing_domain,
             sensing_layout=args.sensing_layout,
             log_per_step_sensing=args.log_per_step_sensing,
-            quality_filter=args.quality_filter,
-            require_los=args.require_los,
-            min_los_ratio=float(args.min_los_ratio),
-            min_peak_prominence_db=float(args.min_peak_prominence_db),
-            max_bin_offset=int(args.max_bin_offset),
-        )
-
-    def sample_quality_config(self) -> SampleQualityConfig:
-        return SampleQualityConfig(
-            require_los=self.require_los,
-            min_los_ratio=self.min_los_ratio,
-            min_peak_prominence_db=self.min_peak_prominence_db,
-            max_bin_offset=self.max_bin_offset,
-            rx_idx=RX_IDX,
-            tx_idx=TX_IDX,
+            quality=QualityFilterConfig.from_args(args),
         )
 
 
@@ -502,7 +484,7 @@ def _build_collection_metadata(
         max_trials_factor=int(args.max_trials_factor),
         speed_min=float(args.speed_range[0]),
         speed_max=float(args.speed_range[1]),
-        quality_filter=cfg.quality_filter,
+        quality_filter=cfg.quality.enabled,
         quality_accepted=quality_stats.accepted if quality_stats else None,
         quality_rejected=quality_stats.rejected if quality_stats else None,
         quality_reject_no_valid_paths=(
@@ -521,12 +503,12 @@ def _build_collection_metadata(
             if quality_stats
             else None
         ),
-        require_los=cfg.require_los if cfg.quality_filter else None,
-        min_los_ratio=cfg.min_los_ratio if cfg.quality_filter else None,
+        require_los=cfg.quality.require_los if cfg.quality.enabled else None,
+        min_los_ratio=cfg.quality.min_los_ratio if cfg.quality.enabled else None,
         min_peak_prominence_db=(
-            cfg.min_peak_prominence_db if cfg.quality_filter else None
+            cfg.quality.min_peak_prominence_db if cfg.quality.enabled else None
         ),
-        max_bin_offset=cfg.max_bin_offset if cfg.quality_filter else None,
+        max_bin_offset=cfg.quality.max_bin_offset if cfg.quality.enabled else None,
     )
 
 
@@ -960,111 +942,9 @@ def _process_episode(
         scene_frames.append(_capture_scene_frame(scene))
 
 
-def _run_monte_carlo_with_quality_filter(
-    *,
-    system: System,
-    scene: object,
-    target: object,
-    cfg: CollectionConfig,
-    args: argparse.Namespace,
-    roi_box3d: tuple,
-    h_freq_list: list[np.ndarray],
-    cir_a_list: list[np.ndarray],
-    cir_tau_list: list[np.ndarray],
-    target_pos_list: list[np.ndarray],
-    target_vel_list: list[np.ndarray],
-    scene_frames: list[np.ndarray],
-    csv_rows: list[dict[str, str | int]],
-    out_dir: Path,
-) -> QualityFilterStats:
-    """拒绝采样直至凑满 ``num_samples`` 个可检测样本。"""
-    num_target = int(args.num_samples)
-    max_trials = num_target * int(args.quality_max_trials_factor)
-    rng = np.random.default_rng(int(args.seed))
-    quality_stats = QualityFilterStats()
-    quality_cfg = cfg.sample_quality_config()
-    sensing_perf = system.components.sensing_performance
-
-    accepted = 0
-    trials = 0
-    pbar = tqdm(total=num_target, desc="MC 数据集(质量过滤)", unit="sample")
-
-    while accepted < num_target and trials < max_trials:
-        trials += 1
-        pos_batch = tg.generate_monte_carlo_points(
-            scene,
-            roi_box3d,
-            1,
-            sampling_mode=args.sampling_mode,
-            safe_margin=args.safe_margin,
-            max_trials_factor=args.max_trials_factor,
-            rng=rng,
-        )
-        vel_batch = tg.sample_monte_carlo_velocities(
-            1,
-            rng,
-            None,
-            (float(args.speed_range[0]), float(args.speed_range[1])),
-            args.velocity_sampling,
-            None,
-            None,
-            None,
-        )
-        pos = pos_batch[0]
-        vel = vel_batch[0]
-
-        _update_rt_target_pose_from_velocity(target, pos, vel)
-        true_range, true_velocity = _los_truth_at_first_triple(scene, system.device)
-        cfr = scene.cfr_numpy(system.components.rg)
-
-        result = evaluate_sample_quality(
-            scene,
-            cfr,
-            float(true_range.item()),
-            float(true_velocity.item()),
-            sensing_perf,
-            cfg=quality_cfg,
-            device=torch.device(system.device),
-        )
-        if not result.passed:
-            quality_stats.record_reject(result.reason or "low_peak_prominence")
-            continue
-
-        quality_stats.record_accept()
-        _process_episode(
-            system=system,
-            scene=scene,
-            cfg=cfg,
-            episode_idx=accepted,
-            pos=pos,
-            vel=vel,
-            h_freq_list=h_freq_list,
-            cir_a_list=cir_a_list,
-            cir_tau_list=cir_tau_list,
-            target_pos_list=target_pos_list,
-            target_vel_list=target_vel_list,
-            scene_frames=scene_frames,
-            csv_rows=csv_rows,
-            out_dir=out_dir,
-        )
-        accepted += 1
-        pbar.update(1)
-
-    pbar.close()
-    if accepted < num_target:
-        raise RuntimeError(
-            f"质量过滤后仅采集 {accepted}/{num_target} 个样本，"
-            f"尝试 {trials}/{max_trials} 次。请放宽 ROI/阈值或增大 --quality_max_trials_factor。"
-        )
-    print(quality_stats.summary_line())
-    return quality_stats
-
-
 # ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
-
-
 def main() -> None:
     """生成 episode → 可选感知 → 写出 CSV / HDF5 / GIF。"""
     # 1. 解析 CLI、固定随机种子、整理导出/感知选项
@@ -1093,22 +973,46 @@ def main() -> None:
     csv_rows: list[dict[str, str | int]] = []
     quality_stats: QualityFilterStats | None = None
 
-    if cfg.quality_filter:
-        quality_stats = _run_monte_carlo_with_quality_filter(
-            system=system,
+    if cfg.quality.enabled:
+        mc_sampling = MonteCarloSamplingParams(
+            sampling_mode=args.sampling_mode,
+            safe_margin=float(args.safe_margin),
+            max_trials_factor=int(args.max_trials_factor),
+            speed_range=(float(args.speed_range[0]), float(args.speed_range[1])),
+            velocity_sampling=args.velocity_sampling,
+        )
+
+        def _on_accepted(episode_idx: int, pos: np.ndarray, vel: np.ndarray) -> None:
+            _process_episode(
+                system=system,
+                scene=scene,
+                cfg=cfg,
+                episode_idx=episode_idx,
+                pos=pos,
+                vel=vel,
+                h_freq_list=h_freq_list,
+                cir_a_list=cir_a_list,
+                cir_tau_list=cir_tau_list,
+                target_pos_list=target_pos_list,
+                target_vel_list=target_vel_list,
+                scene_frames=scene_frames,
+                csv_rows=csv_rows,
+                out_dir=SCRIPT_OUT_DIR,
+            )
+
+        quality_stats = run_monte_carlo_with_quality_filter(
             scene=scene,
             target=target,
-            cfg=cfg,
-            args=args,
+            rg=system.components.rg,
+            device=system.device,
+            sensing_performance=system.components.sensing_performance,
+            quality_cfg=cfg.quality,
+            num_samples=int(args.num_samples),
+            seed=int(args.seed),
             roi_box3d=roi_box3d,
-            h_freq_list=h_freq_list,
-            cir_a_list=cir_a_list,
-            cir_tau_list=cir_tau_list,
-            target_pos_list=target_pos_list,
-            target_vel_list=target_vel_list,
-            scene_frames=scene_frames,
-            csv_rows=csv_rows,
-            out_dir=SCRIPT_OUT_DIR,
+            sampling=mc_sampling,
+            update_target_pose=_update_rt_target_pose_from_velocity,
+            process_accepted=_on_accepted,
         )
         n_ep = quality_stats.accepted
     else:
@@ -1133,41 +1037,15 @@ def main() -> None:
             print("无有效 Episode，结束")
             return
 
-        quality_cfg = cfg.sample_quality_config() if cfg.quality_filter else None
-        sensing_perf = system.components.sensing_performance
-        if cfg.quality_filter:
-            quality_stats = QualityFilterStats()
-
-        accepted_idx = 0
         for i in tqdm(range(n_ep), desc="MC 数据集", unit="sample"):
             pos = pos_arr[i]
             vel = vel_arr[i]
             _update_rt_target_pose_from_velocity(target, pos, vel)
-
-            if cfg.quality_filter:
-                true_range, true_velocity = _los_truth_at_first_triple(
-                    scene, system.device
-                )
-                cfr = scene.cfr_numpy(system.components.rg)
-                result = evaluate_sample_quality(
-                    scene,
-                    cfr,
-                    float(true_range.item()),
-                    float(true_velocity.item()),
-                    sensing_perf,
-                    cfg=quality_cfg,
-                    device=torch.device(system.device),
-                )
-                if not result.passed:
-                    quality_stats.record_reject(result.reason or "low_peak_prominence")
-                    continue
-                quality_stats.record_accept()
-
             _process_episode(
                 system=system,
                 scene=scene,
                 cfg=cfg,
-                episode_idx=accepted_idx if cfg.quality_filter else i,
+                episode_idx=i,
                 pos=pos,
                 vel=vel,
                 h_freq_list=h_freq_list,
@@ -1179,14 +1057,6 @@ def main() -> None:
                 csv_rows=csv_rows,
                 out_dir=SCRIPT_OUT_DIR,
             )
-            accepted_idx += 1
-
-        if cfg.quality_filter:
-            print(quality_stats.summary_line())
-            n_ep = accepted_idx
-            if n_ep == 0:
-                print("质量过滤后无有效样本，结束")
-                return
 
     collection_meta = _build_collection_metadata(
         args, cfg, scene_slug, roi_box3d, quality_stats=quality_stats
