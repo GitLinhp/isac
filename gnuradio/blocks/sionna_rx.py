@@ -7,14 +7,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from bootstrap import setup_gnuradio_paths_from
+
+setup_gnuradio_paths_from(__file__)
+
 import numpy as np
 import pmt
 from gnuradio import gr
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_SRC = _REPO_ROOT / "src"
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
 
 from gr_config import GrcOverrides, grc_overrides_from_grc_vars, merge_config, resolve_config_path
 from gr_system import GrSystemContext, _get_context_cached, get_gr_system_context

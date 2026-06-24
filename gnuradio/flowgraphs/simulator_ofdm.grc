@@ -18,7 +18,7 @@ options:
     qt_qss_theme: ''
     realtime_scheduling: ''
     run: 'True'
-    run_command: /home/caict/radioconda/envs/ISAC/bin/python -u run_simulator_ofdm.py
+    run_command: '{python} -u run_simulator_ofdm.py'
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
@@ -294,10 +294,11 @@ blocks:
     comment: ''
     imports: "import numpy as np\nimport sys\nimport os\nfrom pathlib import Path\n\
       _GRC_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir()\
-      \ else os.getcwd()\n_REPO = str(Path(_GRC_DIR).parent)\n_SRC = _REPO + '/src'\n\
-      for _p in (_GRC_DIR, _SRC):\n    if _p not in sys.path:\n        sys.path.insert(0,\
-      \ _p)\n# \u8C03\u53C2\u4F18\u5148\u6539 GRC \u53D8\u91CF\uFF1BSionna \u5757\u5185\
-      \ merge_config(TOML, GRC) \u8986\u76D6\u540C\u540D\u5B57\u6BB5"
+      \ else os.getcwd()\n_root = str(Path(_GRC_DIR).parent)\nif _root not in sys.path:\n\
+      \    sys.path.insert(0, _root)\nfrom bootstrap import setup_gnuradio_paths_from\n\
+      setup_gnuradio_paths_from(_GRC_DIR)\n# \u8C03\u53C2\u4F18\u5148\u6539 GRC\
+      \ \u53D8\u91CF\uFF1BSionna \u5757\u5185 merge_config(TOML, GRC) \u8986\u76D6\
+      \u540C\u540D\u5B57\u6BB5"
   states:
     bus_sink: false
     bus_source: false

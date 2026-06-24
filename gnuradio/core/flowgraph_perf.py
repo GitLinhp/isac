@@ -1,5 +1,14 @@
 """Flowgraph 感知性能：由 merge_config 计算，更新 Qt 滑块范围（谱图轴在 grcc 时用默认值）。"""
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from bootstrap import setup_gnuradio_paths_from
+
+setup_gnuradio_paths_from(__file__)
 
 from gr_config import EffectiveConfig, grc_overrides_from_grc_vars, merge_config, resolve_config_path
 

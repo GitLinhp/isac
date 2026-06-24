@@ -5,11 +5,13 @@ import os
 import sys
 from pathlib import Path
 
-_GRC = Path(__file__).resolve().parent
-_REPO = _GRC.parent
-for _p in (_GRC, str(_REPO / "src")):
-    if _p not in sys.path:
-        sys.path.insert(0, str(_p))
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from bootstrap import ensure_isac_importable, setup_gnuradio_paths_from
+
+_, _REPO = setup_gnuradio_paths_from(__file__)
+ensure_isac_importable()
 
 import numpy as np
 

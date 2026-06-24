@@ -5,16 +5,16 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from bootstrap import setup_gnuradio_paths_from
+
+setup_gnuradio_paths_from(__file__)
+
 import numpy as np
 import pmt
 from gnuradio import gr
-
-_GRC = Path(__file__).resolve().parent
-_REPO = _GRC.parent
-_SRC = _REPO / "src"
-for _p in (_GRC, str(_SRC)):
-    if _p not in sys.path:
-        sys.path.insert(0, str(_p))
 
 from gr_config import resolve_config_path  # noqa: E402
 from gr_system import GrSystemContext, get_gr_system_context, ofdm_packet_len_time  # noqa: E402
