@@ -34,7 +34,7 @@ _TAG_SOB = pmt.intern("tx_sob")
 _TAG_EOB = pmt.intern("tx_eob")
 _TAG_TIME = pmt.intern("tx_time")
 
-_DEFAULT_CONFIG = "implementaion/ofdm_burst_source.toml"
+_DEFAULT_CONFIG = "implementaion/ofdm_burst_source_large_sacle.toml"
 
 
 def _log_override(label: str, toml_val, grc_val) -> None:

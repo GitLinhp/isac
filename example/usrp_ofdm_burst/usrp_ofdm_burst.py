@@ -72,15 +72,23 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
+        self.subcarrier_spacing = subcarrier_spacing = 15000.0
+        self.num_symbols = num_symbols = 32
+        self.fft_size = fft_size = 64
+        self.cp_len = cp_len = 0
         self.tx_amp = tx_amp = 0.3
         self.tone_freq = tone_freq = 100e3
         self.time_mag_trig_level = time_mag_trig_level = 5e-3
+        self.time_lead_s = time_lead_s = 0.3
         self.time_iq_trig_level = time_iq_trig_level = 3e-3
-        self.samp_rate = samp_rate = 960000.0
-        self.ofdm_burst_samples = ofdm_burst_samples = 2048
-        self.idle_ms = idle_ms = 400
+        self.startup_delay_s = startup_delay_s = 0.2
+        self.samp_rate = samp_rate = fft_size * subcarrier_spacing
+        self.ofdm_burst_samples = ofdm_burst_samples = num_symbols * (fft_size + cp_len)
+        self.idle_ms = idle_ms = 900
         self.gui_update_time_ms = gui_update_time_ms = 10
         self.freq_trig_level = freq_trig_level = -85
+        self.device = device = "cpu"
+        self.config_file = config_file = "implementaion/ofdm_burst_source.toml"
         self.TX_gain = TX_gain = 50
         self.RX_gain = RX_gain = 50
 
@@ -88,6 +96,13 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
+        self._tx_amp_range = qtgui.Range(0, 0.5, 0.01, 0.3, 200)
+        self._tx_amp_win = qtgui.RangeWidget(self._tx_amp_range, self.set_tx_amp, "tx_amp", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._tx_amp_win, 0, 2, 1, 1)
+        for r in range(0, 1):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(2, 3):
+            self.top_grid_layout.setColumnStretch(c, 1)
         self._time_mag_trig_level_range = qtgui.Range(0, 0.5, 0.005, 5e-3, 200)
         self._time_mag_trig_level_win = qtgui.RangeWidget(self._time_mag_trig_level_range, self.set_time_mag_trig_level, "time_mag_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._time_mag_trig_level_win, 1, 0, 1, 1)
@@ -132,7 +147,7 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
             ),
         )
         self.uhd_usrp_source_0_0.set_samp_rate(samp_rate)
-        self.uhd_usrp_source_0_0.set_time_now(uhd.time_spec(time.time()), uhd.ALL_MBOARDS)
+        # No synchronization enforced.
 
         self.uhd_usrp_source_0_0.set_center_freq(freq, 0)
         self.uhd_usrp_source_0_0.set_antenna("RX1", 0)
@@ -252,6 +267,54 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
 
         self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
+        self.qtgui_time_sink_tx = qtgui.time_sink_f(
+            int(ofdm_burst_samples), #size
+            samp_rate, #samp_rate
+            'TX Time |IQ|', #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_time_sink_tx.set_update_time(gui_update_time_ms * 1e-3)
+        self.qtgui_time_sink_tx.set_y_axis(0, 1.0)
+
+        self.qtgui_time_sink_tx.set_y_label('|IQ|', "")
+
+        self.qtgui_time_sink_tx.enable_tags(True)
+        self.qtgui_time_sink_tx.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0, 0, 0, "tx_sob")
+        self.qtgui_time_sink_tx.enable_autoscale(False)
+        self.qtgui_time_sink_tx.enable_grid(False)
+        self.qtgui_time_sink_tx.enable_axis_labels(True)
+        self.qtgui_time_sink_tx.enable_control_panel(True)
+        self.qtgui_time_sink_tx.enable_stem_plot(False)
+
+
+        labels = ['TX Mag', '', 'Signal 3', 'Signal 4', 'Signal 5',
+            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ['blue', 'red', 'green', 'black', 'cyan',
+            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+        styles = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        markers = [-1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1]
+
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_time_sink_tx.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_time_sink_tx.set_line_label(i, labels[i])
+            self.qtgui_time_sink_tx.set_line_width(i, widths[i])
+            self.qtgui_time_sink_tx.set_line_color(i, colors[i])
+            self.qtgui_time_sink_tx.set_line_style(i, styles[i])
+            self.qtgui_time_sink_tx.set_line_marker(i, markers[i])
+            self.qtgui_time_sink_tx.set_line_alpha(i, alphas[i])
+
+        self._qtgui_time_sink_tx_win = sip.wrapinstance(self.qtgui_time_sink_tx.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_time_sink_tx_win)
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
             1024, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
@@ -294,9 +357,10 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
-        self.ofdm_burst_source = ofdm_burst_source.blk(config_file="implementaion/ofdm_burst_source.toml", idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=0.05, device="cpu", seed=42)
+        self.ofdm_burst_source = ofdm_burst_source.blk(config_file=config_file, idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=time_lead_s, startup_delay_s=startup_delay_s, num_symbols=num_symbols, fft_size=fft_size, subcarrier_spacing=subcarrier_spacing, cp_len=cp_len, device=device, seed=42)
         self.blocks_tag_debug_0 = blocks.tag_debug(gr.sizeof_gr_complex*1, "", '')
         self.blocks_tag_debug_0.set_display(True)
+        self.blocks_complex_to_mag_tx = blocks.complex_to_mag(1)
         self.blocks_complex_to_mag_0 = blocks.complex_to_mag(1)
 
 
@@ -304,6 +368,8 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.connect((self.blocks_complex_to_mag_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.blocks_complex_to_mag_tx, 0), (self.qtgui_time_sink_tx, 0))
+        self.connect((self.ofdm_burst_source, 0), (self.blocks_complex_to_mag_tx, 0))
         self.connect((self.ofdm_burst_source, 0), (self.blocks_tag_debug_0, 0))
         self.connect((self.ofdm_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.blocks_complex_to_mag_0, 0))
@@ -333,6 +399,39 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         self.uhd_usrp_sink_0_0.set_center_freq(self.freq, 0)
         self.uhd_usrp_source_0_0.set_center_freq(self.freq, 0)
 
+    def get_subcarrier_spacing(self):
+        return self.subcarrier_spacing
+
+    def set_subcarrier_spacing(self, subcarrier_spacing):
+        self.subcarrier_spacing = subcarrier_spacing
+        self.set_samp_rate(self.fft_size * self.subcarrier_spacing)
+        self.ofdm_burst_source.subcarrier_spacing = self.subcarrier_spacing
+
+    def get_num_symbols(self):
+        return self.num_symbols
+
+    def set_num_symbols(self, num_symbols):
+        self.num_symbols = num_symbols
+        self.set_ofdm_burst_samples(self.num_symbols * (self.fft_size + self.cp_len))
+        self.ofdm_burst_source.num_symbols = self.num_symbols
+
+    def get_fft_size(self):
+        return self.fft_size
+
+    def set_fft_size(self, fft_size):
+        self.fft_size = fft_size
+        self.set_ofdm_burst_samples(self.num_symbols * (self.fft_size + self.cp_len))
+        self.set_samp_rate(self.fft_size * self.subcarrier_spacing)
+        self.ofdm_burst_source.fft_size = self.fft_size
+
+    def get_cp_len(self):
+        return self.cp_len
+
+    def set_cp_len(self, cp_len):
+        self.cp_len = cp_len
+        self.set_ofdm_burst_samples(self.num_symbols * (self.fft_size + self.cp_len))
+        self.ofdm_burst_source.cp_len = self.cp_len
+
     def get_tx_amp(self):
         return self.tx_amp
 
@@ -353,12 +452,26 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         self.time_mag_trig_level = time_mag_trig_level
         self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, qtgui.TRIG_SLOPE_POS, self.time_mag_trig_level, 0, 0, "")
 
+    def get_time_lead_s(self):
+        return self.time_lead_s
+
+    def set_time_lead_s(self, time_lead_s):
+        self.time_lead_s = time_lead_s
+        self.ofdm_burst_source.time_lead_s = self.time_lead_s
+
     def get_time_iq_trig_level(self):
         return self.time_iq_trig_level
 
     def set_time_iq_trig_level(self, time_iq_trig_level):
         self.time_iq_trig_level = time_iq_trig_level
         self.qtgui_time_sink_x_1.set_trigger_mode(qtgui.TRIG_MODE_NORM, qtgui.TRIG_SLOPE_POS, self.time_iq_trig_level, 0, 0, "")
+
+    def get_startup_delay_s(self):
+        return self.startup_delay_s
+
+    def set_startup_delay_s(self, startup_delay_s):
+        self.startup_delay_s = startup_delay_s
+        self.ofdm_burst_source.startup_delay_s = self.startup_delay_s
 
     def get_samp_rate(self):
         return self.samp_rate
@@ -367,6 +480,7 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
+        self.qtgui_time_sink_tx.set_samp_rate(self.samp_rate)
         self.qtgui_time_sink_x_1.set_samp_rate(self.samp_rate)
         self.uhd_usrp_sink_0_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_source_0_0.set_samp_rate(self.samp_rate)
@@ -391,6 +505,7 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
         self.gui_update_time_ms = gui_update_time_ms
         self.qtgui_freq_sink_x_0.set_update_time((self.gui_update_time_ms * 1e-3))
         self.qtgui_time_sink_x_0.set_update_time(self.gui_update_time_ms * 1e-3)
+        self.qtgui_time_sink_tx.set_update_time(self.gui_update_time_ms * 1e-3)
         self.qtgui_time_sink_x_1.set_update_time(self.gui_update_time_ms * 1e-3)
 
     def get_freq_trig_level(self):
@@ -399,6 +514,20 @@ class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
     def set_freq_trig_level(self, freq_trig_level):
         self.freq_trig_level = freq_trig_level
         self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, self.freq_trig_level, 0, "")
+
+    def get_device(self):
+        return self.device
+
+    def set_device(self, device):
+        self.device = device
+        self.ofdm_burst_source.device = self.device
+
+    def get_config_file(self):
+        return self.config_file
+
+    def set_config_file(self, config_file):
+        self.config_file = config_file
+        self.ofdm_burst_source.config_file = self.config_file
 
     def get_TX_gain(self):
         return self.TX_gain

@@ -38,7 +38,8 @@ class blk(gr.basic_block):
         burst_ms=100.0,
         idle_ms=400.0,
         tx_amp=0.3,
-        time_lead_s=0.05,
+        time_lead_s=0.3,
+        startup_delay_s=0.2,
     ):
         """
         参数:
