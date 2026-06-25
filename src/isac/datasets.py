@@ -12,6 +12,8 @@ from typing import Any
 import h5py
 import numpy as np
 
+from isac.utils.target_generation import RoiBox3D
+
 
 _DATASET_KEY_CFR = "channel_frequency_response"
 """CFR，与 OFDM 频率网格一致。"""
@@ -51,7 +53,7 @@ class CollectionMetadata:
     """``run_dataset_collection.py`` 一次采集运行的可复现配置摘要。
 
     序列化到 HDF5 根属性 ``collection_<field>``（见 ``write_hdf5_attrs``）。
-    蒙特卡洛采集含 ``roi_*``、``quality_*`` 等字段。
+    蒙特卡洛采集含 ``roi``、``quality_*`` 等字段。
     """
 
     seed: int
@@ -61,11 +63,7 @@ class CollectionMetadata:
     num_samples: int | None = None
     run_sensing: bool = False
     save_cir: bool = False
-    roi_xmin: float | None = None
-    roi_xmax: float | None = None
-    roi_ymin: float | None = None
-    roi_ymax: float | None = None
-    roi_z: float = 0.0
+    roi: RoiBox3D | None = None
     sampling_mode: str | None = None
     velocity_sampling: str | None = None
     safe_margin: float | None = None
@@ -93,14 +91,9 @@ class CollectionMetadata:
             "scene_slug": self.scene_slug,
             "run_sensing": self.run_sensing,
             "save_cir": self.save_cir,
-            "roi_z": self.roi_z,
         }
         optional: dict[str, str | int | float | None] = {
             "num_samples": self.num_samples,
-            "roi_xmin": self.roi_xmin,
-            "roi_xmax": self.roi_xmax,
-            "roi_ymin": self.roi_ymin,
-            "roi_ymax": self.roi_ymax,
             "sampling_mode": self.sampling_mode,
             "velocity_sampling": self.velocity_sampling,
             "safe_margin": self.safe_margin,
@@ -124,6 +117,33 @@ class CollectionMetadata:
         for key, val in optional.items():
             if val is not None:
                 f.attrs[f"{_META_PREFIX_COLLECTION}{key}"] = val
+        if self.roi is not None:
+            (xmin, xmax), (ymin, ymax), (z_lo, z_hi) = self.roi
+            f.attrs[f"{_META_PREFIX_COLLECTION}roi"] = np.array(
+                [xmin, xmax, ymin, ymax, z_lo, z_hi], dtype=np.float64
+            )
+
+    @staticmethod
+    def _roi_from_hdf5_attrs(f: h5py.File, _opt) -> RoiBox3D | None:
+        roi_key = f"{_META_PREFIX_COLLECTION}roi"
+        if roi_key in f.attrs:
+            arr = np.asarray(f.attrs[roi_key], dtype=np.float64).ravel()
+            if arr.size >= 6:
+                return (
+                    (float(arr[0]), float(arr[1])),
+                    (float(arr[2]), float(arr[3])),
+                    (float(arr[4]), float(arr[5])),
+                )
+        xmin, xmax = _opt("roi_xmin"), _opt("roi_xmax")
+        ymin, ymax = _opt("roi_ymin"), _opt("roi_ymax")
+        if xmin is None or xmax is None or ymin is None or ymax is None:
+            return None
+        z_val = float(f.attrs.get(f"{_META_PREFIX_COLLECTION}roi_z", 0.0))
+        return (
+            (float(xmin), float(xmax)),
+            (float(ymin), float(ymax)),
+            (z_val, z_val),
+        )
 
     @classmethod
     def read_hdf5_attrs(cls, f: h5py.File) -> "CollectionMetadata | None":
@@ -148,11 +168,7 @@ class CollectionMetadata:
                 f.attrs.get(f"{_META_PREFIX_COLLECTION}run_sensing", False)
             ),
             save_cir=bool(f.attrs.get(f"{_META_PREFIX_COLLECTION}save_cir", False)),
-            roi_xmin=float(_opt("roi_xmin")) if _opt("roi_xmin") is not None else None,
-            roi_xmax=float(_opt("roi_xmax")) if _opt("roi_xmax") is not None else None,
-            roi_ymin=float(_opt("roi_ymin")) if _opt("roi_ymin") is not None else None,
-            roi_ymax=float(_opt("roi_ymax")) if _opt("roi_ymax") is not None else None,
-            roi_z=float(f.attrs.get(f"{_META_PREFIX_COLLECTION}roi_z", 0.0)),
+            roi=cls._roi_from_hdf5_attrs(f, _opt),
             sampling_mode=(
                 str(_opt("sampling_mode"))
                 if _opt("sampling_mode") is not None
@@ -235,11 +251,15 @@ class CollectionMetadata:
         )
 
     def format_roi(self) -> str:
-        if self.roi_xmin is None:
+        if self.roi is None:
             return "(not set)"
+        (xmin, xmax), (ymin, ymax), (z_lo, z_hi) = self.roi
+        z_part = (
+            f"z={z_lo:.2f}" if z_lo == z_hi else f"z=[{z_lo:.2f}, {z_hi:.2f}]"
+        )
         return (
-            f"x=[{self.roi_xmin:.2f}, {self.roi_xmax:.2f}], "
-            f"y=[{self.roi_ymin:.2f}, {self.roi_ymax:.2f}], z={self.roi_z:.2f}"
+            f"x=[{xmin:.2f}, {xmax:.2f}], "
+            f"y=[{ymin:.2f}, {ymax:.2f}], {z_part}"
         )
 
 

@@ -1,0 +1,225 @@
+"""平面 ROI 内位置与速度采样：给定条数、四元组 ROI 与分布，打印 3D 位姿。
+
+用法示例::
+
+    python script/model_training/run_sample_roi_positions.py \\
+        --num_samples 5 \\
+        --roi 10 60 -20 20 \\
+        --sampling_mode uniform \\
+        --speed_range 1 5 \\
+        --speed_sampling_mode gaussian \\
+        --seed 0
+
+平面 ROI 为 ``XMIN XMAX YMIN YMAX``，位置 z 固定为 0；速度方向为 xy 平面均匀随机，
+速度模值在 ``--speed_range`` 内按 ``--speed_sampling_mode`` 采样。不做 RT 场景或障碍物过滤。
+"""
+
+from __future__ import annotations
+
+import argparse
+from typing import Literal
+
+import numpy as np
+from tabulate import tabulate
+
+SamplingMode = Literal["uniform", "gaussian"]
+
+
+def parse_roi_xy(
+    roi4: list[float] | tuple[float, ...],
+) -> tuple[float, float, float, float]:
+    """解析平面 ROI 四元组，返回 ``(x_lo, x_hi, y_lo, y_hi)``。"""
+    if len(roi4) != 4:
+        raise ValueError("平面 ROI 须为四元组：XMIN XMAX YMIN YMAX")
+    x_lo, x_hi, y_lo, y_hi = (float(v) for v in roi4)
+    for name, lo, hi in (("x", x_lo, x_hi), ("y", y_lo, y_hi)):
+        if not np.isfinite(lo) or not np.isfinite(hi):
+            raise ValueError(f"ROI 维度 `{name}` 非法：须为有限值")
+        if lo > hi:
+            raise ValueError(f"ROI 维度 `{name}` 非法：须满足 min <= max")
+    return x_lo, x_hi, y_lo, y_hi
+
+
+def parse_speed_range(
+    pair: list[float] | tuple[float, ...],
+) -> tuple[float, float]:
+    """解析速度模值范围，返回 ``(smin, smax)``。"""
+    if len(pair) != 2:
+        raise ValueError("speed_range 须为二元组：MIN MAX")
+    smin, smax = float(pair[0]), float(pair[1])
+    if not np.isfinite(smin) or not np.isfinite(smax):
+        raise ValueError("speed_range 须为有限值")
+    if smin < 0 or smax <= smin:
+        raise ValueError("speed_range 须满足 0 <= min < max")
+    return smin, smax
+
+
+def sample_positions(
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+    num_samples: int,
+    sampling_mode: SamplingMode,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """在平面 ROI 内采样位置，返回形状 ``(num_samples, 3)``。"""
+    if num_samples <= 0:
+        raise ValueError("num_samples 必须大于 0")
+    if sampling_mode not in ("uniform", "gaussian"):
+        raise ValueError("sampling_mode 仅支持 'uniform' 或 'gaussian'")
+
+    n = int(num_samples)
+    if sampling_mode == "uniform":
+        x = rng.uniform(x_lo, x_hi, size=n)
+        y = rng.uniform(y_lo, y_hi, size=n)
+        z = np.zeros(n, dtype=np.float64)
+        return np.column_stack((x, y, z)).astype(np.float64)
+
+    center = np.array([(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, 0.0], dtype=np.float64)
+    std = np.array(
+        [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0],
+        dtype=np.float64,
+    )
+    pts = rng.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
+    pts = np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
+    return pts
+
+
+def sample_speeds(
+    num_samples: int,
+    smin: float,
+    smax: float,
+    sampling_mode: SamplingMode,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples,)``。"""
+    if num_samples <= 0:
+        raise ValueError("num_samples 必须大于 0")
+    if sampling_mode not in ("uniform", "gaussian"):
+        raise ValueError("speed_sampling_mode 仅支持 'uniform' 或 'gaussian'")
+
+    n = int(num_samples)
+    if sampling_mode == "uniform":
+        return rng.uniform(smin, smax, size=n).astype(np.float64)
+
+    center = (smin + smax) / 2.0
+    std = (smax - smin) / 6.0
+    speeds = rng.normal(loc=center, scale=std, size=n).astype(np.float64)
+    return np.clip(speeds, smin, smax)
+
+
+def sample_planar_directions(
+    num_samples: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """xy 平面均匀随机单位方向，返回形状 ``(num_samples, 3)``，``vz=0``。"""
+    n = int(num_samples)
+    theta = rng.uniform(0.0, 2.0 * np.pi, size=n)
+    dirs = np.column_stack(
+        (np.cos(theta), np.sin(theta), np.zeros(n, dtype=np.float64))
+    )
+    return dirs.astype(np.float64)
+
+
+def sample_velocities(
+    num_samples: int,
+    smin: float,
+    smax: float,
+    speed_sampling_mode: SamplingMode,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """采样平面速度向量，返回形状 ``(num_samples, 3)``。"""
+    speeds = sample_speeds(num_samples, smin, smax, speed_sampling_mode, rng)
+    dirs = sample_planar_directions(num_samples, rng)
+    return (speeds[:, None] * dirs).astype(np.float64)
+
+
+def argument_parser() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="平面 ROI 内采样位置与速度并打印（位置 z=0，速度方向在 xy 平面）"
+    )
+    parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=10,
+        help="采样条数",
+    )
+    parser.add_argument(
+        "--roi",
+        nargs=4,
+        type=float,
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
+        default=[0.0, 80.0, -40.0, 40.0],
+        help="平面 ROI 四元组",
+    )
+    parser.add_argument(
+        "--sampling_mode",
+        type=str,
+        default="uniform",
+        choices=["uniform", "gaussian"],
+        help="位置采样分布（均匀或高斯）",
+    )
+    parser.add_argument(
+        "--speed_range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        default=[0.1, 10.0],
+        help="速度模值范围 (m/s)",
+    )
+    parser.add_argument(
+        "--speed_sampling_mode",
+        type=str,
+        default="uniform",
+        choices=["uniform", "gaussian"],
+        help="速度模值采样分布（均匀或高斯）",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="随机种子",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = argument_parser()
+    x_lo, x_hi, y_lo, y_hi = parse_roi_xy(args.roi)
+    smin, smax = parse_speed_range(args.speed_range)
+    rng = np.random.default_rng(int(args.seed))
+    n = int(args.num_samples)
+    positions = sample_positions(
+        x_lo,
+        x_hi,
+        y_lo,
+        y_hi,
+        n,
+        args.sampling_mode,
+        rng,
+    )
+    velocities = sample_velocities(
+        n,
+        smin,
+        smax,
+        args.speed_sampling_mode,
+        rng,
+    )
+    speeds = np.linalg.norm(velocities, axis=1)
+
+    print(
+        f"# n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
+        f"pos_mode={args.sampling_mode}, speed_range=[{smin}, {smax}], "
+        f"speed_mode={args.speed_sampling_mode}, seed={args.seed}"
+    )
+    headers = ["idx", "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z", "speed"]
+    rows = [
+        [i, *pos, *vel, float(spd)]
+        for i, (pos, vel, spd) in enumerate(zip(positions, velocities, speeds))
+    ]
+    print(tabulate(rows, headers=headers, tablefmt="simple_grid", floatfmt=".2f"))
+
+
+if __name__ == "__main__":
+    main()
