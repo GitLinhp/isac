@@ -1,0 +1,10 @@
+# OFDM 突发源：仅发射链所需段（不含 channel / 感知）
+
+[source]
+type = "zc"
+root_index = 1
+
+[ofdm]
+num_symbols = 32
+fft_size = 64
+subcarrier_spacing = 15000.0

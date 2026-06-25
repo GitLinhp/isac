@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: USRP TX/RX (Sine Burst)
-# Description: USRP timed burst TX (sine) + RX monitor (OTA)
+# Title: USRP TX/RX (OFDM Burst)
+# Description: USRP timed burst TX (OFDM) + RX monitor (OTA)
 # GNU Radio version: 3.10.12.0
 
 from PyQt5 import Qt
@@ -26,16 +26,16 @@ from gnuradio import uhd
 import time
 import sip
 import threading
-import usrp_sine_burst_sine_burst_source as sine_burst_source  # embedded python block
+import usrp_ofdm_burst_ofdm_burst_source as ofdm_burst_source  # embedded python block
 
 
 
-class usrp_sine_burst(gr.top_block, Qt.QWidget):
+class usrp_ofdm_burst(gr.top_block, Qt.QWidget):
 
     def __init__(self, address="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2", freq=6.0e9):
-        gr.top_block.__init__(self, "USRP TX/RX (Sine Burst)", catch_exceptions=True)
+        gr.top_block.__init__(self, "USRP TX/RX (OFDM Burst)", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("USRP TX/RX (Sine Burst)")
+        self.setWindowTitle("USRP TX/RX (OFDM Burst)")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -53,7 +53,7 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)
 
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_sine_burst")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_burst")
 
         try:
             geometry = self.settings.value("geometry")
@@ -75,14 +75,14 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.tx_amp = tx_amp = 0.3
         self.tone_freq = tone_freq = 100e3
         self.time_mag_trig_level = time_mag_trig_level = 5e-3
-        self.time_iq_trig_level = time_iq_trig_level = 5e-3
-        self.samp_rate = samp_rate = 1e6
-        self.idle_ms = idle_ms = 900
+        self.time_iq_trig_level = time_iq_trig_level = 3e-3
+        self.samp_rate = samp_rate = 960000.0
+        self.ofdm_burst_samples = ofdm_burst_samples = 2048
+        self.idle_ms = idle_ms = 400
         self.gui_update_time_ms = gui_update_time_ms = 10
-        self.freq_trig_level = freq_trig_level = -60
-        self.burst_ms = burst_ms = 100
-        self.TX_gain = TX_gain = 40
-        self.RX_gain = RX_gain = 40
+        self.freq_trig_level = freq_trig_level = -85
+        self.TX_gain = TX_gain = 50
+        self.RX_gain = RX_gain = 50
 
         ##################################################
         # Blocks
@@ -95,28 +95,28 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._time_iq_trig_level_range = qtgui.Range(0, 0.5, 0.005, 5e-3, 200)
+        self._time_iq_trig_level_range = qtgui.Range(0, 0.5, 0.001, 3e-3, 200)
         self._time_iq_trig_level_win = qtgui.RangeWidget(self._time_iq_trig_level_range, self.set_time_iq_trig_level, "time_iq_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._time_iq_trig_level_win, 1, 1, 1, 1)
         for r in range(1, 2):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(1, 2):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._freq_trig_level_range = qtgui.Range(-80, 0, 5, -60, 200)
+        self._freq_trig_level_range = qtgui.Range(-120, 0, 5, -85, 200)
         self._freq_trig_level_win = qtgui.RangeWidget(self._freq_trig_level_range, self.set_freq_trig_level, "freq_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._freq_trig_level_win, 1, 2, 1, 1)
         for r in range(1, 2):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain_range = qtgui.Range(0, 50, 1, 40, 200)
+        self._TX_gain_range = qtgui.Range(0, 50, 1, 50, 200)
         self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "tx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain_win, 0, 0, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain_range = qtgui.Range(0, 50, 1, 40, 200)
+        self._RX_gain_range = qtgui.Range(0, 50, 1, 50, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "rx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain_win, 0, 1, 1, 1)
         for r in range(0, 1):
@@ -153,9 +153,8 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.uhd_usrp_sink_0_0.set_center_freq(freq, 0)
         self.uhd_usrp_sink_0_0.set_antenna("TX/RX", 0)
         self.uhd_usrp_sink_0_0.set_gain(TX_gain, 0)
-        self.sine_burst_source = sine_burst_source.blk(samp_rate=samp_rate, tone_freq=tone_freq, burst_ms=burst_ms, idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=0.05)
         self.qtgui_time_sink_x_1 = qtgui.time_sink_c(
-            300, #size
+            (int(ofdm_burst_samples * 2)), #size
             samp_rate, #samp_rate
             'RX Time I/Q', #name
             1, #number of inputs
@@ -206,7 +205,7 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self._qtgui_time_sink_x_1_win = sip.wrapinstance(self.qtgui_time_sink_x_1.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_1_win)
         self.qtgui_time_sink_x_0 = qtgui.time_sink_f(
-            (int(samp_rate * burst_ms / 1000*2)), #size
+            (int(ofdm_burst_samples * 2)), #size
             samp_rate, #samp_rate
             'RX Time |IQ|', #name
             1, #number of inputs
@@ -255,7 +254,7 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
             1024, #size
-            window.WIN_HAMMING, #wintype
+            window.WIN_BLACKMAN_hARRIS, #wintype
             0, #fc
             samp_rate, #bw
             'RX Freq', #name
@@ -295,6 +294,7 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
+        self.ofdm_burst_source = ofdm_burst_source.blk(config_file="implementaion/ofdm_burst_source.toml", idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=0.05, device="cpu", seed=42)
         self.blocks_tag_debug_0 = blocks.tag_debug(gr.sizeof_gr_complex*1, "", '')
         self.blocks_tag_debug_0.set_display(True)
         self.blocks_complex_to_mag_0 = blocks.complex_to_mag(1)
@@ -304,15 +304,15 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.connect((self.blocks_complex_to_mag_0, 0), (self.qtgui_time_sink_x_0, 0))
-        self.connect((self.sine_burst_source, 0), (self.blocks_tag_debug_0, 0))
-        self.connect((self.sine_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
+        self.connect((self.ofdm_burst_source, 0), (self.blocks_tag_debug_0, 0))
+        self.connect((self.ofdm_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.blocks_complex_to_mag_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_time_sink_x_1, 0))
 
 
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_sine_burst")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_burst")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
         self.wait()
@@ -338,14 +338,13 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
 
     def set_tx_amp(self, tx_amp):
         self.tx_amp = tx_amp
-        self.sine_burst_source.tx_amp = self.tx_amp
+        self.ofdm_burst_source.tx_amp = self.tx_amp
 
     def get_tone_freq(self):
         return self.tone_freq
 
     def set_tone_freq(self, tone_freq):
         self.tone_freq = tone_freq
-        self.sine_burst_source.tone_freq = self.tone_freq
 
     def get_time_mag_trig_level(self):
         return self.time_mag_trig_level
@@ -369,16 +368,21 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
         self.qtgui_time_sink_x_1.set_samp_rate(self.samp_rate)
-        self.sine_burst_source.samp_rate = self.samp_rate
         self.uhd_usrp_sink_0_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_source_0_0.set_samp_rate(self.samp_rate)
+
+    def get_ofdm_burst_samples(self):
+        return self.ofdm_burst_samples
+
+    def set_ofdm_burst_samples(self, ofdm_burst_samples):
+        self.ofdm_burst_samples = ofdm_burst_samples
 
     def get_idle_ms(self):
         return self.idle_ms
 
     def set_idle_ms(self, idle_ms):
         self.idle_ms = idle_ms
-        self.sine_burst_source.idle_ms = self.idle_ms
+        self.ofdm_burst_source.idle_ms = self.idle_ms
 
     def get_gui_update_time_ms(self):
         return self.gui_update_time_ms
@@ -395,13 +399,6 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
     def set_freq_trig_level(self, freq_trig_level):
         self.freq_trig_level = freq_trig_level
         self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, self.freq_trig_level, 0, "")
-
-    def get_burst_ms(self):
-        return self.burst_ms
-
-    def set_burst_ms(self, burst_ms):
-        self.burst_ms = burst_ms
-        self.sine_burst_source.burst_ms = self.burst_ms
 
     def get_TX_gain(self):
         return self.TX_gain
@@ -420,7 +417,7 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
 
 
 def argument_parser():
-    description = 'USRP timed burst TX (sine) + RX monitor (OTA)'
+    description = 'USRP timed burst TX (OFDM) + RX monitor (OTA)'
     parser = ArgumentParser(description=description)
     parser.add_argument(
         "--address", dest="address", type=str, default="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2",
@@ -431,7 +428,7 @@ def argument_parser():
     return parser
 
 
-def main(top_block_cls=usrp_sine_burst, options=None):
+def main(top_block_cls=usrp_ofdm_burst, options=None):
     if options is None:
         options = argument_parser().parse_args()
 

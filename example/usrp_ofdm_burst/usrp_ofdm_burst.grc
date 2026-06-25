@@ -6,12 +6,12 @@ options:
     cmake_opt: ''
     comment: ''
     copyright: ''
-    description: USRP timed burst TX (sine) + RX monitor (OTA)
+    description: USRP timed burst TX (OFDM) + RX monitor (OTA)
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: usrp_sine_burst
+    id: usrp_ofdm_burst
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -22,7 +22,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: USRP TX/RX (Sine Burst)
+    title: USRP TX/RX (OFDM Burst)
     window_size: (1200,900)
   states:
     bus_sink: false
@@ -45,7 +45,7 @@ blocks:
     start: '0'
     step: '1'
     stop: '50'
-    value: '40'
+    value: '50'
     widget: counter_slider
   states:
     bus_sink: false
@@ -66,7 +66,7 @@ blocks:
     start: '0'
     step: '1'
     stop: '50'
-    value: '40'
+    value: '50'
     widget: counter_slider
   states:
     bus_sink: false
@@ -75,18 +75,6 @@ blocks:
     coordinate: [544, 12.0]
     rotation: 0
     state: true
-- name: burst_ms
-  id: variable
-  parameters:
-    comment: ''
-    value: '100'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [800, 16.0]
-    rotation: 0
-    state: enabled
 - name: freq_trig_level
   id: variable_qtgui_range
   parameters:
@@ -96,16 +84,16 @@ blocks:
     min_len: '200'
     orient: QtCore.Qt.Horizontal
     rangeType: float
-    start: '-80'
+    start: '-120'
     step: '5'
     stop: '0'
-    value: '-60'
+    value: '-85'
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1568, 20.0]
+    coordinate: [1760, -4.0]
     rotation: 0
     state: true
 - name: gui_update_time_ms
@@ -124,19 +112,31 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '900'
+    value: '400'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [904, 16.0]
+    coordinate: [880, 24.0]
+    rotation: 0
+    state: enabled
+- name: ofdm_burst_samples
+  id: variable
+  parameters:
+    comment: 32 OFDM symbols x 64 FFT (no CP)
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 8.0]
     rotation: 0
     state: enabled
 - name: samp_rate
   id: variable
   parameters:
-    comment: ''
-    value: 1e6
+    comment: fft_size * subcarrier_spacing (64 * 15 kHz)
+    value: '960000.0'
   states:
     bus_sink: false
     bus_source: false
@@ -154,15 +154,15 @@ blocks:
     orient: QtCore.Qt.Horizontal
     rangeType: float
     start: '0'
-    step: '0.005'
+    step: '0.001'
     stop: '0.5'
-    value: 5e-3
+    value: 3e-3
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1384, 20.0]
+    coordinate: [1568, 12.0]
     rotation: 0
     state: true
 - name: time_mag_trig_level
@@ -183,7 +183,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1200, 20.0]
+    coordinate: [1392, 12.0]
     rotation: 0
     state: true
 - name: tone_freq
@@ -279,6 +279,113 @@ blocks:
     coordinate: [384, 12.0]
     rotation: 0
     state: enabled
+- name: ofdm_burst_source
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nGNU Radio \u5D4C\u5165\u5F0F Python \u5757\uFF1AOFDM \u7A81\
+      \u53D1\u6E90\uFF08System.transmit + TOML\uFF09\n\n\u5468\u671F\u6027\u8F93\u51FA\
+      \ OFDM \u65F6\u57DF\u7A81\u53D1\uFF0C\u5E76\u5728\u6D41\u4E0A\u9644\u52A0 UHD\
+      \ stream tag\uFF1A\n  tx_sob, tx_time, tx_eob  (Style 1; USRP Sink len_tag_name\
+      \ \u987B\u7559\u7A7A)\n\"\"\"\n\nfrom __future__ import annotations\n\nimport\
+      \ argparse\nimport sys\nimport time\nfrom pathlib import Path\n\nimport numpy\
+      \ as np\nimport pmt\nfrom gnuradio import gr\n\n_TAG_SOB = pmt.intern(\"tx_sob\"\
+      )\n_TAG_EOB = pmt.intern(\"tx_eob\")\n_TAG_TIME = pmt.intern(\"tx_time\")\n\n\
+      _DEFAULT_CONFIG = \"implementaion/ofdm_burst_source.toml\"\n\n\nclass blk(gr.basic_block):\n\
+      \    \"\"\"\n    Style 1 OFDM \u7A81\u53D1\u6E90\uFF1A\u521D\u59CB\u5316\u65F6\
+      \u8C03\u7528 System.transmit() \u7F13\u5B58\u4E00\u5E27 x_time\uFF0C\n    \u5468\
+      \u671F\u6027\u91CD\u653E\u5E76\u6253 UHD \u5B9A\u65F6 tag\u3002\n    \"\"\"\n\
+      \n    def __init__(\n        self,\n        config_file=_DEFAULT_CONFIG,\n \
+      \       idle_ms=400.0,\n        tx_amp=0.3,\n        time_lead_s=0.05,\n   \
+      \     device=\"cpu\",\n        seed=42,\n    ):\n        gr.basic_block.__init__(\n\
+      \            self,\n            name=\"OFDM Burst Source\",\n            in_sig=[],\n\
+      \            out_sig=[np.complex64],\n        )\n        self._config_file =\
+      \ str(config_file)\n        self._idle_ms = float(idle_ms)\n        self._tx_amp\
+      \ = float(tx_amp)\n        self._time_lead_s = float(time_lead_s)\n        self._device\
+      \ = str(device)\n        self._seed = int(seed)\n\n        self._burst_active\
+      \ = False\n        self._burst_idx = 0\n        self._next_burst_at = 0.0\n\
+      \        self._burst_buffer: np.ndarray | None = None\n\n        self.set_tag_propagation_policy(gr.TPP_DONT)\n\
+      \        # \u5EF6\u8FDF\u5230\u9996\u6B21 general_work\uFF1AGRC \u7F16\u8BD1\
+      \u671F\u4E0D\u5B9E\u4F8B\u5316 Sionna\n        self.set_min_output_buffer(4096)\n\
+      \n    def _ensure_burst(self) -> None:\n        if self._burst_buffer is not\
+      \ None:\n            return\n        self._build_system_and_burst()\n\n    def\
+      \ _build_system_and_burst(self) -> None:\n        \"\"\"\u52A0\u8F7D TOML\u3001\
+      \u6784\u5EFA System\u3001\u751F\u6210\u5E76\u7F13\u5B58 OFDM \u7A81\u53D1\u7F13\
+      \u51B2\u3002\"\"\"\n        import sionna\n        import torch\n\n        repo_root\
+      \ = Path(__file__).resolve().parents[2]\n        if str(repo_root) not in sys.path:\n\
+      \            sys.path.insert(0, str(repo_root))\n\n        from isac.system\
+      \ import System\n        from isac.utils import set_random_seed\n\n        set_random_seed(self._seed)\n\
+      \        sionna.phy.config.device = self._device\n        torch.set_num_threads(1)\n\
+      \n        args = argparse.Namespace(\n            config_file=self._config_file,\n\
+      \            device=self._device,\n            batch_size=1,\n        )\n  \
+      \      self._system = System(args)\n\n        _, _, x_time = self._system.transmit()\n\
+      \        burst = x_time.squeeze().detach().cpu().numpy().astype(np.complex64,\
+      \ copy=False)\n        self._burst_buffer = (burst * self._tx_amp).astype(np.complex64,\
+      \ copy=False)\n\n        self._samp_rate = float(self._system.params.ofdm.samp_rate)\n\
+      \        self._burst_len = int(self._burst_buffer.size)\n        self._idle_s\
+      \ = max(0.0, self._idle_ms / 1000.0)\n        self.set_min_output_buffer(self._burst_len\
+      \ * 2)\n\n    def _recompute_idle(self) -> None:\n        self._idle_s = max(0.0,\
+      \ self._idle_ms / 1000.0)\n\n    @property\n    def config_file(self):\n   \
+      \     return self._config_file\n\n    @config_file.setter\n    def config_file(self,\
+      \ value):\n        self._config_file = str(value)\n        self._burst_buffer\
+      \ = None\n\n    @property\n    def samp_rate(self):\n        return self._samp_rate\n\
+      \n    @property\n    def burst_len(self):\n        return self._burst_len\n\n\
+      \    @property\n    def idle_ms(self):\n        return self._idle_ms\n\n   \
+      \ @idle_ms.setter\n    def idle_ms(self, value):\n        self._idle_ms = float(value)\n\
+      \        self._recompute_idle()\n\n    @property\n    def tx_amp(self):\n  \
+      \      return self._tx_amp\n\n    @tx_amp.setter\n    def tx_amp(self, value):\n\
+      \        self._tx_amp = float(value)\n        self._burst_buffer = None\n\n\
+      \    @property\n    def time_lead_s(self):\n        return self._time_lead_s\n\
+      \n    @time_lead_s.setter\n    def time_lead_s(self, value):\n        self._time_lead_s\
+      \ = float(value)\n\n    @property\n    def device(self):\n        return self._device\n\
+      \n    @device.setter\n    def device(self, value):\n        self._device = str(value)\n\
+      \        self._burst_buffer = None\n\n    @property\n    def seed(self):\n \
+      \       return self._seed\n\n    @seed.setter\n    def seed(self, value):\n\
+      \        self._seed = int(value)\n        self._burst_buffer = None\n\n    def\
+      \ forecast(self, noutput_items, ninput_items):\n        del noutput_items, ninput_items\n\
+      \        return []\n\n    def _schedule_delay_s(self) -> float:\n        burst_s\
+      \ = self._burst_len / self._samp_rate\n        period_s = max(self._idle_s +\
+      \ burst_s, burst_s)\n        return max(0.0, period_s - burst_s)\n\n    def\
+      \ _tx_time_pmt(self):\n        t = time.time() + self._time_lead_s\n       \
+      \ sec = int(t)\n        frac = t - sec\n        return pmt.make_tuple(pmt.from_uint64(sec),\
+      \ pmt.from_double(frac))\n\n    def general_work(self, input_items, output_items):\n\
+      \        del input_items\n        self._ensure_burst()\n        out = output_items[0]\n\
+      \n        if not self._burst_active:\n            if time.monotonic() < self._next_burst_at:\n\
+      \                return 0\n            self._burst_active = True\n         \
+      \   self._burst_idx = 0\n\n        n_remain = self._burst_len - self._burst_idx\n\
+      \        n = min(len(out), n_remain)\n        if n <= 0:\n            return\
+      \ 0\n\n        out[:n] = self._burst_buffer[self._burst_idx : self._burst_idx\
+      \ + n]\n\n        abs_out = self.nitems_written(0)\n        if self._burst_idx\
+      \ == 0:\n            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)\n  \
+      \          self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())\n\n\
+      \        self._burst_idx += n\n        if self._burst_idx >= self._burst_len:\n\
+      \            self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)\n  \
+      \          self._burst_active = False\n            self._next_burst_at = time.monotonic()\
+      \ + self._schedule_delay_s()\n\n        return n\n"
+    affinity: ''
+    alias: ''
+    comment: OFDM burst via System.transmit + TOML
+    config_file: '"implementaion/ofdm_burst_source.toml"'
+    device: '"cpu"'
+    idle_ms: idle_ms
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    seed: '42'
+    time_lead_s: '0.05'
+    tx_amp: tx_amp
+  states:
+    _io_cache: "('OFDM Burst Source', 'blk', [('config_file', \"'implementaion/ofdm_burst_source.toml'\"\
+      ), ('idle_ms', '400.0'), ('tx_amp', '0.3'), ('time_lead_s', '0.05'), ('device',\
+      \ \"'cpu'\"), ('seed', '42')], [], [('0', 'complex', 1)], '\\n    Style 1 OFDM\
+      \ \u7A81\u53D1\u6E90\uFF1A\u521D\u59CB\u5316\u65F6\u8C03\u7528 System.transmit()\
+      \ \u7F13\u5B58\u4E00\u5E27 x_time\uFF0C\\n    \u5468\u671F\u6027\u91CD\u653E\
+      \u5E76\u6253 UHD \u5B9A\u65F6 tag\u3002\\n    ', ['config_file', 'device', 'idle_ms',\
+      \ 'seed', 'time_lead_s', 'tx_amp'])"
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [136, 272.0]
+    rotation: 0
+    state: enabled
 - name: qtgui_freq_sink_x_0
   id: qtgui_freq_sink_x
   parameters:
@@ -350,14 +457,14 @@ blocks:
     width7: '1'
     width8: '1'
     width9: '1'
-    wintype: window.WIN_HAMMING
+    wintype: window.WIN_BLACKMAN_hARRIS
     ymax: '10'
     ymin: '-120'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1400, 572.0]
+    coordinate: [1400, 564.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
@@ -415,7 +522,7 @@ blocks:
     marker9: '-1'
     name: RX Time |IQ|
     nconnections: '1'
-    size: int(samp_rate * burst_ms / 1000*2)
+    size: int(ofdm_burst_samples * 2)
     srate: samp_rate
     stemplot: 'False'
     style1: '1'
@@ -512,7 +619,7 @@ blocks:
     marker9: '-1'
     name: RX Time I/Q
     nconnections: '1'
-    size: '300'
+    size: int(ofdm_burst_samples * 2)
     srate: samp_rate
     stemplot: 'False'
     style1: '1'
@@ -552,155 +659,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1400, 412.0]
-    rotation: 0
-    state: enabled
-- name: sine_burst_source
-  id: epy_block
-  parameters:
-    _source_code: "\"\"\"\nGNU Radio \u5D4C\u5165\u5F0F Python \u5757\uFF1AStyle 1\
-      \ USRP \u7A81\u53D1\u6B63\u5F26\u6CE2\u6E90\n\n\u5468\u671F\u6027\u8F93\u51FA\
-      \u590D\u6570\u6B63\u5F26\u7A81\u53D1\uFF0C\u5E76\u5728\u6D41\u4E0A\u9644\u52A0\
-      \ UHD \u6240\u9700\u7684 stream tag\uFF1A\n  tx_sob  \u2014 \u7A81\u53D1\u5F00\
-      \u59CB\uFF08Start Of Burst\uFF09\n  tx_time \u2014 \u8BA1\u5212\u53D1\u5C04\u65F6\
-      \u523B\uFF08\u7EDD\u5BF9 Unix \u65F6\u95F4\uFF0C\u79D2 + \u5C0F\u6570\u90E8\u5206\
-      \uFF09\n  tx_eob  \u2014 \u7A81\u53D1\u7ED3\u675F\uFF08End Of Burst\uFF09\n\n\
-      Style 1 \u7EA6\u5B9A\uFF1A\u4E0B\u6E38 USRP Sink \u7684 len_tag_name \u5FC5\u987B\
-      \u7559\u7A7A\uFF0C\u7531 tag \u800C\u975E\u5305\u957F tag \u754C\u5B9A\u7A81\
-      \u53D1\u8FB9\u754C\u3002\n\"\"\"\n\nfrom __future__ import annotations\n\nimport\
-      \ time\n\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n# UHD /\
-      \ USRP \u53D1\u5C04\u4FA7\u6807\u51C6 stream tag \u952E\u540D\n_TAG_SOB = pmt.intern(\"\
-      tx_sob\")\n_TAG_EOB = pmt.intern(\"tx_eob\")\n_TAG_TIME = pmt.intern(\"tx_time\"\
-      )\n\n\nclass blk(gr.basic_block):\n    \"\"\"\n    Style 1 \u5B9A\u65F6\u7A81\
-      \u53D1\u6E90\uFF1A\u8F93\u51FA\u5E26\u76F8\u4F4D\u8FDE\u7EED\u7684\u590D\u6570\
-      \u6B63\u5F26\u6CE2\u3002\n\n    \u5DE5\u4F5C\u6D41\u7A0B\uFF1A\u7A81\u53D1\u671F\
-      \u5185\u6301\u7EED\u8F93\u51FA\u6837\u672C\u5E76\u6253 tag\uFF1B\u7A81\u53D1\
-      \u7ED3\u675F\u540E\u8FDB\u5165 idle \u9759\u9ED8\u671F\uFF0C\n    \u9759\u9ED8\
-      \u671F\u4E0D\u4EA7\u51FA\u6837\u672C\uFF08general_work \u8FD4\u56DE 0\uFF09\uFF0C\
-      \u5230\u671F\u518D\u542F\u52A8\u4E0B\u4E00\u7A81\u53D1\u3002\n    \"\"\"\n\n\
-      \    def __init__(\n        self,\n        samp_rate=1e6,\n        tone_freq=100e3,\n\
-      \        burst_ms=100.0,\n        idle_ms=400.0,\n        tx_amp=0.3,\n    \
-      \    time_lead_s=0.05,\n    ):\n        \"\"\"\n        \u53C2\u6570:\n    \
-      \        samp_rate:   \u91C7\u6837\u7387 (Hz)\n            tone_freq:   \u6B63\
-      \u5F26\u97F3\u8C03\u9891\u7387 (Hz)\n            burst_ms:    \u5355\u6B21\u7A81\
-      \u53D1\u6301\u7EED\u65F6\u95F4 (\u6BEB\u79D2)\n            idle_ms:     \u4E24\
-      \u6B21\u7A81\u53D1\u4E4B\u95F4\u7684\u9759\u9ED8\u95F4\u9694 (\u6BEB\u79D2)\uFF0C\
-      \u4E0D\u542B\u7A81\u53D1\u672C\u8EAB\u65F6\u957F\n            tx_amp:      \u8F93\
-      \u51FA\u5E45\u5EA6\uFF0C\u5EFA\u8BAE \u2264 1.0 \u4EE5\u514D USRP \u9971\u548C\
-      \n            time_lead_s: tx_time \u76F8\u5BF9\u5F53\u524D wall-clock \u7684\
-      \u63D0\u524D\u91CF (\u79D2)\uFF0C\n                         \u7ED9 USRP \u8C03\
-      \u5EA6\u5668\u9884\u7559\u7F13\u51B2\uFF0C\u907F\u514D\u201C\u5DF2\u8FC7\u671F\
-      \u201D\u65F6\u523B\n        \"\"\"\n        gr.basic_block.__init__(\n     \
-      \       self,\n            name=\"Sine Burst Source\",\n            in_sig=[],\n\
-      \            out_sig=[np.complex64],\n        )\n        self._samp_rate = float(samp_rate)\n\
-      \        self._tone_freq = float(tone_freq)\n        self._burst_ms = float(burst_ms)\n\
-      \        self._idle_ms = float(idle_ms)\n        self._tx_amp = float(tx_amp)\n\
-      \        self._time_lead_s = float(time_lead_s)\n\n        # \u6BCF\u6837\u672C\
-      \u76F8\u4F4D\u589E\u91CF\uFF1B\u7A81\u53D1\u6837\u672C\u603B\u6570\uFF1B\u9759\
-      \u9ED8\u671F\uFF08\u79D2\uFF09\n        self._phase_inc = 2.0 * np.pi * self._tone_freq\
-      \ / self._samp_rate\n        self._burst_len = max(1, int(self._samp_rate *\
-      \ self._burst_ms / 1000.0))\n        self._idle_s = max(0.0, self._idle_ms /\
-      \ 1000.0)\n\n        # \u7A81\u53D1\u72B6\u6001\u673A\uFF1A\u662F\u5426\u6B63\
-      \u5728\u8F93\u51FA\u3001\u5F53\u524D\u7A81\u53D1\u5185\u6837\u672C\u7D22\u5F15\
-      \u3001\u4E0B\u6B21\u5141\u8BB8\u542F\u52A8\u7684 monotonic \u65F6\u523B\n  \
-      \      self._burst_active = False\n        self._burst_idx = 0\n        self._next_burst_at\
-      \ = 0.0\n\n        # \u4E0D\u5411\u4E0A\u6E38\u4F20\u64AD tag\uFF1B\u4FDD\u8BC1\
-      \u8F93\u51FA\u7F13\u51B2\u81F3\u5C11\u5BB9\u7EB3\u4E24\u4E2A\u5B8C\u6574\u7A81\
-      \u53D1\uFF0C\u51CF\u5C11\u8C03\u5EA6\u6B20\u8F7D\n        self.set_tag_propagation_policy(gr.TPP_DONT)\n\
-      \        self.set_min_output_buffer(self._burst_len * 2)\n\n    def _recompute_timing(self)\
-      \ -> None:\n        \"\"\"\u91C7\u6837\u7387\u6216\u7A81\u53D1/\u9759\u9ED8\u53C2\
-      \u6570\u53D8\u66F4\u540E\uFF0C\u91CD\u65B0\u8BA1\u7B97\u76F8\u4F4D\u6B65\u8FDB\
-      \u3001\u7A81\u53D1\u957F\u5EA6\u4E0E\u8F93\u51FA\u7F13\u51B2\u3002\"\"\"\n \
-      \       self._phase_inc = 2.0 * np.pi * self._tone_freq / self._samp_rate\n\
-      \        self._burst_len = max(1, int(self._samp_rate * self._burst_ms / 1000.0))\n\
-      \        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n        self.set_min_output_buffer(self._burst_len\
-      \ * 2)\n\n    @property\n    def samp_rate(self):\n        return self._samp_rate\n\
-      \n    @samp_rate.setter\n    def samp_rate(self, value):\n        self._samp_rate\
-      \ = float(value)\n        self._recompute_timing()\n\n    @property\n    def\
-      \ tone_freq(self):\n        return self._tone_freq\n\n    @tone_freq.setter\n\
-      \    def tone_freq(self, value):\n        self._tone_freq = float(value)\n \
-      \       self._recompute_timing()\n\n    @property\n    def burst_ms(self):\n\
-      \        return self._burst_ms\n\n    @burst_ms.setter\n    def burst_ms(self,\
-      \ value):\n        self._burst_ms = float(value)\n        self._recompute_timing()\n\
-      \n    @property\n    def idle_ms(self):\n        return self._idle_ms\n\n  \
-      \  @idle_ms.setter\n    def idle_ms(self, value):\n        self._idle_ms = float(value)\n\
-      \        self._recompute_timing()\n\n    @property\n    def tx_amp(self):\n\
-      \        return self._tx_amp\n\n    @tx_amp.setter\n    def tx_amp(self, value):\n\
-      \        self._tx_amp = float(value)\n\n    @property\n    def time_lead_s(self):\n\
-      \        return self._time_lead_s\n\n    @time_lead_s.setter\n    def time_lead_s(self,\
-      \ value):\n        self._time_lead_s = float(value)\n\n    def forecast(self,\
-      \ noutput_items, ninput_items):\n        \"\"\"\u65E0\u8F93\u5165\u7AEF\u53E3\
-      \uFF0C\u4E0D\u5411\u8C03\u5EA6\u5668\u58F0\u660E\u8F93\u5165\u9700\u6C42\u3002\
-      \"\"\"\n        del noutput_items, ninput_items\n        return []\n\n    def\
-      \ _schedule_delay_s(self) -> float:\n        \"\"\"\n        \u8BA1\u7B97\u5F53\
-      \u524D\u7A81\u53D1\u7ED3\u675F\u540E\uFF0C\u5230\u4E0B\u4E00\u7A81\u53D1\u5F00\
-      \u59CB\u524D\u7684\u7B49\u5F85\u65F6\u95F4\uFF08\u79D2\uFF09\u3002\n\n     \
-      \   \u5468\u671F = max(idle + burst, burst)\uFF1B\u8FD4\u56DE\u503C = \u5468\
-      \u671F - burst\uFF0C\u5373\u7EAF idle \u65F6\u957F\u3002\n        \"\"\"\n \
-      \       burst_s = self._burst_len / self._samp_rate\n        period_s = max(self._idle_s\
-      \ + burst_s, burst_s)\n        return max(0.0, period_s - burst_s)\n\n    def\
-      \ _tx_time_pmt(self):\n        \"\"\"\n        \u6784\u9020 tx_time tag \u7684\
-      \ PMT \u503C\uFF1A(\u6574\u6570\u79D2, \u5C0F\u6570\u79D2)\u3002\n\n       \
-      \ \u4F7F\u7528 time.time() + time_lead_s\uFF0C\u4E0E UHD timed TX \u7684\u7EDD\
-      \u5BF9\u65F6\u523B\u683C\u5F0F\u4E00\u81F4\u3002\n        \"\"\"\n        t\
-      \ = time.time() + self._time_lead_s\n        sec = int(t)\n        frac = t\
-      \ - sec\n        return pmt.make_tuple(pmt.from_uint64(sec), pmt.from_double(frac))\n\
-      \n    def general_work(self, input_items, output_items):\n        \"\"\"\n \
-      \       \u4E3B\u5DE5\u4F5C\u51FD\u6570\uFF1A\u6309\u5757\u8F93\u51FA\u6B63\u5F26\
-      \u6837\u672C\uFF0C\u5728\u7A81\u53D1\u9996\u5C3E\u9644\u52A0 UHD tag\u3002\n\
-      \n        \u9759\u9ED8\u671F\u5185\u8FD4\u56DE 0\uFF08\u4E0D\u6D88\u8017\u8F93\
-      \u51FA\u7F13\u51B2\uFF09\uFF1B\u7A81\u53D1\u53EF\u5206\u591A\u6B21 general_work\
-      \ \u5B8C\u6210\u3002\n        \u8FD4\u56DE\u503C n \u8868\u793A\u672C\u6B21\u5199\
-      \u5165\u8F93\u51FA\u7AEF\u53E3\u7684\u6709\u6548\u6837\u672C\u6570\u3002\n \
-      \       \"\"\"\n        del input_items\n        out = output_items[0]\n\n \
-      \       # \u975E\u7A81\u53D1\u6001\uFF1A\u672A\u5230\u8C03\u5EA6\u65F6\u523B\
-      \u5219\u6682\u4E0D\u8F93\u51FA\n        if not self._burst_active:\n       \
-      \     if time.monotonic() < self._next_burst_at:\n                return 0\n\
-      \            self._burst_active = True\n            self._burst_idx = 0\n\n\
-      \        # \u672C\u6B21\u6700\u591A\u8F93\u51FA\u7684\u6837\u672C\u6570\uFF08\
-      \u53D7\u8F93\u51FA\u7F13\u51B2\u4E0E\u5269\u4F59\u7A81\u53D1\u957F\u5EA6\u9650\
-      \u5236\uFF09\n        n_remain = self._burst_len - self._burst_idx\n       \
-      \ n = min(len(out), n_remain)\n        if n <= 0:\n            return 0\n\n\
-      \        # \u6309\u5168\u5C40\u6837\u672C\u7D22\u5F15\u751F\u6210\u76F8\u4F4D\
-      \uFF0C\u4FDD\u8BC1\u8DE8 general_work \u8C03\u7528\u76F8\u4F4D\u8FDE\u7EED\n\
-      \        idx = np.arange(self._burst_idx, self._burst_idx + n, dtype=np.float64)\n\
-      \        phase = self._phase_inc * idx\n        out[:n] = (self._tx_amp * (np.cos(phase)\
-      \ + 1j * np.sin(phase))).astype(\n            np.complex64, copy=False\n   \
-      \     )\n\n        abs_out = self.nitems_written(0)\n        # \u7A81\u53D1\u7B2C\
-      \u4E00\u4E2A\u6837\u672C\uFF1A\u6253 tx_sob \u4E0E tx_time\n        if self._burst_idx\
-      \ == 0:\n            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)\n  \
-      \          self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())\n\n\
-      \        self._burst_idx += n\n        # \u7A81\u53D1\u6700\u540E\u4E00\u4E2A\
-      \u6837\u672C\uFF1A\u6253 tx_eob\uFF0C\u8FDB\u5165 idle \u5E76\u9884\u7EA6\u4E0B\
-      \u4E00\u7A81\u53D1\n        if self._burst_idx >= self._burst_len:\n       \
-      \     self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)\n         \
-      \   self._burst_active = False\n            self._next_burst_at = time.monotonic()\
-      \ + self._schedule_delay_s()\n\n        return n\n"
-    affinity: ''
-    alias: ''
-    burst_ms: burst_ms
-    comment: Sine burst source (tx_sob/tx_time/tx_eob)
-    idle_ms: idle_ms
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    samp_rate: samp_rate
-    time_lead_s: '0.05'
-    tone_freq: tone_freq
-    tx_amp: tx_amp
-  states:
-    _io_cache: "('Sine Burst Source', 'blk', [('samp_rate', '1000000.0'), ('tone_freq',\
-      \ '100000.0'), ('burst_ms', '100.0'), ('idle_ms', '400.0'), ('tx_amp', '0.3'),\
-      \ ('time_lead_s', '0.05')], [], [('0', 'complex', 1)], '\\n    Style 1 \u5B9A\
-      \u65F6\u7A81\u53D1\u6E90\uFF1A\u8F93\u51FA\u5E26\u76F8\u4F4D\u8FDE\u7EED\u7684\
-      \u590D\u6570\u6B63\u5F26\u6CE2\u3002\\n\\n    \u5DE5\u4F5C\u6D41\u7A0B\uFF1A\
-      \u7A81\u53D1\u671F\u5185\u6301\u7EED\u8F93\u51FA\u6837\u672C\u5E76\u6253 tag\uFF1B\
-      \u7A81\u53D1\u7ED3\u675F\u540E\u8FDB\u5165 idle \u9759\u9ED8\u671F\uFF0C\\n\
-      \    \u9759\u9ED8\u671F\u4E0D\u4EA7\u51FA\u6837\u672C\uFF08general_work \u8FD4\
-      \u56DE 0\uFF09\uFF0C\u5230\u671F\u518D\u542F\u52A8\u4E0B\u4E00\u7A81\u53D1\u3002\
-      \\n    ', ['burst_ms', 'idle_ms', 'samp_rate', 'time_lead_s', 'tone_freq', 'tx_amp'])"
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [232, 272.0]
     rotation: 0
     state: enabled
 - name: uhd_usrp_sink_0_0
@@ -1419,8 +1377,8 @@ blocks:
 
 connections:
 - [blocks_complex_to_mag_0, '0', qtgui_time_sink_x_0, '0']
-- [sine_burst_source, '0', blocks_tag_debug_0, '0']
-- [sine_burst_source, '0', uhd_usrp_sink_0_0, '0']
+- [ofdm_burst_source, '0', blocks_tag_debug_0, '0']
+- [ofdm_burst_source, '0', uhd_usrp_sink_0_0, '0']
 - [uhd_usrp_source_0_0, '0', blocks_complex_to_mag_0, '0']
 - [uhd_usrp_source_0_0, '0', qtgui_freq_sink_x_0, '0']
 - [uhd_usrp_source_0_0, '0', qtgui_time_sink_x_1, '0']
