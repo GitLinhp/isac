@@ -74,24 +74,40 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         ##################################################
         self.tx_amp = tx_amp = 0.3
         self.tone_freq = tone_freq = 100e3
+        self.time_trig_level = time_trig_level = 5e-3
         self.samp_rate = samp_rate = 1e6
         self.idle_ms = idle_ms = 400
+        self.freq_trig_level = freq_trig_level = -60
         self.burst_ms = burst_ms = 100
-        self.TX_gain = TX_gain = 20
-        self.RX_gain = RX_gain = 20
+        self.TX_gain = TX_gain = 40
+        self.RX_gain = RX_gain = 40
 
         ##################################################
         # Blocks
         ##################################################
 
-        self._TX_gain_range = qtgui.Range(0, 40, 1, 20, 200)
+        self._time_trig_level_range = qtgui.Range(0, 0.5, 0.005, 5e-3, 200)
+        self._time_trig_level_win = qtgui.RangeWidget(self._time_trig_level_range, self.set_time_trig_level, "time_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._time_trig_level_win, 0, 2, 1, 1)
+        for r in range(0, 1):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(2, 3):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._freq_trig_level_range = qtgui.Range(-80, 0, 5, -60, 200)
+        self._freq_trig_level_win = qtgui.RangeWidget(self._freq_trig_level_range, self.set_freq_trig_level, "freq_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._freq_trig_level_win, 0, 3, 1, 1)
+        for r in range(0, 1):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(3, 4):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._TX_gain_range = qtgui.Range(0, 40, 1, 40, 200)
         self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "tx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain_win, 0, 0, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain_range = qtgui.Range(0, 40, 1, 20, 200)
+        self._RX_gain_range = qtgui.Range(0, 40, 1, 40, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "rx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain_win, 0, 1, 1, 1)
         for r in range(0, 1):
@@ -129,28 +145,28 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.uhd_usrp_sink_0_0.set_antenna("TX/RX", 0)
         self.uhd_usrp_sink_0_0.set_gain(TX_gain, 0)
         self.sine_burst_source = sine_burst_source.blk(samp_rate=samp_rate, tone_freq=tone_freq, burst_ms=burst_ms, idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=0.05)
-        self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
-            1024, #size
+        self.qtgui_time_sink_x_1 = qtgui.time_sink_c(
+            300, #size
             samp_rate, #samp_rate
-            'RX Time', #name
+            'RX Time I/Q', #name
             1, #number of inputs
             None # parent
         )
-        self.qtgui_time_sink_x_0.set_update_time(0.10)
-        self.qtgui_time_sink_x_0.set_y_axis(-1, 1)
+        self.qtgui_time_sink_x_1.set_update_time(0.01)
+        self.qtgui_time_sink_x_1.set_y_axis(-1, 1)
 
-        self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
+        self.qtgui_time_sink_x_1.set_y_label('Amplitude', "")
 
-        self.qtgui_time_sink_x_0.enable_tags(True)
-        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, 0, "")
-        self.qtgui_time_sink_x_0.enable_autoscale(False)
-        self.qtgui_time_sink_x_0.enable_grid(False)
-        self.qtgui_time_sink_x_0.enable_axis_labels(True)
-        self.qtgui_time_sink_x_0.enable_control_panel(False)
-        self.qtgui_time_sink_x_0.enable_stem_plot(False)
+        self.qtgui_time_sink_x_1.enable_tags(True)
+        self.qtgui_time_sink_x_1.set_trigger_mode(qtgui.TRIG_MODE_NORM, qtgui.TRIG_SLOPE_POS, time_trig_level, 0, 0, "")
+        self.qtgui_time_sink_x_1.enable_autoscale(True)
+        self.qtgui_time_sink_x_1.enable_grid(False)
+        self.qtgui_time_sink_x_1.enable_axis_labels(True)
+        self.qtgui_time_sink_x_1.enable_control_panel(True)
+        self.qtgui_time_sink_x_1.enable_stem_plot(False)
 
 
-        labels = ['RX', 'Signal 2', 'Signal 3', 'Signal 4', 'Signal 5',
+        labels = ['Re', 'Im', 'Signal 3', 'Signal 4', 'Signal 5',
             'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
         widths = [1, 1, 1, 1, 1,
             1, 1, 1, 1, 1]
@@ -167,9 +183,57 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         for i in range(2):
             if len(labels[i]) == 0:
                 if (i % 2 == 0):
-                    self.qtgui_time_sink_x_0.set_line_label(i, "Re{{Data {0}}}".format(i/2))
+                    self.qtgui_time_sink_x_1.set_line_label(i, "Re{{Data {0}}}".format(i/2))
                 else:
-                    self.qtgui_time_sink_x_0.set_line_label(i, "Im{{Data {0}}}".format(i/2))
+                    self.qtgui_time_sink_x_1.set_line_label(i, "Im{{Data {0}}}".format(i/2))
+            else:
+                self.qtgui_time_sink_x_1.set_line_label(i, labels[i])
+            self.qtgui_time_sink_x_1.set_line_width(i, widths[i])
+            self.qtgui_time_sink_x_1.set_line_color(i, colors[i])
+            self.qtgui_time_sink_x_1.set_line_style(i, styles[i])
+            self.qtgui_time_sink_x_1.set_line_marker(i, markers[i])
+            self.qtgui_time_sink_x_1.set_line_alpha(i, alphas[i])
+
+        self._qtgui_time_sink_x_1_win = sip.wrapinstance(self.qtgui_time_sink_x_1.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_time_sink_x_1_win)
+        self.qtgui_time_sink_x_0 = qtgui.time_sink_f(
+            (int(samp_rate * burst_ms / 1000*2)), #size
+            samp_rate, #samp_rate
+            'RX Time |IQ|', #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_time_sink_x_0.set_update_time(0.01)
+        self.qtgui_time_sink_x_0.set_y_axis(0, 0.5)
+
+        self.qtgui_time_sink_x_0.set_y_label('|IQ|', "")
+
+        self.qtgui_time_sink_x_0.enable_tags(True)
+        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, qtgui.TRIG_SLOPE_POS, time_trig_level, 0, 0, "")
+        self.qtgui_time_sink_x_0.enable_autoscale(True)
+        self.qtgui_time_sink_x_0.enable_grid(False)
+        self.qtgui_time_sink_x_0.enable_axis_labels(True)
+        self.qtgui_time_sink_x_0.enable_control_panel(True)
+        self.qtgui_time_sink_x_0.enable_stem_plot(False)
+
+
+        labels = ['RX Mag', '', 'Signal 3', 'Signal 4', 'Signal 5',
+            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ['blue', 'red', 'green', 'black', 'cyan',
+            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+        styles = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        markers = [-1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1]
+
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_time_sink_x_0.set_line_label(i, "Data {0}".format(i))
             else:
                 self.qtgui_time_sink_x_0.set_line_label(i, labels[i])
             self.qtgui_time_sink_x_0.set_line_width(i, widths[i])
@@ -189,15 +253,15 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
             1,
             None # parent
         )
-        self.qtgui_freq_sink_x_0.set_update_time(0.10)
+        self.qtgui_freq_sink_x_0.set_update_time(0.01)
         self.qtgui_freq_sink_x_0.set_y_axis((-120), 10)
         self.qtgui_freq_sink_x_0.set_y_label('RX Spectrum', 'dB')
-        self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, 0.0, 0, "")
-        self.qtgui_freq_sink_x_0.enable_autoscale(False)
+        self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, freq_trig_level, 0, "")
+        self.qtgui_freq_sink_x_0.enable_autoscale(True)
         self.qtgui_freq_sink_x_0.enable_grid(False)
         self.qtgui_freq_sink_x_0.set_fft_average(1.0)
         self.qtgui_freq_sink_x_0.enable_axis_labels(True)
-        self.qtgui_freq_sink_x_0.enable_control_panel(False)
+        self.qtgui_freq_sink_x_0.enable_control_panel(True)
         self.qtgui_freq_sink_x_0.set_fft_window_normalized(False)
 
 
@@ -224,15 +288,18 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
         self.blocks_tag_debug_0 = blocks.tag_debug(gr.sizeof_gr_complex*1, "", '')
         self.blocks_tag_debug_0.set_display(True)
+        self.blocks_complex_to_mag_0 = blocks.complex_to_mag(1)
 
 
         ##################################################
         # Connections
         ##################################################
+        self.connect((self.blocks_complex_to_mag_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.sine_burst_source, 0), (self.blocks_tag_debug_0, 0))
         self.connect((self.sine_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
+        self.connect((self.uhd_usrp_source_0_0, 0), (self.blocks_complex_to_mag_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_freq_sink_x_0, 0))
-        self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_time_sink_x_1, 0))
 
 
     def closeEvent(self, event):
@@ -271,6 +338,14 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.tone_freq = tone_freq
         self.sine_burst_source.tone_freq = self.tone_freq
 
+    def get_time_trig_level(self):
+        return self.time_trig_level
+
+    def set_time_trig_level(self, time_trig_level):
+        self.time_trig_level = time_trig_level
+        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, qtgui.TRIG_SLOPE_POS, self.time_trig_level, 0, 0, "")
+        self.qtgui_time_sink_x_1.set_trigger_mode(qtgui.TRIG_MODE_NORM, qtgui.TRIG_SLOPE_POS, self.time_trig_level, 0, 0, "")
+
     def get_samp_rate(self):
         return self.samp_rate
 
@@ -278,6 +353,7 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
+        self.qtgui_time_sink_x_1.set_samp_rate(self.samp_rate)
         self.sine_burst_source.samp_rate = self.samp_rate
         self.uhd_usrp_sink_0_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_source_0_0.set_samp_rate(self.samp_rate)
@@ -288,6 +364,13 @@ class usrp_sine_burst(gr.top_block, Qt.QWidget):
     def set_idle_ms(self, idle_ms):
         self.idle_ms = idle_ms
         self.sine_burst_source.idle_ms = self.idle_ms
+
+    def get_freq_trig_level(self):
+        return self.freq_trig_level
+
+    def set_freq_trig_level(self, freq_trig_level):
+        self.freq_trig_level = freq_trig_level
+        self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_NORM, self.freq_trig_level, 0, "")
 
     def get_burst_ms(self):
         return self.burst_ms
