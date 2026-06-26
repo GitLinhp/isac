@@ -116,30 +116,49 @@ def cartesian_direction_to_yaw_pitch_roll(
     参数:
     -------
     - direction : torch.Tensor | np.ndarray
-        方向向量，形状应可展平为长度 3。
+        方向向量，支持：
+        - 单条：形状 ``(3,)``
+        - 批量：形状 ``(N, 3)``
 
     返回:
     -------
     - np.ndarray
-        长度为 3 的 ``[yaw, pitch, roll]``，单位为弧度。
+        单条输入返回形状 ``(3,)``，批量输入返回 ``(N, 3)``，单位为弧度。
+        零向量对应 ``[0, 0, 0]``。
     """
-    vec = np.asarray(convert(direction, "numpy"), dtype=np.float64).reshape(-1)
-    if vec.size != 3:
-        raise ValueError(f"direction 必须为长度 3 的向量，当前长度为 {vec.size}")
+    arr = np.asarray(convert(direction, "numpy"), dtype=np.float64)
+    squeeze = False
+    if arr.ndim == 1:
+        if arr.size != 3:
+            raise ValueError(
+                f"direction 必须为形状 (3,) 或 (N, 3)，当前一维长度为 {arr.size}"
+            )
+        arr = arr.reshape(1, 3)
+        squeeze = True
+    elif arr.ndim == 2:
+        if arr.shape[-1] != 3:
+            raise ValueError(
+                f"direction 必须为形状 (3,) 或 (N, 3)，当前末维为 {arr.shape[-1]}"
+            )
+    else:
+        raise ValueError(
+            f"direction 必须为形状 (3,) 或 (N, 3)，当前维度为 {arr.ndim}"
+        )
 
-    x, y, z = vec
-    r = float(np.linalg.norm(vec))
-    if r < 1e-12:
-        return np.array([0.0, 0.0, 0.0], dtype=np.float64)
+    x, y, z = arr[:, 0], arr[:, 1], arr[:, 2]
+    r = np.linalg.norm(arr, axis=1)
+    result = np.zeros((arr.shape[0], 3), dtype=np.float64)
+    valid = r >= 1e-12
+    if np.any(valid):
+        rv = r[valid]
+        xv, yv, zv = x[valid], y[valid], z[valid]
+        theta = np.arccos(np.clip(zv / rv, -1.0, 1.0))
+        phi = np.arctan2(yv, xv)
+        result[valid, 0] = phi
+        result[valid, 1] = (np.pi / 2.0) - theta
+        result[valid, 2] = 0.0
 
-    theta = float(np.arccos(np.clip(z / r, -1.0, 1.0)))
-    phi = float(np.arctan2(y, x))
-
-    yaw = phi
-    pitch = (np.pi / 2.0) - theta
-    roll = 0.0
-
-    return np.array([yaw, pitch, roll], dtype=np.float64)
+    return result[0] if squeeze else result
 
 
 #  线性尺度转换为 dB 尺度工具函数

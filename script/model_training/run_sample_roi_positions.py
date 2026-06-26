@@ -23,6 +23,7 @@ import numpy as np
 from tabulate import tabulate
 
 SamplingMode = Literal["uniform", "gaussian"]
+from isac.utils import cartesian_direction_to_yaw_pitch_roll, set_random_seed
 
 
 def parse_roi_xy(
@@ -62,7 +63,6 @@ def sample_positions(
     y_hi: float,
     num_samples: int,
     sampling_mode: SamplingMode,
-    rng: np.random.Generator,
 ) -> np.ndarray:
     """在平面 ROI 内采样位置，返回形状 ``(num_samples, 3)``。"""
     if num_samples <= 0:
@@ -70,8 +70,8 @@ def sample_positions(
 
     n = int(num_samples)
     if sampling_mode == "uniform":
-        x = rng.uniform(x_lo, x_hi, size=n)
-        y = rng.uniform(y_lo, y_hi, size=n)
+        x = np.random.uniform(x_lo, x_hi, size=n)
+        y = np.random.uniform(y_lo, y_hi, size=n)
         z = np.zeros(n, dtype=np.float64)
         return np.column_stack((x, y, z)).astype(np.float64)
     elif sampling_mode == "gaussian":
@@ -82,7 +82,7 @@ def sample_positions(
             [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0],
             dtype=np.float64,
         )
-        pts = rng.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
+        pts = np.random.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
         pts = np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
         return pts
     else:
@@ -95,7 +95,6 @@ def sample_speeds(
     smax: float,
     sampling_mode: SamplingMode,
     num_samples: int,
-    rng: np.random.Generator,
 ) -> np.ndarray:
     """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples,)``。"""
     if num_samples <= 0:
@@ -103,11 +102,11 @@ def sample_speeds(
 
     n = int(num_samples)
     if sampling_mode == "uniform":
-        return rng.uniform(smin, smax, size=n).astype(np.float64)
+        return np.random.uniform(smin, smax, size=n).astype(np.float64)
     elif sampling_mode == "gaussian":
         center = (smin + smax) / 2.0
         std = (smax - smin) / 6.0
-        speeds = rng.normal(loc=center, scale=std, size=n).astype(np.float64)
+        speeds = np.random.normal(loc=center, scale=std, size=n).astype(np.float64)
         return np.clip(speeds, smin, smax)
     else:
         raise ValueError("speed_sampling_mode 仅支持 'uniform' 或 'gaussian'")
@@ -115,15 +114,14 @@ def sample_speeds(
 
 def sample_planar_directions(
     num_samples: int,
-    rng: np.random.Generator,
 ) -> np.ndarray:
     """xy 平面均匀随机单位方向，返回形状 ``(num_samples, 3)``，``vz=0``。"""
     n = int(num_samples)
-    theta = rng.uniform(0.0, 2.0 * np.pi, size=n)
-    dirs = np.column_stack(
-        (np.cos(theta), np.sin(theta), np.zeros(n, dtype=np.float64))
+    theta = np.random.uniform(0.0, 2.0 * np.pi, size=n)
+    dirs = np.column_stack((np.cos(theta), np.sin(theta), np.zeros(n))).astype(
+        np.float64
     )
-    return dirs.astype(np.float64)
+    return dirs
 
 
 def sample_velocities(
@@ -131,12 +129,13 @@ def sample_velocities(
     smax: float,
     num_samples: int,
     sampling_mode: SamplingMode,
-    rng: np.random.Generator,
 ) -> np.ndarray:
     """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples, 3)``。"""
-    speeds = sample_speeds(smin, smax, sampling_mode, num_samples, rng)
-    dirs = sample_planar_directions(num_samples, rng)
-    return (speeds[:, None] * dirs).astype(np.float64)
+    speeds = sample_speeds(smin, smax, sampling_mode, num_samples)
+    dirs = sample_planar_directions(num_samples)
+    orientations = cartesian_direction_to_yaw_pitch_roll(dirs)
+    velocities = (speeds[:, None] * dirs).astype(np.float64)
+    return velocities, speeds, dirs, orientations
 
 
 # 参数解析
@@ -192,9 +191,9 @@ def argument_parser() -> argparse.Namespace:
 # 主函数
 def main() -> None:
     args = argument_parser()
+    set_random_seed(args.seed)
     x_lo, x_hi, y_lo, y_hi = parse_roi_xy(args.roi)
     smin, smax = parse_speed_range(args.speed_range)
-    rng = np.random.default_rng(int(args.seed))
     n = int(args.num_samples)
     positions = sample_positions(
         x_lo,
@@ -203,26 +202,34 @@ def main() -> None:
         y_hi,
         n,
         args.position_sampling_mode,
-        rng,
     )
-    velocities = sample_velocities(
-        smin,
-        smax,
-        n,
-        args.speed_sampling_mode,
-        rng,
+    velocities, speeds, dirs, orientations = sample_velocities(
+        smin, smax, n, args.speed_sampling_mode
     )
-    speeds = np.linalg.norm(velocities, axis=1)
 
     print(
-        f"# n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
+        f"n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
         f"pos_mode={args.position_sampling_mode}, speed_range=[{smin}, {smax}], "
         f"speed_mode={args.speed_sampling_mode}, seed={args.seed}"
     )
-    headers = ["idx", "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z", "speed"]
+    headers = [
+        "idx",
+        "pos_x",
+        "pos_y",
+        "pos_z",
+        "vel_x",
+        "vel_y",
+        "vel_z",
+        "speed",
+        "yaw",
+        "pitch",
+        "roll",
+    ]
     rows = [
-        [i, *pos, *vel, float(spd)]
-        for i, (pos, vel, spd) in enumerate(zip(positions, velocities, speeds))
+        [i, *pos, *vel, float(spd), *ori]
+        for i, (pos, vel, spd, ori) in enumerate(
+            zip(positions, velocities, speeds, orientations)
+        )
     ]
     print(tabulate(rows, headers=headers, tablefmt="simple_grid", floatfmt=".2f"))
 

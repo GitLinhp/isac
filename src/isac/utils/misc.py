@@ -43,8 +43,6 @@ def set_random_seed(seed: int) -> None:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    sionna.phy.config.seed = seed
-
 
 def csv_float2_scalar(value: object) -> str:
     """将标量格式化为保留两位小数的 CSV 字段字符串。"""

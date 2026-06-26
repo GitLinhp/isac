@@ -24,16 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 import torch
-from tqdm import tqdm
 
 from isac import PROJECT_ROOT
 from isac.datasets import CollectionMetadata, Dataset
 from isac.channel.rt.rx_target_tx_geometric import RxTargetTxGeometric
 from isac.system import System
-from isac.channel import RTScene
+from isac.channel.rt.rt_scene import RTScene, RTTarget
 from isac.utils import csv_float2_scalar
 from isac.utils import cartesian_direction_to_yaw_pitch_roll, set_random_seed
-from isac.utils import target_generation as tg
 
 # Sionna/DrJit 射线追踪在大量 episode 时会触发 AST 装饰器次数告警，不影响数值结果
 warnings.filterwarnings(
@@ -43,14 +41,10 @@ warnings.filterwarnings(
     module=r"drjit\.ast",
 )
 
-SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "dataset_collection"
-
 
 # ---------------------------------------------------------------------------
 # Episode 缓冲
 # ---------------------------------------------------------------------------
-
-
 @dataclass
 class EpisodeBuffers:
     """主循环共享的 episode 级写出缓冲（由 ``main`` 创建，``_process_episode`` 追加）。"""
@@ -66,12 +60,10 @@ class EpisodeBuffers:
 # ---------------------------------------------------------------------------
 # Episode 循环（位姿更新 / 单条处理）
 # ---------------------------------------------------------------------------
-
-
 def _update_rt_target_pose_from_velocity(
-    target: object,
-    pos: np.ndarray | list[float],
-    vel: np.ndarray | list[float],
+    target: RTTarget,
+    pos: np.ndarray,
+    vel: np.ndarray,
 ) -> None:
     """更新 RT 目标位置、速度与朝向（速度方向 → yaw/pitch/roll）。"""
     pos_a = np.asarray(pos, dtype=np.float64).reshape(-1)
@@ -310,8 +302,8 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="simulation/sensing/sensing_monostatic_canyon.toml",
-        help="配置文件路径（须含非空 [rt_scene]）",
+        default="simulation/sensing/sensing_monostatic.toml",
+        help="配置文件路径",
     )
     parser.add_argument(
         "--device",
@@ -337,49 +329,40 @@ def argument_parser() -> argparse.Namespace:
 
     # --- 蒙特卡洛采样参数 ---
     parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=10,
+        help="采样条数",
+    )
+    parser.add_argument(
         "--roi",
-        nargs=6,
+        nargs=4,
         type=float,
-        metavar=("XMIN", "XMAX", "YMIN", "YMAX", "ZMIN", "ZMAX"),
-        default=[0.0, 80.0, -40.0, 40.0, 0.0, 0.0],
-        help="蒙特卡洛：三维 ROI 六元组",
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
+        default=[0.0, 80.0, -40.0, 40.0],
+        help="平面 ROI 四元组",
     )
     parser.add_argument(
-        "--num_samples", type=int, default=10000, help="蒙特卡洛：样本数"
-    )
-    parser.add_argument(
-        "--sampling_mode",
+        "--position_sampling_mode",
         type=str,
         default="uniform",
         choices=["uniform", "gaussian"],
-        help="蒙特卡洛：目标位置在 ROI 内的采样分布（均匀或高斯）",
-    )
-    parser.add_argument(
-        "--safe_margin",
-        type=float,
-        default=1.0,
-        help="蒙特卡洛：障碍物包围盒额外安全距离（米），位置合法性校验用",
-    )
-    parser.add_argument(
-        "--max_trials_factor",
-        type=int,
-        default=20,
-        help="蒙特卡洛：拒绝采样最大尝试次数 = num_samples × 该因子（防死循环）",
+        help="位置采样分布（均匀或高斯）",
     )
     parser.add_argument(
         "--speed_range",
         nargs=2,
         type=float,
-        default=[0.1, 10.0],
         metavar=("MIN", "MAX"),
-        help="蒙特卡洛速度幅值范围（未提供 velocities 数组时）",
+        default=[0.1, 10.0],
+        help="速度模值范围 (m/s)",
     )
     parser.add_argument(
-        "--velocity_sampling",
+        "--speed_sampling_mode",
         type=str,
-        default="sphere_uniform",
-        choices=["sphere_uniform", "axis_box"],
-        help="蒙特卡洛：速度方向/分量采样方式（球面均匀或各轴独立盒式）",
+        default="uniform",
+        choices=["uniform", "gaussian"],
+        help="速度模值采样分布（均匀或高斯）",
     )
 
     return parser.parse_args()
@@ -396,87 +379,13 @@ def main() -> None:
 
     # 2. 构建仿真系统，准备输出目录
     system = System(args)
-    SCRIPT_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR = PROJECT_ROOT / "data"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # 3. 取 RT 场景与待驱动的目标，初始化 episode 缓冲
     scene = system.components.rt_scene
-    if not scene.rt_targets:
-        raise RuntimeError("当前场景中没有可用的 RT 目标（scene.rt_targets 为空）")
-    _, target = next(iter(scene.rt_targets.items()))
-    scene_slug = scene.output_slug
-    buffers = EpisodeBuffers(
-        h_freq_list=[],
-        cir_a_list=[],
-        cir_tau_list=[],
-        target_pos_list=[],
-        target_vel_list=[],
-        csv_rows=[],
-    )
-
-    # 4. 蒙特卡洛批量生成 (pos, vel) 并逐条处理
-    pos_arr, vel_arr = tg.generate_targets_monte_carlo(
-        scene,
-        roi=(
-            (args.roi[0], args.roi[1]),
-            (args.roi[2], args.roi[3]),
-            (args.roi[4], args.roi[5]),
-        ),
-        num_samples=int(args.num_samples),
-        sampling_mode=args.sampling_mode,
-        safe_margin=args.safe_margin,
-        max_trials_factor=args.max_trials_factor,
-        velocities=None,
-        speed_range=(float(args.speed_range[0]), float(args.speed_range[1])),
-        velocity_sampling=args.velocity_sampling,
-        velocity_roi_vx=None,
-        velocity_roi_vy=None,
-        velocity_roi_vz=None,
-        seed=args.seed,
-        rng=None,
-    )
-    n_ep = int(pos_arr.shape[0])
-    if n_ep == 0:
-        print("无有效 Episode，结束")
-        return
-
-    for i in tqdm(range(n_ep), desc="MC 数据集", unit="sample"):
-        pos = pos_arr[i]
-        vel = vel_arr[i]
-        _update_rt_target_pose_from_velocity(target, pos, vel)
-        _process_episode(
-            system=system,
-            scene=scene,
-            save_cir=args.save_cir,
-            episode_idx=i,
-            pos=pos,
-            vel=vel,
-            buffers=buffers,
-        )
-
-    # 5. 汇总采集元数据（写入 HDF5 collection_* 根属性）
-    collection_meta = _build_collection_metadata(args, scene_slug)
-
-    # 6. 落盘：Episode CSV、HDF5（CFR [+ 可选 CIR] + kinematics）
-    save_episodes_csv(
-        scene_slug=scene_slug,
-        rows=buffers.csv_rows,
-        output_root=SCRIPT_OUT_DIR,
-    )
-
-    _export_h5(
-        system,
-        scene,
-        save_cir=args.save_cir,
-        scene_slug=scene_slug,
-        n_episodes=n_ep,
-        h_freq_list=buffers.h_freq_list,
-        cir_a_list=buffers.cir_a_list,
-        cir_tau_list=buffers.cir_tau_list,
-        target_pos_list=buffers.target_pos_list,
-        target_vel_list=buffers.target_vel_list,
-        collection_meta=collection_meta,
-        out_dir=SCRIPT_OUT_DIR,
-    )
+    target_name, target = next(iter(scene.rt_targets.items()))
+    print(target_name, target)
 
 
 if __name__ == "__main__":

@@ -44,8 +44,9 @@ class RTTarget(SceneObject):
         def _normalize_value(attr_name: str, value: Any) -> Any:
             if attr_name not in self._SCENE_OBJECT_ATTRIBUTES:
                 return value
-            arr = np.asarray(value, dtype=np.float64).reshape(-1)
-            return arr.tolist()
+            else:
+                arr = np.asarray(value, dtype=np.float64).reshape(-1)
+                return arr.tolist()
 
         for attr_name in self._SCENE_OBJECT_ATTRIBUTES:
             value = kwargs.get(attr_name)
