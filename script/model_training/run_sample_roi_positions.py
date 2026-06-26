@@ -17,13 +17,35 @@
 from __future__ import annotations
 
 import argparse
+import csv
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
 from tabulate import tabulate
 
+from isac import PROJECT_ROOT
+from isac.utils import (
+    cartesian_direction_to_yaw_pitch_roll,
+    csv_float2_scalar,
+    set_random_seed,
+)
+
 SamplingMode = Literal["uniform", "gaussian"]
-from isac.utils import cartesian_direction_to_yaw_pitch_roll, set_random_seed
+
+CSV_FIELDNAMES = [
+    "idx",
+    "pos_x",
+    "pos_y",
+    "pos_z",
+    "vel_x",
+    "vel_y",
+    "vel_z",
+    "speed",
+    "yaw",
+    "pitch",
+    "roll",
+]
 
 
 def parse_roi_xy(
@@ -138,6 +160,42 @@ def sample_velocities(
     return velocities, speeds, dirs, orientations
 
 
+def _build_sample_row(
+    idx: int,
+    pos: np.ndarray,
+    vel: np.ndarray,
+    speed: float,
+    orientation: np.ndarray,
+) -> dict[str, str | int]:
+    """构造单条采样记录的 CSV 行。"""
+    pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
+    vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
+    ori_row = np.asarray(orientation, dtype=np.float64).reshape(-1)
+    return {
+        "idx": idx,
+        "pos_x": csv_float2_scalar(pos_row[0]),
+        "pos_y": csv_float2_scalar(pos_row[1]),
+        "pos_z": csv_float2_scalar(pos_row[2]),
+        "vel_x": csv_float2_scalar(vel_row[0]),
+        "vel_y": csv_float2_scalar(vel_row[1]),
+        "vel_z": csv_float2_scalar(vel_row[2]),
+        "speed": csv_float2_scalar(speed),
+        "yaw": csv_float2_scalar(ori_row[0]),
+        "pitch": csv_float2_scalar(ori_row[1]),
+        "roll": csv_float2_scalar(ori_row[2]),
+    }
+
+
+def save_samples_csv(path: Path, rows: list[dict[str, str | int]]) -> None:
+    """写入采样结果 CSV。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as csv_f:
+        writer = csv.DictWriter(csv_f, fieldnames=CSV_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"CSV 已写入: {path}")
+
+
 # 参数解析
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -184,6 +242,12 @@ def argument_parser() -> argparse.Namespace:
         type=int,
         default=42,
         help="随机种子",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=PROJECT_ROOT / "data" / "sample_roi_positions.csv",
+        help="CSV 输出路径（默认 data/sample_roi_positions.csv）",
     )
     return parser.parse_args()
 
@@ -232,6 +296,15 @@ def main() -> None:
         )
     ]
     print(tabulate(rows, headers=headers, tablefmt="simple_grid", floatfmt=".2f"))
+
+    csv_rows = [
+        _build_sample_row(i, pos, vel, float(spd), ori)
+        for i, (pos, vel, spd, ori) in enumerate(
+            zip(positions, velocities, speeds, orientations)
+        )
+    ]
+    csv_path = args.output
+    save_samples_csv(csv_path, csv_rows)
 
 
 if __name__ == "__main__":
