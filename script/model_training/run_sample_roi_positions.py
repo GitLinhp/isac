@@ -91,8 +91,7 @@ def sample_positions(
             [(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, 0.0], dtype=np.float64
         )
         std = np.array(
-            [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0],
-            dtype=np.float64,
+            [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0], dtype=np.float64
         )
         pts = np.random.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
         pts = np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])

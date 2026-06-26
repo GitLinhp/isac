@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from isac.channel.rt.rt_scene import (
+from isac.channel.rt.scene_filter import (
     SceneFilter,
     _point_inside_aabb,
     validate_transceivers_not_in_obstacles,
