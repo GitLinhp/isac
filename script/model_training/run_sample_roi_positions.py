@@ -36,6 +36,7 @@ SamplingMode = Literal["uniform", "gaussian"]
 CSV_FIELDNAMES = ["idx", "position", "velocity", "orientation"]
 
 
+# 解析 ROI
 def parse_roi_xy(
     roi4: list[float] | tuple[float, ...],
 ) -> tuple[float, float, float, float]:
@@ -51,6 +52,7 @@ def parse_roi_xy(
     return x_lo, x_hi, y_lo, y_hi
 
 
+# 解析速度范围
 def parse_speed_range(
     pair: list[float] | tuple[float, ...],
 ) -> tuple[float, float]:
@@ -140,12 +142,39 @@ def sample_velocities(
     num_samples: int,
     sampling_mode: SamplingMode,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples, 3)``。"""
-    speeds = sample_speeds(smin, smax, sampling_mode, num_samples)
-    dirs = sample_planar_directions(num_samples)
-    orientations = cartesian_direction_to_yaw_pitch_roll(dirs)
-    velocities = (speeds[:, None] * dirs).astype(np.float64)
+    """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples, 3)`` 与方向。"""
+    speeds = sample_speeds(smin, smax, sampling_mode, num_samples)  # 速度模值
+    dirs = sample_planar_directions(num_samples)  # 方向
+    orientations = cartesian_direction_to_yaw_pitch_roll(dirs)  # 方向转欧拉角
+    velocities = (speeds[:, None] * dirs).astype(np.float64)  # 速度 = 速度模值 * 方向
     return velocities, orientations
+
+
+# 采样 ROI 内位置与速度
+def sample_roi_kinematics(
+    *,
+    roi: list[float] | tuple[float, ...],
+    position_sampling_mode: SamplingMode,
+    speed_range: list[float] | tuple[float, ...],
+    speed_sampling_mode: SamplingMode,
+    num_samples: int,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """解析 ROI / 速度范围，采样位置与速度，并打印摘要。
+
+    返回 ``(positions, velocities, orientations)``，形状均为 ``(num_samples, 3)``。
+    """
+    x_lo, x_hi, y_lo, y_hi = parse_roi_xy(roi)
+    smin, smax = parse_speed_range(speed_range)
+    n = int(num_samples)
+    positions = sample_positions(x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode)
+    velocities, orientations = sample_velocities(smin, smax, n, speed_sampling_mode)
+    print(
+        f"n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
+        f"pos_mode={position_sampling_mode}, speed_range=[{smin}, {smax}], "
+        f"speed_mode={speed_sampling_mode}, seed={seed}"
+    )
+    return positions, velocities, orientations
 
 
 def _csv_vec3(vec: np.ndarray) -> str:
@@ -245,33 +274,13 @@ def main() -> None:
     args = argument_parser()
     set_random_seed(args.seed)
 
-    # 解析 ROI
-    x_lo, x_hi, y_lo, y_hi = parse_roi_xy(args.roi)
-
-    # 解析速度范围
-    smin, smax = parse_speed_range(args.speed_range)
-
-    # 采样位置
-    n = int(args.num_samples)
-    positions = sample_positions(
-        x_lo,
-        x_hi,
-        y_lo,
-        y_hi,
-        n,
-        args.position_sampling_mode,
-    )
-
-    # 采样速度
-    velocities, orientations = sample_velocities(
-        smin, smax, n, args.speed_sampling_mode
-    )
-
-    # 打印信息
-    print(
-        f"n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
-        f"pos_mode={args.position_sampling_mode}, speed_range=[{smin}, {smax}], "
-        f"speed_mode={args.speed_sampling_mode}, seed={args.seed}"
+    positions, velocities, orientations = sample_roi_kinematics(
+        roi=args.roi,
+        position_sampling_mode=args.position_sampling_mode,
+        speed_range=args.speed_range,
+        speed_sampling_mode=args.speed_sampling_mode,
+        num_samples=args.num_samples,
+        seed=args.seed,
     )
 
     # 构建 CSV 行
