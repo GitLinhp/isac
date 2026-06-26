@@ -41,7 +41,9 @@ class RTScene(Scene):
     path_solver = PathSolver()
 
     @staticmethod
-    def _snapshot_pos_vel(role_cn: str, name: str, obj: object) -> dict[str, np.ndarray]:
+    def _snapshot_pos_vel(
+        role_cn: str, name: str, obj: object
+    ) -> dict[str, np.ndarray]:
         pos_raw = getattr(obj, "position", None)
         if pos_raw is None:
             raise ValueError(f"{role_cn} '{name}' 未设置 position，无法导出状态。")
