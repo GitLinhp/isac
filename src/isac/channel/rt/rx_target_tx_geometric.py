@@ -9,9 +9,9 @@
 符号约定：
 
 - ``T``：目标位置/速度；``R``：接收机；``X``：发射机。
-- 单基地（``type_tensor=False``）：``range = ||R−T||``，
-  ``vel`` 为 ``(v_T−v_R)`` 在 ``T−R`` 方向上的投影。
-- 双基地（``type_tensor=True``）：``range = ||T−X|| + ||R−T||``（折叠路径），
+- 单基地（``type_tensor=False``）：``range = ||R-T||``，
+  ``vel`` 为 ``(v_T-v_R)`` 在 ``T-R`` 方向上的投影。
+- 双基地（``type_tensor=True``）：``range = ||T-X|| + ||R-T||``（折叠路径），
   ``vel = d/dt range``，TX/RX/目标均可运动。
 
 张量索引顺序为 ``[j, i, k]`` ↔ ``(rx_names[j], target_names[i], tx_names[k])``，
@@ -242,7 +242,7 @@ class RxTargetTxGeometric:
         rx_states: dict[str, dict[str, np.ndarray]],
         tx_states: dict[str, dict[str, np.ndarray]],
         *,
-        device: torch.device | None = None,
+        device: torch.device = torch.device("cpu"),
         tx_rx_colocated_eps_m: float = MONOSTATIC_TX_RX_EPS_M,
     ) -> "RxTargetTxGeometric":
         """由场景实体状态字典构造三元组几何。
@@ -281,19 +281,18 @@ class RxTargetTxGeometric:
         if not target_states or not rx_states or not tx_states:
             raise ValueError("target_states、rx_states 与 tx_states 须均为非空字典。")
 
-        dev = device if device is not None else torch.device("cpu")
         target_names = list(target_states.keys())
         rx_names = list(rx_states.keys())
         tx_names = list(tx_states.keys())
         n_t = len(target_names)
 
         # 堆叠为 (n_entity, 3)；names 列表顺序即张量第 0 维
-        t_stack = stack_state_field(target_states, target_names, "pos", dev)
-        t_vel = stack_state_field(target_states, target_names, "vel", dev)
-        r_stack = stack_state_field(rx_states, rx_names, "pos", dev)
-        r_vel = stack_state_field(rx_states, rx_names, "vel", dev)
-        x_stack = stack_state_field(tx_states, tx_names, "pos", dev)
-        x_vel = stack_state_field(tx_states, tx_names, "vel", dev)
+        t_stack = stack_state_field(target_states, target_names, "pos", device)
+        t_vel = stack_state_field(target_states, target_names, "vel", device)
+        r_stack = stack_state_field(rx_states, rx_names, "pos", device)
+        r_vel = stack_state_field(rx_states, rx_names, "vel", device)
+        x_stack = stack_state_field(tx_states, tx_names, "pos", device)
+        x_vel = stack_state_field(tx_states, tx_names, "vel", device)
 
         # (n_rx, n_target, n_tx)：先按 (rx, tx) 判单/双基地，再 expand 到所有目标
         type_tensor = compute_path_type(

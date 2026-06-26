@@ -28,7 +28,6 @@ _DATASET_KEY_TARGET_POSITION = "target_position"
 """目标位置 (m)，shape ``(num_slots, 3)``。"""
 _DATASET_KEY_TARGET_VELOCITY = "target_velocity"
 """目标速度 (m/s)，shape ``(num_slots, 3)``。"""
-# 新文件写入上述键名；Dataset.load 仍兼容旧键 uav_position / uav_velocity。
 _DATASET_KEY_BS_POS = "bs_pos"
 """参考发射机/基站位置 (m)，shape ``(3,)``（采集脚本取 ``bs1``）。"""
 
@@ -254,13 +253,8 @@ class CollectionMetadata:
         if self.roi is None:
             return "(not set)"
         (xmin, xmax), (ymin, ymax), (z_lo, z_hi) = self.roi
-        z_part = (
-            f"z={z_lo:.2f}" if z_lo == z_hi else f"z=[{z_lo:.2f}, {z_hi:.2f}]"
-        )
-        return (
-            f"x=[{xmin:.2f}, {xmax:.2f}], "
-            f"y=[{ymin:.2f}, {ymax:.2f}], {z_part}"
-        )
+        z_part = f"z={z_lo:.2f}" if z_lo == z_hi else f"z=[{z_lo:.2f}, {z_hi:.2f}]"
+        return f"x=[{xmin:.2f}, {xmax:.2f}], " f"y=[{ymin:.2f}, {ymax:.2f}], {z_part}"
 
 
 def _require_cfr_dataset(f: h5py.File) -> h5py.Dataset:

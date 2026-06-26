@@ -33,19 +33,7 @@ from isac.utils import (
 
 SamplingMode = Literal["uniform", "gaussian"]
 
-CSV_FIELDNAMES = [
-    "idx",
-    "pos_x",
-    "pos_y",
-    "pos_z",
-    "vel_x",
-    "vel_y",
-    "vel_z",
-    "speed",
-    "yaw",
-    "pitch",
-    "roll",
-]
+CSV_FIELDNAMES = ["idx", "position", "velocity", "orientation"]
 
 
 def parse_roi_xy(
@@ -160,11 +148,17 @@ def sample_velocities(
     return velocities, speeds, dirs, orientations
 
 
+def _csv_vec3(vec: np.ndarray) -> str:
+    """将三维向量格式化为 CSV 单元格字符串，如 ``[1.00, 2.00, 3.00]``。"""
+    row = np.asarray(vec, dtype=np.float64).reshape(-1)
+    parts = ", ".join(csv_float2_scalar(row[i]) for i in range(3))
+    return f"[{parts}]"
+
+
 def _build_sample_row(
     idx: int,
     pos: np.ndarray,
     vel: np.ndarray,
-    speed: float,
     orientation: np.ndarray,
 ) -> dict[str, str | int]:
     """构造单条采样记录的 CSV 行。"""
@@ -173,16 +167,9 @@ def _build_sample_row(
     ori_row = np.asarray(orientation, dtype=np.float64).reshape(-1)
     return {
         "idx": idx,
-        "pos_x": csv_float2_scalar(pos_row[0]),
-        "pos_y": csv_float2_scalar(pos_row[1]),
-        "pos_z": csv_float2_scalar(pos_row[2]),
-        "vel_x": csv_float2_scalar(vel_row[0]),
-        "vel_y": csv_float2_scalar(vel_row[1]),
-        "vel_z": csv_float2_scalar(vel_row[2]),
-        "speed": csv_float2_scalar(speed),
-        "yaw": csv_float2_scalar(ori_row[0]),
-        "pitch": csv_float2_scalar(ori_row[1]),
-        "roll": csv_float2_scalar(ori_row[2]),
+        "position": _csv_vec3(pos_row),
+        "velocity": _csv_vec3(vel_row),
+        "orientation": _csv_vec3(ori_row),
     }
 
 
@@ -276,33 +263,18 @@ def main() -> None:
         f"pos_mode={args.position_sampling_mode}, speed_range=[{smin}, {smax}], "
         f"speed_mode={args.speed_sampling_mode}, seed={args.seed}"
     )
-    headers = [
-        "idx",
-        "pos_x",
-        "pos_y",
-        "pos_z",
-        "vel_x",
-        "vel_y",
-        "vel_z",
-        "speed",
-        "yaw",
-        "pitch",
-        "roll",
-    ]
-    rows = [
-        [i, *pos, *vel, float(spd), *ori]
-        for i, (pos, vel, spd, ori) in enumerate(
-            zip(positions, velocities, speeds, orientations)
-        )
-    ]
-    print(tabulate(rows, headers=headers, tablefmt="simple_grid", floatfmt=".2f"))
-
     csv_rows = [
-        _build_sample_row(i, pos, vel, float(spd), ori)
-        for i, (pos, vel, spd, ori) in enumerate(
+        _build_sample_row(i, pos, vel, ori)
+        for i, (pos, vel, _, ori) in enumerate(
             zip(positions, velocities, speeds, orientations)
         )
     ]
+    table_rows = [
+        [row["idx"], row["position"], row["velocity"], row["orientation"]]
+        for row in csv_rows
+    ]
+    print(tabulate(table_rows, headers=CSV_FIELDNAMES, tablefmt="simple_grid"))
+
     csv_path = args.output
     save_samples_csv(csv_path, csv_rows)
 
