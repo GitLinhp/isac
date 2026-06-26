@@ -139,13 +139,13 @@ def sample_velocities(
     smax: float,
     num_samples: int,
     sampling_mode: SamplingMode,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples, 3)``。"""
     speeds = sample_speeds(smin, smax, sampling_mode, num_samples)
     dirs = sample_planar_directions(num_samples)
     orientations = cartesian_direction_to_yaw_pitch_roll(dirs)
     velocities = (speeds[:, None] * dirs).astype(np.float64)
-    return velocities, speeds, dirs, orientations
+    return velocities, orientations
 
 
 def _csv_vec3(vec: np.ndarray) -> str:
@@ -241,10 +241,17 @@ def argument_parser() -> argparse.Namespace:
 
 # 主函数
 def main() -> None:
+    # 解析参数
     args = argument_parser()
     set_random_seed(args.seed)
+
+    # 解析 ROI
     x_lo, x_hi, y_lo, y_hi = parse_roi_xy(args.roi)
+
+    # 解析速度范围
     smin, smax = parse_speed_range(args.speed_range)
+
+    # 采样位置
     n = int(args.num_samples)
     positions = sample_positions(
         x_lo,
@@ -254,27 +261,33 @@ def main() -> None:
         n,
         args.position_sampling_mode,
     )
-    velocities, speeds, dirs, orientations = sample_velocities(
+
+    # 采样速度
+    velocities, orientations = sample_velocities(
         smin, smax, n, args.speed_sampling_mode
     )
 
+    # 打印信息
     print(
         f"n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
         f"pos_mode={args.position_sampling_mode}, speed_range=[{smin}, {smax}], "
         f"speed_mode={args.speed_sampling_mode}, seed={args.seed}"
     )
+
+    # 构建 CSV 行
     csv_rows = [
         _build_sample_row(i, pos, vel, ori)
-        for i, (pos, vel, _, ori) in enumerate(
-            zip(positions, velocities, speeds, orientations)
-        )
+        for i, (pos, vel, ori) in enumerate(zip(positions, velocities, orientations))
     ]
+
+    # 打印表格
     table_rows = [
         [row["idx"], row["position"], row["velocity"], row["orientation"]]
         for row in csv_rows
     ]
     print(tabulate(table_rows, headers=CSV_FIELDNAMES, tablefmt="simple_grid"))
 
+    # 保存 CSV
     csv_path = args.output
     save_samples_csv(csv_path, csv_rows)
 
