@@ -139,6 +139,7 @@ def sample_velocities(
     return (speeds[:, None] * dirs).astype(np.float64)
 
 
+# 参数解析
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="平面 ROI 内采样位置与速度并打印（位置 z=0，速度方向在 xy 平面）"
@@ -158,7 +159,7 @@ def argument_parser() -> argparse.Namespace:
         help="平面 ROI 四元组",
     )
     parser.add_argument(
-        "--sampling_mode",
+        "--position_sampling_mode",
         type=str,
         default="uniform",
         choices=["uniform", "gaussian"],
@@ -188,6 +189,7 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 主函数
 def main() -> None:
     args = argument_parser()
     x_lo, x_hi, y_lo, y_hi = parse_roi_xy(args.roi)
@@ -200,13 +202,13 @@ def main() -> None:
         y_lo,
         y_hi,
         n,
-        args.sampling_mode,
+        args.position_sampling_mode,
         rng,
     )
     velocities = sample_velocities(
-        n,
         smin,
         smax,
+        n,
         args.speed_sampling_mode,
         rng,
     )
@@ -214,7 +216,7 @@ def main() -> None:
 
     print(
         f"# n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
-        f"pos_mode={args.sampling_mode}, speed_range=[{smin}, {smax}], "
+        f"pos_mode={args.position_sampling_mode}, speed_range=[{smin}, {smax}], "
         f"speed_mode={args.speed_sampling_mode}, seed={args.seed}"
     )
     headers = ["idx", "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z", "speed"]
