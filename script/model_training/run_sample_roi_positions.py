@@ -54,6 +54,7 @@ def parse_speed_range(
     return smin, smax
 
 
+# 位置采样
 def sample_positions(
     x_lo: float,
     x_hi: float,
@@ -66,8 +67,6 @@ def sample_positions(
     """在平面 ROI 内采样位置，返回形状 ``(num_samples, 3)``。"""
     if num_samples <= 0:
         raise ValueError("num_samples 必须大于 0")
-    if sampling_mode not in ("uniform", "gaussian"):
-        raise ValueError("sampling_mode 仅支持 'uniform' 或 'gaussian'")
 
     n = int(num_samples)
     if sampling_mode == "uniform":
@@ -75,38 +74,43 @@ def sample_positions(
         y = rng.uniform(y_lo, y_hi, size=n)
         z = np.zeros(n, dtype=np.float64)
         return np.column_stack((x, y, z)).astype(np.float64)
+    elif sampling_mode == "gaussian":
+        center = np.array(
+            [(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, 0.0], dtype=np.float64
+        )
+        std = np.array(
+            [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0],
+            dtype=np.float64,
+        )
+        pts = rng.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
+        pts = np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
+        return pts
+    else:
+        raise ValueError("sampling_mode 仅支持 'uniform' 或 'gaussian'")
 
-    center = np.array([(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, 0.0], dtype=np.float64)
-    std = np.array(
-        [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0],
-        dtype=np.float64,
-    )
-    pts = rng.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
-    pts = np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
-    return pts
 
-
+# 速度采样
 def sample_speeds(
-    num_samples: int,
     smin: float,
     smax: float,
     sampling_mode: SamplingMode,
+    num_samples: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
     """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples,)``。"""
     if num_samples <= 0:
         raise ValueError("num_samples 必须大于 0")
-    if sampling_mode not in ("uniform", "gaussian"):
-        raise ValueError("speed_sampling_mode 仅支持 'uniform' 或 'gaussian'")
 
     n = int(num_samples)
     if sampling_mode == "uniform":
         return rng.uniform(smin, smax, size=n).astype(np.float64)
-
-    center = (smin + smax) / 2.0
-    std = (smax - smin) / 6.0
-    speeds = rng.normal(loc=center, scale=std, size=n).astype(np.float64)
-    return np.clip(speeds, smin, smax)
+    elif sampling_mode == "gaussian":
+        center = (smin + smax) / 2.0
+        std = (smax - smin) / 6.0
+        speeds = rng.normal(loc=center, scale=std, size=n).astype(np.float64)
+        return np.clip(speeds, smin, smax)
+    else:
+        raise ValueError("speed_sampling_mode 仅支持 'uniform' 或 'gaussian'")
 
 
 def sample_planar_directions(
@@ -123,14 +127,14 @@ def sample_planar_directions(
 
 
 def sample_velocities(
-    num_samples: int,
     smin: float,
     smax: float,
-    speed_sampling_mode: SamplingMode,
+    num_samples: int,
+    sampling_mode: SamplingMode,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """采样平面速度向量，返回形状 ``(num_samples, 3)``。"""
-    speeds = sample_speeds(num_samples, smin, smax, speed_sampling_mode, rng)
+    """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples, 3)``。"""
+    speeds = sample_speeds(smin, smax, sampling_mode, num_samples, rng)
     dirs = sample_planar_directions(num_samples, rng)
     return (speeds[:, None] * dirs).astype(np.float64)
 
