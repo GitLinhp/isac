@@ -40,52 +40,6 @@ class RTScene(Scene):
 
     path_solver = PathSolver()
 
-    @staticmethod
-    def _snapshot_pos_vel(
-        role_cn: str, name: str, obj: object
-    ) -> dict[str, np.ndarray]:
-        pos_raw = getattr(obj, "position", None)
-        if pos_raw is None:
-            raise ValueError(f"{role_cn} '{name}' 未设置 position，无法导出状态。")
-        pos_flat = np.asarray(pos_raw, dtype=np.float64).ravel()
-        if pos_flat.size != 3:
-            raise ValueError(
-                f"{role_cn} '{name}' 的 position 必须为三维向量，当前长度为 {pos_flat.size}。"
-            )
-        pos = np.array(pos_flat, dtype=np.float64, copy=True)
-
-        vel_raw = getattr(obj, "velocity", None)
-        if vel_raw is None:
-            vel = np.zeros(3, dtype=np.float64)
-        else:
-            vel_flat = np.asarray(vel_raw, dtype=np.float64).ravel()
-            if vel_flat.size != 3:
-                raise ValueError(
-                    f"{role_cn} '{name}' 的 velocity 必须为三维向量，当前长度为 {vel_flat.size}。"
-                )
-            vel = np.array(vel_flat, dtype=np.float64, copy=True)
-
-        return {"pos": pos, "vel": vel}
-
-    def _collect_transceiver_states(
-        self,
-        *,
-        role_attr: str,
-        role_cn: str,
-        empty_warning: str,
-        empty_runtime_msg: str,
-    ) -> dict[str, dict[str, np.ndarray]]:
-        out: dict[str, dict[str, np.ndarray]] = {}
-        for tc in self.transceivers.values():
-            ent = getattr(tc, role_attr, None)
-            if ent is None:
-                continue
-            out[ent.name] = self._snapshot_pos_vel(role_cn, ent.name, ent)
-        if not out:
-            print(empty_warning)
-            raise RuntimeError(empty_runtime_msg)
-        return out
-
     def __init__(
         self,
         scene_params: RtSceneParams,
@@ -214,8 +168,59 @@ class RTScene(Scene):
             self.rt_targets[name] = target
 
     # ==================== 辅助方法 ====================
+    @staticmethod
+    def _snapshot_pos_vel(
+        role_cn: str, name: str, obj: object
+    ) -> dict[str, np.ndarray]:
+        pos_raw = getattr(obj, "position", None)
+        if pos_raw is None:
+            raise ValueError(f"{role_cn} '{name}' 未设置 position，无法导出状态。")
+        pos_flat = np.asarray(pos_raw, dtype=np.float64).ravel()
+        if pos_flat.size != 3:
+            raise ValueError(
+                f"{role_cn} '{name}' 的 position 必须为三维向量，当前长度为 {pos_flat.size}。"
+            )
+        pos = np.array(pos_flat, dtype=np.float64, copy=True)
+
+        vel_raw = getattr(obj, "velocity", None)
+        if vel_raw is None:
+            vel = np.zeros(3, dtype=np.float64)
+        else:
+            vel_flat = np.asarray(vel_raw, dtype=np.float64).ravel()
+            if vel_flat.size != 3:
+                raise ValueError(
+                    f"{role_cn} '{name}' 的 velocity 必须为三维向量，当前长度为 {vel_flat.size}。"
+                )
+            vel = np.array(vel_flat, dtype=np.float64, copy=True)
+
+        return {"pos": pos, "vel": vel}
+
+    def _collect_transceiver_states(
+        self,
+        *,
+        role_attr: str,
+        role_cn: str,
+        empty_warning: str,
+        empty_runtime_msg: str,
+    ) -> dict[str, dict[str, np.ndarray]]:
+        out: dict[str, dict[str, np.ndarray]] = {}
+        for tc in self.transceivers.values():
+            ent = getattr(tc, role_attr, None)
+            if ent is None:
+                continue
+            out[ent.name] = self._snapshot_pos_vel(role_cn, ent.name, ent)
+        if not out:
+            print(empty_warning)
+            raise RuntimeError(empty_runtime_msg)
+        return out
+
     def _get_scene_filename(self, filename: str) -> Optional[Any]:
-        """获取场景文件名对象
+        """解析场景文件路径。
+
+        按以下顺序查找：
+        1. 项目 ``scenes/{filename}/{filename}.xml`` 本地文件
+        2. 字面量 ``"None"`` → 空场景
+        3. ``sionna.rt.scene`` 内置场景属性
 
         参数:
         -------
@@ -223,8 +228,11 @@ class RTScene(Scene):
 
         返回:
         -------
-            - 场景文件名对象或 None
+            - XML 路径字符串、内置场景路径，或 None（空场景）
         """
+        local_xml = (PROJECT_ROOT / "scenes" / filename / f"{filename}.xml").resolve()
+        if local_xml.is_file():
+            return str(local_xml)
         if filename == "None":
             return None
         return getattr(sionna.rt.scene, filename)
