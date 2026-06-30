@@ -19,16 +19,24 @@ def test_resolve_fname_local_ply(monkeypatch, tmp_path):
     assert resolved == str(ply.resolve())
 
 
-def test_resolve_fname_local_with_extension(monkeypatch, tmp_path):
+def test_resolve_fname_rejects_ply_suffix(monkeypatch, tmp_path):
     scenes_dir = tmp_path / "scenes"
     scenes_dir.mkdir()
-    obj = scenes_dir / "van.obj"
-    obj.write_text("")
-
+    (scenes_dir / "van.ply").write_text("")
     monkeypatch.setattr(rt_target_module, "RT_SCENES_DIR", scenes_dir)
 
-    resolved = RTTarget.resolve_fname("t1", "van.obj")
-    assert resolved == str(obj.resolve())
+    with pytest.raises(ValueError, match="逻辑名"):
+        RTTarget.resolve_fname("t1", "van.ply")
+
+
+def test_resolve_fname_rejects_obj_suffix(monkeypatch, tmp_path):
+    scenes_dir = tmp_path / "scenes"
+    scenes_dir.mkdir()
+    (scenes_dir / "van.obj").write_text("")
+    monkeypatch.setattr(rt_target_module, "RT_SCENES_DIR", scenes_dir)
+
+    with pytest.raises(ValueError, match="逻辑名"):
+        RTTarget.resolve_fname("t1", "van.obj")
 
 
 def test_resolve_fname_falls_back_to_sionna(monkeypatch, tmp_path):
@@ -42,12 +50,12 @@ def test_resolve_fname_falls_back_to_sionna(monkeypatch, tmp_path):
     assert resolved.endswith(".ply")
 
 
-def test_resolve_fname_existing_absolute_path(tmp_path):
+def test_resolve_fname_rejects_file_path(tmp_path):
     ply = tmp_path / "mesh.ply"
     ply.write_text("")
 
-    resolved = RTTarget.resolve_fname("t3", str(ply))
-    assert resolved == str(ply.resolve())
+    with pytest.raises(ValueError, match="逻辑名"):
+        RTTarget.resolve_fname("t3", str(ply))
 
 
 def test_resolve_fname_unknown_raises(monkeypatch, tmp_path):

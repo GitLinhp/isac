@@ -181,7 +181,7 @@ class RTSimulator:
             )
 
             self.scene.edit(add=target)
-            target.update(
+            target(
                 position=targets_params.position,
                 velocity=targets_params.velocity,
             )

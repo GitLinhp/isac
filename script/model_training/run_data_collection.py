@@ -99,7 +99,7 @@ def main() -> None:
     target_name, target = next(iter(scene.rt_targets.items()))
     print(target_name, target)
 
-    target.update(
+    target(
         position=(0.0, 0.0, 0.0), velocity=(0.0, 0.0, 0.0), orientation=(0.0, 0.0, 0.0)
     )
 
