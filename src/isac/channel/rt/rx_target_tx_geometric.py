@@ -34,17 +34,35 @@ import numpy as np
 import torch
 from tabulate import tabulate
 
-# 判定 TX/RX 是否视为共址（monostatic）：间距小于等于该阈值 (m)
+# TX/RX 共址判定阈值 (m)，默认 1 mm：||R−X|| ≤ eps 时 type_tensor=False（单基地）
 MONOSTATIC_TX_RX_EPS_M = 1e-3
 
 
+# ==================== 状态堆叠 ====================
 def stack_state_field(
     states: dict[str, dict[str, np.ndarray]],
     names: list[str],
     field: str,
     device: torch.device,
 ) -> torch.Tensor:
-    """将 ``states[name][field]`` 按 ``names`` 顺序堆成 ``(len(names), 3)`` 的 float64 张量。"""
+    """将 ``states[name][field]`` 按 ``names`` 顺序堆叠为 float64 张量。
+
+    参数:
+    -------
+    states: dict[str, dict[str, np.ndarray]]
+        实体状态字典；内层须含 ``pos`` / ``vel`` 等字段。
+    names: list[str]
+        堆叠顺序，与 ``states`` 键一致时即张量第 0 维实体顺序。
+    field: str
+        待读取字段名，通常为 ``"pos"`` 或 ``"vel"``。
+    device: torch.device | None
+        输出张量设备；``None`` 时由 ``torch.as_tensor`` 落在 CPU。
+
+    返回:
+    -------
+    torch.Tensor
+        形状 ``(len(names), 3)``，dtype ``float64``。
+    """
     return torch.stack(
         [
             torch.as_tensor(
@@ -56,6 +74,7 @@ def stack_state_field(
     )
 
 
+# ==================== 几何计算（纯函数） ====================
 def compute_path_type(
     r_stack: torch.Tensor,
     x_stack: torch.Tensor,
@@ -63,12 +82,34 @@ def compute_path_type(
     *,
     eps_m: float = MONOSTATIC_TX_RX_EPS_M,
 ) -> torch.Tensor:
-    """``True``=bistatic，``False``=monostatic；形状 ``(n_rx, n_target, n_tx)``。"""
+    """判定各 ``(rx, tx)`` 对为单基地或双基地，并广播到全目标轴。
+
+    ``False``=monostatic（``||R−X|| ≤ eps_m``），``True``=bistatic；与目标位置无关，
+    同一 ``(rx, tx)`` 列上各目标共享类型。
+
+    参数:
+    -------
+    r_stack: torch.Tensor
+        接收机位置，形状 ``(n_rx, 3)``。
+    x_stack: torch.Tensor
+        发射机位置，形状 ``(n_tx, 3)``。
+    n_targets: int
+        目标数量，用于 expand 到 ``(n_rx, n_target, n_tx)``。
+    eps_m: float
+        TX/RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``。
+
+    返回:
+    -------
+    torch.Tensor
+        ``bool`` 张量，形状 ``(n_rx, n_target, n_tx)``。
+    """
+    # (n_rx, n_tx)：RX 与 TX 间距
     sep = torch.linalg.vector_norm(
         r_stack[:, None, :] - x_stack[None, :, :],
         dim=-1,
     )
     is_bistatic = sep > eps_m
+    # expand 到 n_target 轴 → (n_rx, n_target, n_tx)
     return is_bistatic.unsqueeze(1).expand(-1, n_targets, -1).clone()
 
 
@@ -83,18 +124,35 @@ def compute_range(
     - **bistatic**：双基地「折叠」路径长 ``||T-X|| + ||R-T||``（直射几何，不经遮挡判定）。
     - **monostatic**：TX/RX 共址近似下采用单基地量程 ``||R-T||``，与 ``||T-X||+||R-T||`` 在 ``X≈R`` 时一致。
 
-    张量形状均为 ``(n_rx, n_target, n_tx)``，与 ``compute_path_type`` 一致。
+    参数:
+    -------
+    is_bistatic: torch.Tensor
+        路径类型掩码，形状 ``(n_rx, n_target, n_tx)``。
+    t_stack: torch.Tensor
+        目标位置，形状 ``(n_target, 3)``。
+    r_stack: torch.Tensor
+        接收机位置，形状 ``(n_rx, 3)``。
+    x_stack: torch.Tensor
+        发射机位置，形状 ``(n_tx, 3)``。
+
+    返回:
+    -------
+    torch.Tensor
+        几何路径长度 (m)，形状 ``(n_rx, n_target, n_tx)``，dtype 与输入一致。
     """
     n_tx = x_stack.shape[0]
+    # (n_rx, n_target, n_tx)：TX 腿 ‖T−X‖
     d_tx = torch.linalg.vector_norm(
         t_stack[None, :, None, :] - x_stack[None, None, :, :],
         dim=-1,
     )
+    # (n_rx, n_target, n_tx)：RX 腿 ‖R−T‖
     d_rx = torch.linalg.vector_norm(
         r_stack[:, None, None, :] - t_stack[None, :, None, :],
         dim=-1,
     )
     range_bi = d_tx + d_rx
+    # (n_rx, n_target, 1)：单基地量程 ‖R−T‖
     d_mono = torch.linalg.vector_norm(
         r_stack[:, None, None, :] - t_stack[None, :, None, :],
         dim=-1,
@@ -118,7 +176,21 @@ def compute_vel(
     - **bistatic**：双基地路径长 ``||T-X||+||R-T||`` 对时间的一阶导数，
       ``(v_T-v_X)·(T-X)/||T-X|| + (v_R-v_T)·(R-T)/||R-T||``（TX/RX/目标均可运动）。
 
-    返回形状 ``(n_rx, n_target, n_tx)``；``x_vel`` 与 ``x_stack`` 同为 ``(n_tx, 3)``。
+    参数:
+    -------
+    is_bistatic: torch.Tensor
+        路径类型掩码，形状 ``(n_rx, n_target, n_tx)``。
+    t_pos, t_vel: torch.Tensor
+        目标位置/速度，形状 ``(n_target, 3)``。
+    r_pos, r_vel: torch.Tensor
+        接收机位置/速度，形状 ``(n_rx, 3)``。
+    x_stack, x_vel: torch.Tensor
+        发射机位置/速度，形状 ``(n_tx, 3)``。
+
+    返回:
+    -------
+    torch.Tensor
+        距离变化率 (m/s)，形状 ``(n_rx, n_target, n_tx)``。
     """
     n_tx = x_stack.shape[0]
     n_rx = r_pos.shape[0]
@@ -154,6 +226,7 @@ def compute_vel(
     return torch.where(is_bistatic, vel_bi, vel_mono)
 
 
+# ==================== 三元组快照 ====================
 @dataclass(frozen=True)
 class RxTargetTxGeometric:
     """Rx–Target–Tx 三元组几何快照（不可变，便于作为感知真值在模块间传递）。
@@ -161,8 +234,8 @@ class RxTargetTxGeometric:
     ``frozen=True`` 保证构造后张量引用与名称列表不被意外改写；若场景状态更新，
     应通过 ``RTSimulator.rx_target_tx_geometric`` 或重新调用 ``from_states`` 获取新快照。
 
-    Attributes
-    ----------
+    属性:
+    -----
     target_names, rx_names, tx_names
         与传入 ``from_states`` 的 ``*_states`` 字典键顺序一致，决定张量各轴上的实体名称。
     type_tensor
@@ -192,16 +265,16 @@ class RxTargetTxGeometric:
         tablefmt: str = "simple_grid",
         floatfmt: str = ".2f",
     ) -> None:
-        """将各三元组的路径类型、路径长度与径向速度打印为表格（调试 / CLI 用）。
+        """将各三元组的路径类型、路径长度与径向速度打印到 stdout（调试 / CLI 用）。
 
-        遍历顺序与张量轴 ``(j, i, k) = (rx, target, tx)`` 一致，与 ``display`` 表头
+        遍历顺序与张量轴 ``(j, i, k) = (rx, target, tx)`` 一致，与表头
         「接收机 / 目标 / 发射机」列顺序对应。
 
-        Parameters
-        ----------
-        tablefmt
+        参数:
+        -------
+        tablefmt: str
             传给 ``tabulate`` 的表格样式，默认 ``simple_grid``。
-        floatfmt
+        floatfmt: str
             路径长度与速度的浮点格式，默认保留两位小数。
         """
         tt = self.type_tensor.detach().cpu()
@@ -255,28 +328,29 @@ class RxTargetTxGeometric:
         2. ``compute_path_type(r_stack, x_stack)`` → ``(n_rx, n_target, n_tx)``；
         3. ``compute_range`` / ``compute_vel`` 按 ``type_tensor`` 分支广播到全三元组网格。
 
-        Parameters
-        ----------
+        参数:
+        -------
         target_states, rx_states, tx_states
             目标、接收机、发射机的状态字典；三者均须非空。
-        device
+        device: torch.device | None
             输出张量所在设备；``None`` 时使用 CPU（与 ``RTSimulator.rx_target_tx_geometric`` 一致）。
-        tx_rx_colocated_eps_m
+        tx_rx_colocated_eps_m: float
             判定单基地的 TX–RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``（1 mm）。
 
-        Returns
+        返回:
         -------
         RxTargetTxGeometric
             三个几何张量形状均为 ``(n_rx, n_target, n_tx)``。
 
-        Raises
+        异常:
         ------
         ValueError
             任一状态字典为空，或 ``stack_state_field`` 缺少 ``pos``/``vel`` 时抛出。
 
-        See Also
-        --------
-        RTSimulator.rx_target_tx_geometric : 按当前场景状态构造并缓存的便捷属性。
+        参见:
+        ----
+        RTSimulator.rx_target_tx_geometric
+            按当前场景状态构造并缓存的便捷属性。
         """
         if not target_states or not rx_states or not tx_states:
             raise ValueError("target_states、rx_states 与 tx_states 须均为非空字典。")

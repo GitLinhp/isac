@@ -54,6 +54,7 @@ class RTSimulator:
         self._scene_filter: Optional[SceneFilter] = None
         self._scene_filter_margin: Optional[float] = None
 
+        # 初始化场景
         self._init_scene()
         if frequency is not None:
             self.scene.frequency = float(frequency)
@@ -280,24 +281,6 @@ class RTSimulator:
             polarization=array_params.polarization,
         )
 
-    def build_scene_filter(self, safe_margin: float = 2.0) -> SceneFilter:
-        """创建或刷新场景过滤器。"""
-        if safe_margin < 0:
-            raise ValueError("safe_margin 不能为负数。")
-        self._scene_filter = SceneFilter(self.scene, safe_margin=safe_margin)
-        self._scene_filter_margin = safe_margin
-        return self._scene_filter
-
-    def is_position_valid(self, position: np.ndarray, safe_margin: float = 2.0) -> bool:
-        """判断点位是否有效（不在障碍物包围盒内）。"""
-        if (
-            self._scene_filter is None
-            or self._scene_filter_margin is None
-            or self._scene_filter_margin != safe_margin
-        ):
-            self.build_scene_filter(safe_margin=safe_margin)
-        return self._scene_filter(position)
-
     @property
     def targets_states(self) -> dict[str, dict[str, np.ndarray]]:
         """所有 ``rt_targets`` 的位置/速度 NumPy 快照。"""
@@ -371,53 +354,6 @@ class RTSimulator:
         )
         return self._paths
 
-    @property
-    def output_slug(self) -> str:
-        """输出文件名用：将 ``scene_params.filename`` 规范为合法片段。"""
-        raw = getattr(self.scene_params, "filename", None)
-        if raw is None:
-            return "scene"
-        s = str(raw).strip()
-        if not s or s.lower() == "none":
-            return "scene"
-        return s
-
-    @staticmethod
-    def stack_ragged_cir_samples(
-        cir_a_list: list[np.ndarray],
-        cir_tau_list: list[np.ndarray],
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """路径条数随几何变化时，将各样本 CIR 在每一维上取上界后零填充，再堆成 ``(N,...)``。"""
-        if not cir_a_list or len(cir_a_list) != len(cir_tau_list):
-            raise ValueError("cir_a_list 与 cir_tau_list 须同长度且非空")
-        n = len(cir_a_list)
-        ndims_a = {x.ndim for x in cir_a_list}
-        if len(ndims_a) != 1:
-            raise ValueError(f"CIR_a 各样本秩不一致: {ndims_a}")
-        nd_a = cir_a_list[0].ndim
-        max_shape_a = list(cir_a_list[0].shape)
-        for arr in cir_a_list[1:]:
-            if arr.ndim != nd_a:
-                raise ValueError("CIR_a 逐样本秩不一致")
-            max_shape_a = [max(max_shape_a[i], arr.shape[i]) for i in range(nd_a)]
-
-        ndims_t = {x.ndim for x in cir_tau_list}
-        if len(ndims_t) != 1:
-            raise ValueError(f"CIR_tau 各样本秩不一致: {ndims_t}")
-        nd_t = cir_tau_list[0].ndim
-        max_shape_t = list(cir_tau_list[0].shape)
-        for arr in cir_tau_list[1:]:
-            if arr.ndim != nd_t:
-                raise ValueError("CIR_tau 逐样本秩不一致")
-            max_shape_t = [max(max_shape_t[i], arr.shape[i]) for i in range(nd_t)]
-
-        out_a = np.zeros((n,) + tuple(max_shape_a), dtype=np.float64)
-        out_tau = np.zeros((n,) + tuple(max_shape_t), dtype=np.float64)
-        for i, (a, t) in enumerate(zip(cir_a_list, cir_tau_list, strict=True)):
-            out_a[(i,) + tuple(slice(0, s) for s in a.shape)] = a
-            out_tau[(i,) + tuple(slice(0, s) for s in t.shape)] = t
-        return out_a, out_tau
-
     def cfr_per_tx(
         self,
         rg: ResourceGrid,
@@ -488,15 +424,36 @@ class RTSimulator:
         )
         return cir_a, tau_np
 
+    # ==================== 预览方法 ====================
     def preview(self, with_paths: bool = True) -> None:
-        """预览场景"""
+        """预览场景
+
+        参数:
+        -------
+        - with_paths: bool
+            是否渲染路径
+
+        返回:
+        -------
+        - None
+        """
         self.scene.preview(
             camera=self.scene.camera,
             paths=self.paths if with_paths else None,
         )
 
     def render(self, with_paths: bool = True) -> plt.Figure:
-        """渲染场景"""
+        """渲染场景
+
+        参数:
+        -------
+        - with_paths: bool
+            是否渲染路径
+
+        返回:
+        -------
+        - plt.Figure
+        """
         if not with_paths:
             return self.scene.render(camera=self.scene.camera)
         paths = self.paths
@@ -506,7 +463,19 @@ class RTSimulator:
         return self.scene.render(camera=self.scene.camera, paths=paths)
 
     def render_to_file(self, filename: str, with_paths: bool = True) -> None:
-        """渲染场景到文件"""
+        """渲染场景到文件
+
+        参数:
+        -------
+        - filename: str
+            输出文件名
+        - with_paths: bool
+            是否渲染路径
+
+        返回:
+        -------
+        - None
+        """
         out_path = (PROJECT_ROOT / "out" / filename).resolve()
         self.scene.render_to_file(
             camera=self.scene.camera,
