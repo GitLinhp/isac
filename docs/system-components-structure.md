@@ -36,7 +36,7 @@ SystemParams
 | | `demodulator` | `OFDMDemodulator` | `[ofdm]` |
 | | `rg_demapper` | `ResourceGridDemapper` | `[ofdm]` + `[stream_management]` |
 | | `ls_channel_estimator` | `LSChannelEstimator` | `[ofdm]`（感知段，依赖 `rg`） |
-| 信道 | `rt_scene` | `RTScene` | `[rt_scene]`（与 channel 段同时存在时） |
+| 信道 | `rt_scene` | `RTSimulator` | `[rt_scene]`（与 channel 段同时存在时） |
 | | `rcs_scene` | `RCSScene` | `[rcs_scene]`（`channel.type=rcs` 时） |
 | | `channel` | `RTChannel` \| `RCSChannel` | `[channel]` + `[ofdm]` |
 | 感知 | `sensing_performance` | `SensingPerformance` | `[ofdm]` + `carrier_frequency` |
@@ -55,7 +55,7 @@ SystemParams
 | `ofdm` | `rg`, `rg_mapper`, `rg_demapper`, `modulator`, `demodulator` | Sionna OFDM |
 | `[ofdm]`（`rg` 就绪后） | `ls_channel_estimator` | [`LSChannelEstimator`](../src/isac/sensing/ls_channel_estimator.py) |
 | `stream_management` | `rg_demapper` | Sionna `ResourceGridDemapper` |
-| `rt_scene` | `rt_scene` | [`RTScene`](../src/isac/channel/rt/rt_scene.py) |
+| `rt_scene` | `rt_scene` | [`RTSimulator`](../src/isac/channel/rt/rt_simulator.py) |
 | `rcs_scene` | `rcs_scene` | [`RCSScene`](../src/isac/channel/rcs/rcs_scene.py) |
 | `channel` + `rt_scene` | `channel` | [`RTChannel`](../src/isac/channel/rt/rt_channel.py) |
 | `channel` + `rcs_scene` | `channel` | [`RCSChannel`](../src/isac/channel/rcs/rcs_channel.py) |
@@ -85,7 +85,7 @@ source.type == "zc"
 ### RT 信道（`channel.type = "rt"`）
 
 ```
-rt_scene = RTScene(
+rt_scene = RTSimulator(
     scene_params=params.rt_scene,
     frequency=carrier_frequency,
     bandwidth=rg.bandwidth,

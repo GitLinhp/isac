@@ -9,7 +9,7 @@
 | 信道 | Sionna RT 射线追踪（`RTChannel` / `system.components.channel`） | `STChannel` 点散射 |
 | 配置 | 含 `[rt_scene]` | 无 RT，[`config/simulation/sensing/static_target_simulation.toml`](config/simulation/sensing/static_target_simulation.toml) |
 | 施加域 | 频域或时域（`--domain`） | **固定时域**（仿真器仅接受 IQ 样点流） |
-| 真值 | `RTScene.rx_target_tx_geometric` | CLI `--range_m` / `--velocity_mps` |
+| 真值 | `RTSimulator.rx_target_tx_geometric` | CLI `--range_m` / `--velocity_mps` |
 | 场景渲染 | 有 | 无 |
 
 「static」指**点散射物理模型**（对齐 gr-radar `static_target_simulator_cc`），目标仍可配置非零径向速度以产生多普勒。

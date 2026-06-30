@@ -10,9 +10,6 @@ import torch
 from isac.data_structures import SystemComponents, SystemParams
 from isac.system import System
 from isac.utils import load_config, set_random_seed
-from isac.channel import RTScene
-
-
 def _build_cooperative_components(device: str = "cpu") -> SystemComponents:
     set_random_seed(42)
     params = SystemParams.from_dict(

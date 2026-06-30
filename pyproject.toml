@@ -26,7 +26,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-isac = ["**/*.py"]
+isac = ["**/*.py", "channel/rt/scenes/**/*.xml", "channel/rt/scenes/**/*.ply"]
 
 [tool.pytest.ini_options]
 # pytest 运行时自动添加 src 到 Python 路径

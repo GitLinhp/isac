@@ -20,7 +20,7 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
-from ..channel import Channel, RCSChannel, RCSScene, RTChannel, RTScene
+from ..channel import Channel, RCSChannel, RCSScene, RTChannel, RTSimulator
 from ..sensing.sensing_performance import SensingPerformance
 from ..sensing.ls_channel_estimator import LSChannelEstimator
 from ..sensing.music_estimator import MUSICEstimator
@@ -61,7 +61,7 @@ class SystemComponents:
     # 信道组件
     channel: Optional[Channel] = None
     """统一信道入口（``RTChannel`` 频域 / ``RCSChannel`` 时域，可选 AWGN）"""
-    rt_scene: Optional[RTScene] = None
+    rt_scene: Optional[RTSimulator] = None
     """射线追踪场景；``channel.type='rt'`` 时构建"""
     rcs_scene: Optional[RCSScene] = None
     """RCS 点目标场景；``channel.type='rcs'`` 时构建"""
@@ -187,7 +187,7 @@ class SystemComponents:
     ) -> dict:
         """构建信道组件，按 ``channel.type`` 分发。
 
-        - ``rt``：由 ``[rt_scene]`` 构建 ``RTScene``，``RTChannel`` 经 ``paths`` 回调取路径。
+        - ``rt``：由 ``[rt_scene]`` 构建 ``RTSimulator``，``RTChannel`` 经 ``paths`` 回调取路径。
         - ``rcs``：由 ``RCSScene`` + ``Callable`` 构建 ``RCSChannel``。
 
         前置校验由 ``SystemParams._validate_channel_dependencies`` 完成。
@@ -197,7 +197,7 @@ class SystemComponents:
 
         match channel_cfg.type:
             case "rt":
-                rt_scene = RTScene(
+                rt_scene = RTSimulator(
                     scene_params=system_params.rt_scene,
                     frequency=carrier_frequency,
                     bandwidth=float(rg.bandwidth),

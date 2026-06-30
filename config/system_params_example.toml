@@ -50,7 +50,7 @@ snr_db = 10.0 # 接收端 SNR (dB)，components.channel 时使用
 
 # --- 射线追踪场景（SystemParams.rt_scene；channel.type=rt 时必填）---
 [rt_scene]
-filename = "simple_reflector" # 场景文件名（assets/rt_scene 下）
+filename = "simple_reflector" # 场景文件名（isac/channel/rt/scenes 下，或 Sionna 内置名）
 merge_shapes = false          # 是否合并相同材质的形状
 
 # 相机参数

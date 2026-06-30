@@ -92,6 +92,7 @@ class TargetMaterialParams:
 class TargetParams:
     """目标配置"""
 
+    # mesh 逻辑名；优先解析 isac/channel/rt/scenes/{fname}.ply，否则回退 sionna.rt.scene
     fname: str = "low_poly_car"
     material: str = "car_material"
     position: list[float] = field(default_factory=lambda: [0, 0, 0])

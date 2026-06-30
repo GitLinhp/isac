@@ -1,5 +1,4 @@
 # 标准库
-import weakref
 from typing import Dict, Optional, Any
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,23 +21,22 @@ import sionna.rt.scene
 # 本地模块
 from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
-from .scene_filter import SceneFilter, validate_transceivers_not_in_obstacles
+from .scene_filter import SceneFilter
 from ...data_structures.params.channel_params.rt_scene_params import (
     RtSceneParams,
     AntennaArrayParams,
 )
 from .rx_target_tx_geometric import RxTargetTxGeometric
 from ... import PROJECT_ROOT
+from . import RT_SCENES_DIR
 
 
-class RTScene(Scene):
-    """射线追踪场景类（`Scene` 的扩展）。
+class RTSimulator:
+    """射线追踪仿真器：组合 Sionna ``Scene`` 与 ISAC 收发机/目标配置。
 
-    通过 `load_scene` 加载 Sionna 场景后，将内部状态接到本实例上，因此 `RTScene`
-    可直接作为 `Scene` 使用。
+    ``self.scene`` 为 Sionna 场景；``transceivers``、``rt_targets`` 等 ISAC 状态
+    保留在本包装类上。
     """
-
-    path_solver = PathSolver()
 
     def __init__(
         self,
@@ -48,39 +46,67 @@ class RTScene(Scene):
         bandwidth: Optional[float] = None,
     ):
         self.scene_params = scene_params
+        self.transceivers: Dict[str, RTTransceiver] = {}
+        self.rt_targets: Dict[str, RTTarget] = {}
+        self.target_material: Dict[str, ITURadioMaterial] = {}
         self._paths = None
         self._rx_target_tx_geometric: Optional[RxTargetTxGeometric] = None
         self._scene_filter: Optional[SceneFilter] = None
         self._scene_filter_margin: Optional[float] = None
 
-        loaded = load_scene(
+        self._init_scene()
+        if frequency is not None:
+            self.scene.frequency = float(frequency)
+        if bandwidth is not None:
+            self.scene.bandwidth = float(bandwidth)
+        self._init_scene_filter()
+        self._init_camera()
+        self._init_antenna_array()
+        self._init_transceivers()
+        self._init_target_material()
+        self._init_targets()
+        self.path_solver = PathSolver()
+
+    def validate_transceivers_not_in_obstacles(
+        self, *, safe_margin: float = 0.0
+    ) -> None:
+        """场景初始化时校验收发机 ``position`` 未落入任何障碍物包围盒。"""
+        if not self.transceivers:
+            return
+        scene_filter = SceneFilter(self.scene, safe_margin=safe_margin)
+        for tc_name, tc in self.transceivers.items():
+            pos = np.asarray(tc.position, dtype=np.float64).reshape(3)
+            if scene_filter(pos):
+                continue
+            for obs in scene_filter.obstacles:
+                box_min = np.asarray(obs["min"], dtype=np.float64)
+                box_max = np.asarray(obs["max"], dtype=np.float64)
+                x, y, z = pos
+                if (
+                    box_min[0] <= x <= box_max[0]
+                    and box_min[1] <= y <= box_max[1]
+                    and box_min[2] <= z <= box_max[2]
+                ):
+                    raise ValueError(
+                        f"收发机 {tc_name!r} 位置 {pos.tolist()} 落入障碍物 "
+                        f"{obs['name']!r} 的包围盒 "
+                        f"(min={box_min.tolist()}, max={box_max.tolist()})。"
+                        "请调整 [rt_scene.transceivers.*.position] 或场景布局。"
+                    )
+
+    # ==================== 初始化方法 ====================
+    def _init_scene(self) -> None:
+        """加载 Sionna 场景到 ``self.scene``。"""
+        self.scene = load_scene(
             filename=self._get_scene_filename(self.scene_params.filename),
             merge_shapes=self.scene_params.merge_shapes,
         )
-        self.__dict__.update(loaded.__dict__)
-        # 将已加载场景中的对象重新绑定到当前 RTScene 实例。
-        # 否则第一次调用 `edit(add=...)` 时，Sionna 会在回填已有对象（如 building_1）
-        # 过程中报错：对象已被另一个 scene 使用。
-        for obj in self._scene_objects.values():
-            obj._scene = weakref.ref(self)
-        self.scene_params = scene_params
-        self._paths = None
-        self._rx_target_tx_geometric = None
 
-        self._init_camera()  # 初始化相机
-        self._init_antenna_array()  # 初始化天线阵列
-        self._init_transceivers()  # 初始化收发器
-        self._init_target_material()  # 初始化目标材料
-        self._init_targets()  # 初始化目标
+    def _init_scene_filter(self) -> None:
+        """初始化场景过滤器"""
+        self._scene_filter = SceneFilter(self.scene, safe_margin=0.0)
+        self._scene_filter_margin = 0.0
 
-        validate_transceivers_not_in_obstacles(self)
-
-        if frequency is not None:
-            self.frequency = float(frequency)
-        if bandwidth is not None:
-            self.bandwidth = float(bandwidth)
-
-    # ==================== 初始化方法 ====================
     def _init_camera(self) -> None:
         """初始化相机
 
@@ -91,11 +117,13 @@ class RTScene(Scene):
         if camera is None:
             return
         if camera.look_at is not None:
-            self.camera = Camera(position=camera.position, look_at=camera.look_at)
-        else:
-            self.camera = Camera(
+            self.scene.camera = Camera(position=camera.position, look_at=camera.look_at)
+        elif camera.orientation is not None:
+            self.scene.camera = Camera(
                 position=camera.position, orientation=camera.orientation
             )
+        else:
+            self.scene.camera = Camera(position=camera.position)
 
     def _init_antenna_array(self) -> None:
         """初始化天线阵列"""
@@ -105,12 +133,11 @@ class RTScene(Scene):
         tx_array_params = self.scene_params.antenna_arrays["tx_array"]
         rx_array_params = self.scene_params.antenna_arrays["rx_array"]
 
-        self.tx_array = self._create_planar_array(tx_array_params)
-        self.rx_array = self._create_planar_array(rx_array_params)
+        self.scene.tx_array = self._create_planar_array(tx_array_params)
+        self.scene.rx_array = self._create_planar_array(rx_array_params)
 
     def _init_transceivers(self) -> None:
         """初始化收发器"""
-        self.transceivers: Dict[str, RTTransceiver] = {}
         for name, transceiver_params in self.scene_params.transceivers.items():
             transceiver = RTTransceiver(
                 name=name,
@@ -120,17 +147,15 @@ class RTScene(Scene):
                 power_dbm=transceiver_params.power_dbm,
             )
 
-            # 将收发器添加到场景
             if transceiver.tx is not None:
-                self.add(transceiver.tx)
+                self.scene.add(transceiver.tx)
             if transceiver.rx is not None:
-                self.add(transceiver.rx)
+                self.scene.add(transceiver.rx)
 
             self.transceivers[name] = transceiver
 
     def _init_target_material(self) -> None:
         """初始化目标材料"""
-        self.target_material: Dict[str, ITURadioMaterial] = {}
         if self.scene_params.target_materials is None:
             return
 
@@ -144,22 +169,18 @@ class RTScene(Scene):
             self.target_material[name] = material
 
     def _init_targets(self) -> None:
-        """初始化目标（使用 ``rt_targets`` 避免覆盖 ``Scene.targets`` 方法）。"""
-        self.rt_targets: Dict[str, RTTarget] = {}
+        """初始化目标（使用 ``rt_targets`` 避免与 ``Scene.targets`` 方法混淆）。"""
         if self.scene_params.targets is None:
             return
 
         for name, targets_params in self.scene_params.targets.items():
-
-            # 创建目标对象（使用 RTTarget 进行封装）
             target = RTTarget(
                 name=name,
                 fname=targets_params.fname,
                 radio_material=self.target_material[targets_params.material],
             )
 
-            # 先添加到场景，然后设置属性
-            self.edit(add=target)
+            self.scene.edit(add=target)
             target.update(
                 position=targets_params.position,
                 velocity=targets_params.velocity,
@@ -172,6 +193,25 @@ class RTScene(Scene):
     def _snapshot_pos_vel(
         role_cn: str, name: str, obj: object
     ) -> dict[str, np.ndarray]:
+        """从场景实体读取位置/速度，导出为 NumPy 快照。
+
+        供 ``targets_states``、``rx_states``、``tx_states`` 等属性统一格式化输出；
+        ``position`` 必填，``velocity`` 缺省时视为静止（零向量）。
+
+        参数:
+        -------
+        - role_cn: str
+            实体角色中文名，用于校验失败时的错误信息（如 ``"目标"``、``"接收机"``）。
+        - name: str
+            实体名称，写入错误信息。
+        - obj: object
+            含 ``position`` / 可选 ``velocity`` 属性的 Sionna 或封装对象。
+
+        返回:
+        -------
+        - dict[str, np.ndarray]
+            ``{"pos": ndarray(3,), "vel": ndarray(3,)}``，dtype 均为 ``float64``。
+        """
         pos_raw = getattr(obj, "position", None)
         if pos_raw is None:
             raise ValueError(f"{role_cn} '{name}' 未设置 position，无法导出状态。")
@@ -218,19 +258,11 @@ class RTScene(Scene):
         """解析场景文件路径。
 
         按以下顺序查找：
-        1. 项目 ``scenes/{filename}/{filename}.xml`` 本地文件
+        1. 包内 ``isac/channel/rt/scenes/{filename}/{filename}.xml`` 本地文件
         2. 字面量 ``"None"`` → 空场景
         3. ``sionna.rt.scene`` 内置场景属性
-
-        参数:
-        -------
-            - filename (str): 场景文件名字符串
-
-        返回:
-        -------
-            - XML 路径字符串、内置场景路径，或 None（空场景）
         """
-        local_xml = (PROJECT_ROOT / "scenes" / filename / f"{filename}.xml").resolve()
+        local_xml = (RT_SCENES_DIR / filename / f"{filename}.xml").resolve()
         if local_xml.is_file():
             return str(local_xml)
         if filename == "None":
@@ -238,16 +270,7 @@ class RTScene(Scene):
         return getattr(sionna.rt.scene, filename)
 
     def _create_planar_array(self, array_params: AntennaArrayParams) -> PlanarArray:
-        """创建平面天线阵列
-
-        参数:
-        -------
-            - array_params (AntennaArrayParams): 天线阵列配置
-
-        返回:
-        -------
-            - PlanarArray: 平面天线阵列对象
-        """
+        """创建平面天线阵列"""
         return PlanarArray(
             num_rows=array_params.num_rows,
             num_cols=array_params.num_cols,
@@ -261,7 +284,7 @@ class RTScene(Scene):
         """创建或刷新场景过滤器。"""
         if safe_margin < 0:
             raise ValueError("safe_margin 不能为负数。")
-        self._scene_filter = SceneFilter(self, safe_margin=safe_margin)
+        self._scene_filter = SceneFilter(self.scene, safe_margin=safe_margin)
         self._scene_filter_margin = safe_margin
         return self._scene_filter
 
@@ -273,43 +296,24 @@ class RTScene(Scene):
             or self._scene_filter_margin != safe_margin
         ):
             self.build_scene_filter(safe_margin=safe_margin)
-        return self._scene_filter.is_valid(position)
+        return self._scene_filter(position)
 
     @property
     def targets_states(self) -> dict[str, dict[str, np.ndarray]]:
-        """Snapshot of all ``rt_targets`` positions and velocities as NumPy vectors.
-
-        返回 ``rt_targets`` 中每个目标的当前 ``position`` / ``velocity``，组装为嵌套字典：
-        ``{target_name: {'pos': ndarray(3,), 'vel': ndarray(3,)}}``，dtype 为 ``float64``。
-        若某目标未设置 ``velocity``，则 ``vel`` 为全零向量。
-        若 ``rt_targets`` 为空：打印警告后抛出 ``RuntimeError``（不再返回空字典）。
-        ``pos`` / ``vel`` 均为独立副本，原地修改不会影响场景对象内部状态。
-
-        Returns
-        -------
-        dict[str, dict[str, np.ndarray]]
-            Outer keys: target names. Inner keys: ``"pos"``, ``"vel"`` — each ``np.ndarray`` of shape ``(3,)``.
-        """
+        """所有 ``rt_targets`` 的位置/速度 NumPy 快照。"""
         if not self.rt_targets:
-            print(
-                "targets_states：rt_targets 为空，无法进行径向真值对齐；请检查 RT 目标配置。"
+            raise RuntimeError(
+                "rt_targets 为空，无法进行径向真值对齐；请检查 rt_targets 配置。"
             )
 
         out: dict[str, dict[str, np.ndarray]] = {}
-
         for name, target in self.rt_targets.items():
             out[name] = self._snapshot_pos_vel("目标", name, target)
-
         return out
 
     @property
     def rx_states(self) -> dict[str, dict[str, np.ndarray]]:
-        """All receivers under ``transceivers`` as NumPy pos/vel snapshots (same layout as ``get_targets_states``).
-
-        按 ``transceivers`` 插入顺序遍历，对每个含 ``rx`` 的条目以 ``Receiver.name`` 为键写入
-        ``{'pos': ndarray(3,), 'vel': ndarray(3,)}``。``velocity`` 缺失时为全零；数组均为独立副本。
-        若未找到任何接收机：打印警告后抛出 ``RuntimeError``。
-        """
+        """所有接收机的位置/速度 NumPy 快照。"""
         return self._collect_transceiver_states(
             role_attr="rx",
             role_cn="接收机",
@@ -323,12 +327,7 @@ class RTScene(Scene):
 
     @property
     def tx_states(self) -> dict[str, dict[str, np.ndarray]]:
-        """All transmitters under ``transceivers`` as NumPy pos/vel snapshots (same layout as ``get_rx_states``).
-
-        按 ``transceivers`` 插入顺序遍历，对每个含 ``tx`` 的条目以 ``Transmitter.name`` 为键写入
-        ``{'pos': ndarray(3,), 'vel': ndarray(3,)}``。``velocity`` 缺失时为全零；数组均为独立副本。
-        若未找到任何发射机：打印警告后抛出 ``RuntimeError``。
-        """
+        """所有发射机的位置/速度 NumPy 快照。"""
         return self._collect_transceiver_states(
             role_attr="tx",
             role_cn="发射机",
@@ -340,21 +339,9 @@ class RTScene(Scene):
             ),
         )
 
-    # ==================== 几何属性 ====================
     @property
     def rx_target_tx_geometric(self) -> RxTargetTxGeometric:
-        """对当前场景所有 (接收机, 目标, 发射机) 三元组计算路径类型、几何路径长度与 RX 视线径向速度。
-
-        返回张量形状为 ``(n_rx, n_target, n_tx)``。
-
-        构造时 ``_rx_target_tx_geometric`` 为 ``None``；每次读取根据最新场景状态重新计算并写回缓存，
-        与 ``paths`` 在启用 PathSolver 时的刷新方式一致。
-
-        内部经 ``RxTargetTxGeometric.from_states`` 放置张量；device 为 ``None`` 时与 ``from_states`` 一致默认为 CPU。
-        若需与其它模块的计算设备对齐，可对返回对象中的张量调用 ``.to(device)``。
-
-        内部调用 ``targets_states``、``rx_states``、``tx_states``。
-        """
+        """对当前场景所有 (接收机, 目标, 发射机) 三元组计算几何量。"""
         self._rx_target_tx_geometric = RxTargetTxGeometric.from_states(
             self.targets_states,
             self.rx_states,
@@ -363,21 +350,14 @@ class RTScene(Scene):
         )
         return self._rx_target_tx_geometric
 
-    # ==================== 路径属性 ====================
     @property
     def paths(self) -> Paths:
-        """获取路径，每次调用时自动重新计算最新结果
-
-        返回值:
-        -------
-            - Paths对象: 最新计算得到的路径
-        """
-        # 每次调用都重新计算paths
+        """获取路径，每次调用时自动重新计算最新结果。"""
         cfg = self.scene_params.path_solver
         if cfg is None:
             return self._paths
         self._paths = self.path_solver(
-            scene=self,
+            scene=self.scene,
             max_depth=cfg.max_depth,
             max_num_paths_per_src=cfg.max_num_paths_per_src,
             samples_per_src=cfg.samples_per_src,
@@ -393,7 +373,7 @@ class RTScene(Scene):
 
     @property
     def output_slug(self) -> str:
-        """输出文件名用：将 ``scene_params.filename`` 规范为合法片段（未配置或字面 ``None`` 时用 ``scene``）。"""
+        """输出文件名用：将 ``scene_params.filename`` 规范为合法片段。"""
         raw = getattr(self.scene_params, "filename", None)
         if raw is None:
             return "scene"
@@ -445,10 +425,7 @@ class RTScene(Scene):
         device: torch.device | None = None,
         dtype: torch.dtype = torch.complex64,
     ) -> dict[str, torch.Tensor]:
-        """按发射机分离 OFDM 频域信道 ``(S, F)``，与 ``RTChannel.h_freq`` 一致。
-
-        假定单 RX / 单 RX 天线（``h[0, 0, 0, tx, 0]``）。速度符号由 ``doppler_to_velocity`` 统一换算。
-        """
+        """按发射机分离 OFDM 频域信道 ``(S, F)``，与 ``RTChannel.h_freq`` 一致。"""
         freqs = subcarrier_frequencies(rg.fft_size, rg.subcarrier_spacing)
         a, tau = self.paths.cir(
             num_time_steps=rg.num_ofdm_symbols,
@@ -483,7 +460,7 @@ class RTScene(Scene):
         return out
 
     def cfr_numpy(self, rg: ResourceGrid) -> np.ndarray:
-        """与 ``RTChannel.cfr`` 一致：在 OFDM 子载波频率网格上取射线追踪 CFR（numpy）。"""
+        """在 OFDM 子载波频率网格上取射线追踪 CFR（numpy）。"""
         freqs = subcarrier_frequencies(rg.fft_size, rg.subcarrier_spacing)
         return self.paths.cfr(
             frequencies=freqs,
@@ -493,7 +470,7 @@ class RTScene(Scene):
         )
 
     def cir_numpy(self, rg: ResourceGrid) -> tuple[np.ndarray, np.ndarray]:
-        """与 ``RTChannel`` OFDM 采样一致的路径 CIR（numpy）：``cir_a`` 最后一维 ``[Re,Im]``，`tau` 为时延 (s)。"""
+        """与 ``RTChannel`` OFDM 采样一致的路径 CIR（numpy）。"""
         a_cpx, tau = self.paths.cir(
             num_time_steps=rg.num_ofdm_symbols,
             sampling_frequency=1 / rg.ofdm_symbol_duration,
@@ -511,33 +488,28 @@ class RTScene(Scene):
         )
         return cir_a, tau_np
 
-    # ==================== 显示方法 ====================
-    def preview(self) -> None:
-        """显示场景"""
-        super().preview(paths=self.paths)
+    def preview(self, with_paths: bool = True) -> None:
+        """预览场景"""
+        self.scene.preview(
+            camera=self.scene.camera,
+            paths=self.paths if with_paths else None,
+        )
 
     def render(self, with_paths: bool = True) -> plt.Figure:
-        """渲染场景
-
-        参数:
-        -------
-            - with_paths (bool): 是否叠加射线路径。为 False 时仅渲染场景几何。
-        """
+        """渲染场景"""
         if not with_paths:
-            return super().render(camera=self.camera)
-
+            return self.scene.render(camera=self.scene.camera)
         paths = self.paths
         a = paths.cir(out_type="numpy")[0]
         if a.size == 0:
-            return super().render(camera=self.camera)
-        else:
-            return super().render(camera=self.camera, paths=paths)
+            return self.scene.render(camera=self.scene.camera)
+        return self.scene.render(camera=self.scene.camera, paths=paths)
 
-    def render_to_file(self, filename: str) -> None:
+    def render_to_file(self, filename: str, with_paths: bool = True) -> None:
         """渲染场景到文件"""
         out_path = (PROJECT_ROOT / "out" / filename).resolve()
-        super().render_to_file(
-            camera=self.camera,
+        self.scene.render_to_file(
+            camera=self.scene.camera,
             filename=str(out_path),
-            paths=self.paths,
+            paths=self.paths if with_paths else None,
         )

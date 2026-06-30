@@ -20,7 +20,7 @@
 
 典型入口与用法：
 
-- ``RTScene.rx_target_tx_geometric`` 根据当前 ``targets_states``、``rx_states``、
+- ``RTSimulator.rx_target_tx_geometric`` 根据当前 ``targets_states``、``rx_states``、
   ``tx_states`` 调用 ``from_states`` 构造；属性每次读取时按最新状态重算。
 - 单链路仿真/数据集采集常以 ``geom.range_tensor[0, 0, 0]``、
   ``geom.vel_tensor[0, 0, 0]`` 作为 MUSIC 匹配真值（见 ``run_dataset_collection``）。
@@ -159,7 +159,7 @@ class RxTargetTxGeometric:
     """Rx–Target–Tx 三元组几何快照（不可变，便于作为感知真值在模块间传递）。
 
     ``frozen=True`` 保证构造后张量引用与名称列表不被意外改写；若场景状态更新，
-    应通过 ``RTScene.rx_target_tx_geometric`` 或重新调用 ``from_states`` 获取新快照。
+    应通过 ``RTSimulator.rx_target_tx_geometric`` 或重新调用 ``from_states`` 获取新快照。
 
     Attributes
     ----------
@@ -260,7 +260,7 @@ class RxTargetTxGeometric:
         target_states, rx_states, tx_states
             目标、接收机、发射机的状态字典；三者均须非空。
         device
-            输出张量所在设备；``None`` 时使用 CPU（与 ``RTScene.rx_target_tx_geometric`` 一致）。
+            输出张量所在设备；``None`` 时使用 CPU（与 ``RTSimulator.rx_target_tx_geometric`` 一致）。
         tx_rx_colocated_eps_m
             判定单基地的 TX–RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``（1 mm）。
 
@@ -276,7 +276,7 @@ class RxTargetTxGeometric:
 
         See Also
         --------
-        RTScene.rx_target_tx_geometric : 按当前场景状态构造并缓存的便捷属性。
+        RTSimulator.rx_target_tx_geometric : 按当前场景状态构造并缓存的便捷属性。
         """
         if not target_states or not rx_states or not tx_states:
             raise ValueError("target_states、rx_states 与 tx_states 须均为非空字典。")
