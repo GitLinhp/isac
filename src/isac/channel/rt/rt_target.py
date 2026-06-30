@@ -73,12 +73,15 @@ class RTTarget(SceneObject):
 
     def __call__(self, **kwargs: Any) -> None:
         """在对象已加入场景后更新位姿/速度（仅 ``_SCENE_OBJECT_ATTRIBUTES``）。"""
+        # 检查是否存在不支持的属性
         unknown = set(kwargs) - set(self._SCENE_OBJECT_ATTRIBUTES)
         if unknown:
             raise ValueError(
                 f"不支持的目标属性 {sorted(unknown)!r}；"
                 f"允许: {self._SCENE_OBJECT_ATTRIBUTES}"
             )
+
+        # 更新目标属性
         for attr_name, value in kwargs.items():
             if value is None:
                 continue
