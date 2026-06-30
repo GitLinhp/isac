@@ -395,36 +395,7 @@ class RTSimulator:
             out[name] = slab
         return out
 
-    def cfr_numpy(self, rg: ResourceGrid) -> np.ndarray:
-        """在 OFDM 子载波频率网格上取射线追踪 CFR（numpy）。"""
-        freqs = subcarrier_frequencies(rg.fft_size, rg.subcarrier_spacing)
-        return self.paths.cfr(
-            frequencies=freqs,
-            sampling_frequency=1 / rg.ofdm_symbol_duration,
-            num_time_steps=rg.num_ofdm_symbols,
-            out_type="numpy",
-        )
-
-    def cir_numpy(self, rg: ResourceGrid) -> tuple[np.ndarray, np.ndarray]:
-        """与 ``RTChannel`` OFDM 采样一致的路径 CIR（numpy）。"""
-        a_cpx, tau = self.paths.cir(
-            num_time_steps=rg.num_ofdm_symbols,
-            sampling_frequency=1 / rg.ofdm_symbol_duration,
-            normalize_delays=False,
-            out_type="numpy",
-        )
-        tau_np = np.asarray(tau, dtype=np.float64)
-        a_np = np.asarray(a_cpx)
-        cir_a = np.stack(
-            [
-                np.asarray(a_np.real, dtype=np.float64),
-                np.asarray(a_np.imag, dtype=np.float64),
-            ],
-            axis=-1,
-        )
-        return cir_a, tau_np
-
-    # ==================== 预览方法 ====================
+    # ==================== 场景可视化方法 ====================
     def preview(self, with_paths: bool = True) -> None:
         """预览场景
 
