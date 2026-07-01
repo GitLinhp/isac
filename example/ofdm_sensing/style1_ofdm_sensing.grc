@@ -705,9 +705,8 @@ blocks:
       import numpy as np\nimport pmt\nimport sionna as sn\nimport torch\nfrom gnuradio\
       \ import gr\n\n_UHD_TEST_DIR = \"/home/caict/Desktop/gunradio_test/uhd_test\"\
       \nif _UHD_TEST_DIR not in sys.path:\n    sys.path.insert(0, _UHD_TEST_DIR)\n\
-      \nfrom ofdm_loopback_phy_context import PhyContext\n\n_TAG_SOB = pmt.intern(\"\
-      tx_sob\")\n_TAG_EOB = pmt.intern(\"tx_eob\")\n_TAG_TIME = pmt.intern(\"tx_time\"\
-      )\n\n\nclass blk(gr.basic_block):\n    \"\"\"Generate one frame at init; reload\
+      \nfrom ofdm_loopback_phy_context import PhyContext\nfrom isac_imp.constants\
+      \ import TAG_EOB, TAG_SOB, TAG_TIME\n\n\nclass blk(gr.basic_block):\n    \"\"\"Generate one frame at init; reload\
       \ and replay on repeat_period_ms.\"\"\"\n\n    def __init__(\n        self,\n\
       \        device=\"cpu\",\n        tx_amp=0.05,\n        repeat_period_ms=50.0,\n\
       \        fft_len=2048,\n        subcarrier_spacing=15e3,\n        n_carriers=512,\n\
@@ -790,10 +789,10 @@ blocks:
       \        n = min(len(out), n_remain)\n        if n <= 0:\n            return\
       \ 0\n\n        out[:n] = self._burst_buffer[self._burst_idx : self._burst_idx\
       \ + n]\n        abs_out = self.nitems_written(0)\n\n        if self._burst_idx\
-      \ == 0:\n            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)\n  \
-      \          self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())\n\n\
+      \ == 0:\n            self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)\n  \
+      \          self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())\n\n\
       \        self._burst_idx += n\n        if self._burst_idx >= frame_len:\n  \
-      \          self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)\n    \
+      \          self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)\n    \
       \        self._burst_active = False\n            self._next_burst_time = time.monotonic()\
       \ + self._idle_gap_seconds()\n\n        return n\n"
     affinity: ''

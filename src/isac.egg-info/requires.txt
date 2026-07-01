@@ -1,9 +1,9 @@
 torch
 numpy
+scipy
 tqdm
+tabulate
+pandas
+matplotlib
 pillow
 imageio
-matplotlib
-pandas
-tabulate
-scipy

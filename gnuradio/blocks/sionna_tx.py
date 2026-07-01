@@ -39,6 +39,7 @@ from gnuradio import gr
 
 from isac.data_structures import SystemParams
 from isac.utils import load_config
+from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
 
 
 @dataclass(frozen=True)
@@ -319,10 +320,6 @@ class SionnaOFDMTx(gr.basic_block):
     - 连续（``idle_ms == 0``）：循环输出 CPI
     """
 
-    _TAG_SOB = pmt.intern("tx_sob")
-    _TAG_EOB = pmt.intern("tx_eob")
-    _TAG_TIME = pmt.intern("tx_time")
-
     def __init__(
         self,
         config_file: str = "config/simulation/sensing/sensing_monostatic.toml",
@@ -428,13 +425,13 @@ class SionnaOFDMTx(gr.basic_block):
                 pmt.from_long(self._burst_len),
             )
             if self._uhd_burst_tags:
-                self.add_item_tag(0, abs_out, self._TAG_SOB, pmt.PMT_T)
-                self.add_item_tag(0, abs_out, self._TAG_TIME, self._tx_time_pmt())
+                self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)
+                self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())
 
         self._burst_idx += n
         if self._burst_idx >= self._burst_len:
             if self._uhd_burst_tags:
-                self.add_item_tag(0, abs_out + n - 1, self._TAG_EOB, pmt.PMT_T)
+                self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)
             self._burst_active = False
             self._next_burst_at = time.monotonic() + self._schedule_delay_s()
 
@@ -452,12 +449,12 @@ class SionnaOFDMTx(gr.basic_block):
                     pmt.from_long(self._burst_len),
                 )
                 if self._uhd_burst_tags:
-                    self.add_item_tag(0, abs_out, self._TAG_SOB, pmt.PMT_T)
-                    self.add_item_tag(0, abs_out, self._TAG_TIME, self._tx_time_pmt())
+                    self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)
+                    self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())
             out[produced] = self._time[self._time_idx]
             self._time_idx += 1
             if self._uhd_burst_tags and self._time_idx >= self._burst_len:
-                self.add_item_tag(0, abs_out, self._TAG_EOB, pmt.PMT_T)
+                self.add_item_tag(0, abs_out, TAG_EOB, pmt.PMT_T)
             self._time_idx %= self._burst_len
             produced += 1
         return produced

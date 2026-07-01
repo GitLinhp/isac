@@ -17,10 +17,7 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-# UHD / USRP 发射侧标准 stream tag 键名
-_TAG_SOB = pmt.intern("tx_sob")
-_TAG_EOB = pmt.intern("tx_eob")
-_TAG_TIME = pmt.intern("tx_time")
+from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
 
 
 class blk(gr.basic_block):
@@ -196,13 +193,13 @@ class blk(gr.basic_block):
         abs_out = self.nitems_written(0)
         # 突发第一个样本：打 tx_sob 与 tx_time
         if self._burst_idx == 0:
-            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)
-            self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())
+            self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)
+            self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())
 
         self._burst_idx += n
         # 突发最后一个样本：打 tx_eob，进入 idle 并预约下一突发
         if self._burst_idx >= self._burst_len:
-            self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)
+            self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)
             self._burst_active = False
             self._next_burst_at = time.monotonic() + self._schedule_delay_s()
 

@@ -29,10 +29,7 @@ if str(_repo_root) not in sys.path:
 
 from isac.data_structures import SystemComponents, SystemParams
 from isac.utils import load_config, set_random_seed
-
-_TAG_SOB = pmt.intern("tx_sob")
-_TAG_EOB = pmt.intern("tx_eob")
-_TAG_TIME = pmt.intern("tx_time")
+from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
 
 _DEFAULT_CONFIG = "implementaion/ofdm_burst_source.toml"
 
@@ -288,12 +285,12 @@ class blk(gr.basic_block):
 
         abs_out = self.nitems_written(0)
         if self._burst_idx == 0:
-            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)
-            self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())
+            self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)
+            self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())
 
         self._burst_idx += n
         if self._burst_idx >= self._burst_len:
-            self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)
+            self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)
             self._burst_active = False
             self._next_burst_at = time.monotonic() + self._schedule_delay_s()
 

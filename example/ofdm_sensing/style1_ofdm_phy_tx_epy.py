@@ -22,10 +22,7 @@ if _UHD_TEST_DIR not in sys.path:
     sys.path.insert(0, _UHD_TEST_DIR)
 
 from ofdm_loopback_phy_context import PhyContext
-
-_TAG_SOB = pmt.intern("tx_sob")
-_TAG_EOB = pmt.intern("tx_eob")
-_TAG_TIME = pmt.intern("tx_time")
+from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
 
 
 class blk(gr.basic_block):
@@ -231,12 +228,12 @@ class blk(gr.basic_block):
         abs_out = self.nitems_written(0)
 
         if self._burst_idx == 0:
-            self.add_item_tag(0, abs_out, _TAG_SOB, pmt.PMT_T)
-            self.add_item_tag(0, abs_out, _TAG_TIME, self._tx_time_pmt())
+            self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)
+            self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())
 
         self._burst_idx += n
         if self._burst_idx >= frame_len:
-            self.add_item_tag(0, abs_out + n - 1, _TAG_EOB, pmt.PMT_T)
+            self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)
             self._burst_active = False
             self._next_burst_time = time.monotonic() + self._idle_gap_seconds()
 

@@ -1,14 +1,14 @@
 Metadata-Version: 2.4
 Name: isac
 Version: 0.1.0
-Summary: ISAC Project
+Summary: 通感一体化（ISAC）仿真平台：核心包 isac（OFDM 通信与感知链路）及部署辅助包 isac_imp
 Requires-Python: >=3.11
 Requires-Dist: torch
 Requires-Dist: numpy
+Requires-Dist: scipy
 Requires-Dist: tqdm
+Requires-Dist: tabulate
+Requires-Dist: pandas
+Requires-Dist: matplotlib
 Requires-Dist: pillow
 Requires-Dist: imageio
-Requires-Dist: matplotlib
-Requires-Dist: pandas
-Requires-Dist: tabulate
-Requires-Dist: scipy
