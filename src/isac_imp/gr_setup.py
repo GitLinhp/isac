@@ -31,11 +31,6 @@ from isac.utils import load_config, set_random_seed
 _OfdmOverrides = Mapping[str, Any] | None
 
 
-def _log_override(label: str, toml_val, grc_val) -> None:
-    """GRC 与 TOML 不一致时打印 info 级覆盖日志（非告警）。"""
-    print(f"  [config] GRC 覆盖 TOML: {label} {toml_val}→{grc_val}")
-
-
 def apply_grc_ofdm_overrides(
     raw: dict,
     *,
@@ -43,40 +38,22 @@ def apply_grc_ofdm_overrides(
     fft_size: int,
     subcarrier_spacing: float,
     cp_len: int,
-    log: bool = True,
 ) -> dict:
     """将 GRC 变量合并进 TOML 字典的 [ofdm] 段。
 
     Args:
-        raw: ``load_config`` 返回的原始配置字典（不会被原地修改）
-        num_symbols: OFDM 符号数
-        fft_size: FFT 点数
-        subcarrier_spacing: 子载波间隔 (Hz)
-        cp_len: 循环前缀长度（采样点）
-        log: 是否在覆盖项与 TOML 不一致时打印日志
+    - raw: ``load_config`` 返回的原始配置字典（不会被原地修改）
+    - num_symbols: OFDM 符号数
+    - fft_size: FFT 点数
+    - subcarrier_spacing: 子载波间隔 (Hz)
+    - cp_len: 循环前缀长度（采样点）
+    - log: 是否在覆盖项与 TOML 不一致时打印日志
 
     Returns:
-        合并后的新配置字典；GRC 四参数优先于 TOML [ofdm] 同名项
+    - 合并后的新配置字典；GRC 四参数优先于 TOML [ofdm] 同名项
     """
     merged = dict(raw)
     toml_ofdm = dict(merged.get("ofdm") or {})
-    if log:
-        if toml_ofdm.get("num_symbols") != num_symbols:
-            _log_override("num_symbols", toml_ofdm.get("num_symbols"), num_symbols)
-        if toml_ofdm.get("fft_size") != fft_size:
-            _log_override("fft_size", toml_ofdm.get("fft_size"), fft_size)
-        if float(toml_ofdm.get("subcarrier_spacing", 0)) != subcarrier_spacing:
-            _log_override(
-                "subcarrier_spacing",
-                toml_ofdm.get("subcarrier_spacing"),
-                subcarrier_spacing,
-            )
-        if int(toml_ofdm.get("cyclic_prefix_length", 0)) != cp_len:
-            _log_override(
-                "cp",
-                toml_ofdm.get("cyclic_prefix_length", 0),
-                cp_len,
-            )
     ofdm = dict(toml_ofdm)
     ofdm["num_symbols"] = int(num_symbols)
     ofdm["fft_size"] = int(fft_size)
@@ -168,7 +145,6 @@ def _build_system(
     seed: int,
     batch_size: int,
     ofdm_overrides: _OfdmOverrides,
-    include_channel: bool,
 ) -> System:
     """加载配置并构建 ``System``。
 
@@ -183,10 +159,6 @@ def _build_system(
     torch.set_num_threads(1)
 
     raw = load_config(config_file)
-    if not include_channel:
-        raw = dict(raw)
-        # OTA 发端：跳过 RT 信道构建（与 run_sensing_monostatic 完整仿真区分）
-        raw.pop("channel", None)
     if ofdm_overrides is not None:
         raw = apply_grc_ofdm_overrides(
             raw,
@@ -212,7 +184,6 @@ def create_system(
     batch_size: int = 1,
     ofdm_overrides: _OfdmOverrides = None,
     use_cache: bool = True,
-    include_channel: bool = False,
 ) -> System:
     """构建或与 registry 共享 ``System`` 实例（对齐 run_sensing_monostatic 配置路径）。
 
@@ -225,7 +196,6 @@ def create_system(
         batch_size: 批大小，传入 ``System.batch_size``
         ofdm_overrides: GRC OFDM 四参数覆盖；None 表示不覆盖 TOML [ofdm]
         use_cache: True 时命中 registry 直接返回已有实例
-        include_channel: False（GRC USRP OTA 默认）时不构建 RT 仿真信道
 
     Returns:
         新建或缓存的 ``System`` 实例
@@ -242,7 +212,6 @@ def create_system(
         seed=seed,
         batch_size=batch_size,
         ofdm_overrides=ofdm_overrides,
-        include_channel=include_channel,
     )
 
     # 注册 System
