@@ -40,11 +40,12 @@ def _grc_kw() -> dict:
 
 def _run_baseline_script() -> tuple[np.ndarray, tuple[int, int]]:
     from isac.system import System
-    from isac.utils import set_random_seed
+    from isac.utils import load_config, set_random_seed
 
     set_random_seed(SEED)
+    config = load_config(CONFIG)
     system = System(
-        config_file=CONFIG,
+        config=config,
         batch_size=1,
         device=DEVICE,
     )

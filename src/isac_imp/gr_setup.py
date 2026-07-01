@@ -15,6 +15,7 @@
   TX epy_block → create_system / set_last_x_rg
   RX epy_block → create_system / get_last_x_rg
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,7 +24,6 @@ from typing import Any, Mapping
 import sionna
 import torch
 
-from isac.data_structures import SystemComponents, SystemParams
 from isac.system import System
 from isac.utils import load_config, set_random_seed
 
@@ -86,7 +86,9 @@ def apply_grc_ofdm_overrides(
     return merged
 
 
-def _normalize_ofdm_overrides(ofdm_overrides: _OfdmOverrides) -> tuple[int, int, float, int]:
+def _normalize_ofdm_overrides(
+    ofdm_overrides: _OfdmOverrides,
+) -> tuple[int, int, float, int]:
     """提取 OFDM 四元组供 cache_key 使用；None 时返回全零占位。"""
     if ofdm_overrides is None:
         return (0, 0, 0.0, 0)
@@ -168,16 +170,13 @@ def _build_system(
     ofdm_overrides: _OfdmOverrides,
     include_channel: bool,
 ) -> System:
-    """加载配置并构建 ``System``（不经过 ``System.__init__``）。
+    """加载配置并构建 ``System``。
 
     流程：设随机种子与 Sionna 设备 → ``load_config`` → 可选剔除信道段
-    → 可选 GRC OFDM 覆盖 → 绑定 ``params`` / ``components``。
+    → 可选 GRC OFDM 覆盖 → ``System(config=...)``。
 
     ``include_channel=False`` 时移除 ``[channel]``，用于 USRP 空口路径：
     不经 RT 仿真信道，避免空场景初始化失败。
-
-    使用 ``System.__new__`` 直接绑定合并后的 ``raw``，避免 ``System.__init__``
-    在未合并 GRC 覆盖的 TOML 上先行构建组件。
     """
     set_random_seed(seed)
     sionna.phy.config.device = device
@@ -197,14 +196,10 @@ def _build_system(
             cp_len=int(ofdm_overrides["cyclic_prefix_length"]),
         )
 
-    system = System.__new__(System)
-    system.config_file = str(config_file)
-    system.batch_size = int(batch_size)
-    system.device = str(device)
-    system.config = raw
-    system.params = SystemParams.from_dict(raw)
-    system.components = SystemComponents.build_from_params(
-        system.params, device=device
+    system = System(
+        config=raw,
+        batch_size=int(batch_size),
+        device=str(device),
     )
     return system
 
@@ -254,5 +249,5 @@ def create_system(
     if use_cache:
         # 注册供后续 epy 块（相同 cache_key）命中同一实例
         _SYSTEM_REGISTRY[cache_key] = SystemSession(system=system, cache_key=cache_key)
-    
+
     return system

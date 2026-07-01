@@ -3,7 +3,7 @@ import warnings
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import set_random_seed
+from isac.utils import load_config, set_random_seed
 
 # Sionna/DrJit 射线追踪在大量 episode 时会触发 AST 装饰器次数告警，不影响数值结果
 warnings.filterwarnings(
@@ -92,8 +92,9 @@ def main() -> None:
     set_random_seed(args.seed)
 
     # 2. 构建仿真系统
+    config = load_config(args.config_file)
     system = System(
-        config_file=args.config_file,
+        config=config,
         batch_size=args.batch_size,
         device=args.device,
     )

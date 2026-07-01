@@ -19,7 +19,7 @@ from isac.sensing.localization import (
     position_rmse_xy,
 )
 from isac.system import System
-from isac.utils import match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
 
 
 def _slug_tx_name(tx_name: str) -> str:
@@ -76,8 +76,9 @@ def main() -> None:
     """构建系统、按 TX 分离信道并跑协作感知链。"""
     args = argument_parser()
     set_random_seed(args.seed)
+    config = load_config(args.config_file)
     system = System(
-        config_file=args.config_file,
+        config=config,
         batch_size=args.batch_size,
         device=args.device,
     )

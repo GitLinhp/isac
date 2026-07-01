@@ -6,10 +6,7 @@ import torch
 import sionna
 
 # 自定义模块
-from .utils import (
-    load_config,
-    match_peaks_and_compute_radial_rmse,
-)
+from .utils import match_peaks_and_compute_radial_rmse
 from .data_structures import SystemParams, SystemComponents
 
 SensMode = Literal["monostatic", "bistatic"]
@@ -31,7 +28,7 @@ class System:
 
     def __init__(
         self,
-        config_file: str | Path,
+        config: dict,
         batch_size: int = 1,
         device: str = "cuda:0",
     ) -> None:
@@ -40,8 +37,8 @@ class System:
 
         参数:
         -------
-        - config_file : str | Path
-            TOML 配置文件路径
+        - config : dict
+            已解析的配置字典（通常由 ``load_config`` 在外部加载）
         - batch_size : int
             批处理大小，供 ``transmit()`` 使用
         - device : str
@@ -49,7 +46,7 @@ class System:
         """
         self.batch_size = batch_size
         self.device = device
-        self.config: dict = load_config(config_file)
+        self.config: dict = config
 
         # 设置 Sionna 全局设备
         sionna.phy.config.device = self.device

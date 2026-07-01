@@ -24,7 +24,7 @@ from gr_config import (  # noqa: E402
 )
 from isac.data_structures import SystemComponents  # noqa: E402
 from isac.system import System  # noqa: E402
-from isac.utils import set_random_seed  # noqa: E402
+from isac.utils import load_config, set_random_seed  # noqa: E402
 
 _SNR_UNSET = object()
 
@@ -57,8 +57,9 @@ class GrSystemContext:
         set_random_seed(effective.seed)
         sionna.phy.config.device = effective.device
 
+        raw = load_config(effective.config_path)
         system = System(
-            config_file=str(effective.config_path),
+            config=raw,
             batch_size=1,
             device=effective.device,
         )
