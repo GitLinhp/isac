@@ -63,7 +63,6 @@ look_at = [0, 0, 30]    # 可选：注视点
 [rt_scene.antenna_arrays]
 # 发射天线阵列参数
 [rt_scene.antenna_arrays.tx_array]
-type = "PlanarArray"
 num_rows = 1
 num_cols = 1
 vertical_spacing = 0.5
@@ -72,7 +71,6 @@ pattern = "iso"
 polarization = "V"
 # 接收天线阵列参数
 [rt_scene.antenna_arrays.rx_array]
-type = "PlanarArray"
 num_rows = 1
 num_cols = 1
 vertical_spacing = 0.5

@@ -228,13 +228,13 @@ def main() -> None:
 
     rx_states = scene.rx_states
     tx_states = scene.tx_states
-    true_pos = scene.targets_states[target_name]["pos"]
+    true_pos = scene.targets_states[target_name][0]
     true_xy = (float(true_pos[0]), float(true_pos[1]))
     y_hint = float(true_pos[1])
 
-    mono_pos = rx_states[rx_name]["pos"]
-    bi_pos = tx_states[bistatic_tx_name]["pos"]
-    mono_tx_pos = tx_states[mono_tx_name]["pos"]
+    mono_pos = rx_states[rx_name][0]
+    bi_pos = tx_states[bistatic_tx_name][0]
+    mono_tx_pos = tx_states[mono_tx_name][0]
 
     z_target = 0.0
     r_m_true = float(true_r_mono.item())

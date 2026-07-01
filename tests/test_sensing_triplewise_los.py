@@ -8,12 +8,12 @@ from isac.channel.rt.rx_target_tx_geometric import RxTargetTxGeometric
 from isac.sensing.utils import MONOSTATIC_TX_RX_EPS_M, compute_range
 
 
-def _state(pos: list[float], vel: list[float] | None = None) -> dict[str, np.ndarray]:
+def _state(pos: list[float], vel: list[float] | None = None) -> list[np.ndarray]:
     v = vel if vel is not None else [0.0, 0.0, 0.0]
-    return {
-        "pos": np.asarray(pos, dtype=np.float64),
-        "vel": np.asarray(v, dtype=np.float64),
-    }
+    return [
+        np.asarray(pos, dtype=np.float64),
+        np.asarray(v, dtype=np.float64),
+    ]
 
 
 def test_triplewise_raises_when_any_states_empty():
@@ -55,8 +55,8 @@ def test_range_tensor_mono_vs_bi():
     geom_m = RxTargetTxGeometric.from_states(target_states, rx_states, tx_colocated)
     assert geom_m.type_tensor.shape == (1, 2, 1)
     for i, tn in enumerate(geom_m.target_names):
-        ti = torch.tensor(target_states[tn]["pos"], dtype=torch.float64).reshape(3)
-        rj = torch.tensor(rx_states["r1"]["pos"], dtype=torch.float64).reshape(3)
+        ti = torch.tensor(target_states[tn][0], dtype=torch.float64).reshape(3)
+        rj = torch.tensor(rx_states["r1"][0], dtype=torch.float64).reshape(3)
         expected_mono = torch.linalg.vector_norm(rj - ti)
         assert torch.allclose(geom_m.range_tensor[0, i, 0], expected_mono)
 

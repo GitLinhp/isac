@@ -1,9 +1,10 @@
 """场景障碍物 AABB 过滤：蒙特卡洛采样点有效性判定。
 
 从 ``RTSimulator.scene`` 的 mesh 对象收集轴对齐包围盒（AABB），判断三维点是否落在
-建筑物等实体障碍物内部。典型调用方：
+建筑物等实体障碍物内部。实例通常挂在 ``RTSimulator.scene_filter``（与 ``scene`` 同级）。
+典型调用方：
 
-- ``RTSimulator.is_position_valid`` / 目标蒙特卡洛采样：``scene_filter(position)``
+- 目标蒙特卡洛采样：``sim.scene_filter(position)``
 - ``RTSimulator.validate_transceivers_not_in_obstacles``：初始化时校验收发机位置
 """
 

@@ -29,7 +29,6 @@ class CameraParams:
 class AntennaArrayParams:
     """天线阵列配置"""
 
-    type: str
     num_rows: int
     num_cols: int
     vertical_spacing: float = 0.5
@@ -40,7 +39,6 @@ class AntennaArrayParams:
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "AntennaArrayParams":
         return cls(
-            type=config_dict["type"],
             num_rows=config_dict["num_rows"],
             num_cols=config_dict["num_cols"],
             vertical_spacing=config_dict.get("vertical_spacing", 0.5),

@@ -39,8 +39,11 @@ MONOSTATIC_TX_RX_EPS_M = 1e-3
 
 
 # ==================== 状态堆叠 ====================
+_STATE_FIELD_IDX = {"pos": 0, "vel": 1}
+
+
 def stack_state_field(
-    states: dict[str, dict[str, np.ndarray]],
+    states: dict[str, list[np.ndarray]],
     names: list[str],
     field: str,
     device: torch.device,
@@ -49,8 +52,8 @@ def stack_state_field(
 
     参数:
     -------
-    states: dict[str, dict[str, np.ndarray]]
-        实体状态字典；内层须含 ``pos`` / ``vel`` 等字段。
+    states: dict[str, list[np.ndarray]]
+        实体状态字典；内层为 ``[pos, vel]`` 二元列表。
     names: list[str]
         堆叠顺序，与 ``states`` 键一致时即张量第 0 维实体顺序。
     field: str
@@ -63,10 +66,11 @@ def stack_state_field(
     torch.Tensor
         形状 ``(len(names), 3)``，dtype ``float64``。
     """
+    idx = _STATE_FIELD_IDX[field]
     return torch.stack(
         [
             torch.as_tensor(
-                states[n][field], dtype=torch.float64, device=device
+                states[n][idx], dtype=torch.float64, device=device
             ).reshape(3)
             for n in names
         ],
@@ -311,16 +315,16 @@ class RxTargetTxGeometric:
     @classmethod
     def from_states(
         cls,
-        target_states: dict[str, dict[str, np.ndarray]],
-        rx_states: dict[str, dict[str, np.ndarray]],
-        tx_states: dict[str, dict[str, np.ndarray]],
+        target_states: dict[str, list[np.ndarray]],
+        rx_states: dict[str, list[np.ndarray]],
+        tx_states: dict[str, list[np.ndarray]],
         *,
         device: torch.device = torch.device("cpu"),
         tx_rx_colocated_eps_m: float = MONOSTATIC_TX_RX_EPS_M,
     ) -> "RxTargetTxGeometric":
         """由场景实体状态字典构造三元组几何。
 
-        每个 ``states[name]`` 须含 ``pos``、``vel`` 键，值为形状 ``(3,)`` 的
+        每个 ``states[name]`` 须为 ``[pos, vel]`` 二元列表，元素为形状 ``(3,)`` 的
         ``numpy`` 向量（单位：m、m/s）。计算链：
 
         1. ``stack_state_field`` → ``t_stack, r_stack, x_stack`` 及各 ``*_vel``，
@@ -345,7 +349,7 @@ class RxTargetTxGeometric:
         异常:
         ------
         ValueError
-            任一状态字典为空，或 ``stack_state_field`` 缺少 ``pos``/``vel`` 时抛出。
+            任一状态字典为空，或 ``stack_state_field`` 字段索引无效时抛出。
 
         参见:
         ----

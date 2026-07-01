@@ -16,17 +16,21 @@ from isac.utils.type_converter import convert
 MONOSTATIC_TX_RX_EPS_M = 1e-3
 
 
+_STATE_FIELD_IDX = {"pos": 0, "vel": 1}
+
+
 def stack_state_field(
-    states: dict[str, dict[str, np.ndarray]],
+    states: dict[str, list[np.ndarray]],
     names: list[str],
     field: str,
     device: torch.device,
 ) -> torch.Tensor:
     """将 ``states[name][field]`` 按 ``names`` 顺序堆成 ``(len(names), 3)`` 的 float64 张量。"""
+    idx = _STATE_FIELD_IDX[field]
     return torch.stack(
         [
             torch.as_tensor(
-                states[n][field], dtype=torch.float64, device=device
+                states[n][idx], dtype=torch.float64, device=device
             ).reshape(3)
             for n in names
         ],
