@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from .basic_params import OFDMParams, SourceParams, StreamManagementParams
-from .channel_params import ChannelParams, RtSceneParams, RCSSceneParams
+from .channel_params import ChannelParams, RTSimulatorParams, RCSSceneParams
 from .sensing_params import (
     CFARParams,
     MTDParams,
@@ -31,8 +31,8 @@ class SystemParams:
 
     channel: Optional[ChannelParams] = None
     """信道"""
-    rt_scene: Optional[RtSceneParams] = None
-    """射线追踪场景"""
+    rt_simulator: Optional[RTSimulatorParams] = None
+    """RT 仿真器"""
     rcs_scene: Optional[RCSSceneParams] = None
     """RCS 点目标场景"""
 
@@ -76,7 +76,9 @@ class SystemParams:
         ofdm = cls._parse_section(config_dict, "ofdm", OFDMParams.from_dict)
 
         channel = cls._parse_section(config_dict, "channel", ChannelParams.from_dict)
-        rt_scene = cls._parse_section(config_dict, "rt_scene", RtSceneParams.from_dict)
+        rt_simulator = cls._parse_section(
+            config_dict, "rt_simulator", RTSimulatorParams.from_dict
+        )
         rcs_scene = cls._parse_section(
             config_dict, "rcs_scene", RCSSceneParams.from_dict
         )
@@ -93,7 +95,7 @@ class SystemParams:
             stream_management=stream_management,
             ofdm=ofdm,
             channel=channel,
-            rt_scene=rt_scene,
+            rt_simulator=rt_simulator,
             rcs_scene=rcs_scene,
             mti=mti,
             mtd=mtd,
@@ -107,7 +109,7 @@ class SystemParams:
     def _validate_channel_dependencies(self) -> None:
         if self.channel is None:
             return
-        if self.channel.type == "rt" and self.rt_scene is None:
-            raise ValueError("channel.type='rt' 要求配置 [rt_scene]")
+        if self.channel.type == "rt" and self.rt_simulator is None:
+            raise ValueError("channel.type='rt' 要求配置 [rt_simulator]")
         if self.channel.type == "rcs" and self.rcs_scene is None:
             raise ValueError("channel.type='rcs' 要求配置 [rcs_scene]")

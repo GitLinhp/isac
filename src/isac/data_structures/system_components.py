@@ -61,8 +61,8 @@ class SystemComponents:
     # 信道组件
     channel: Optional[Channel] = None
     """统一信道入口（``RTChannel`` 频域 / ``RCSChannel`` 时域，可选 AWGN）"""
-    rt_scene: Optional[RTSimulator] = None
-    """射线追踪场景；``channel.type='rt'`` 时构建"""
+    rt_simulator: Optional[RTSimulator] = None
+    """RT 仿真器；``channel.type='rt'`` 时构建"""
     rcs_scene: Optional[RCSScene] = None
     """RCS 点目标场景；``channel.type='rcs'`` 时构建"""
 
@@ -187,7 +187,7 @@ class SystemComponents:
     ) -> dict:
         """构建信道组件，按 ``channel.type`` 分发。
 
-        - ``rt``：由 ``[rt_scene]`` 构建 ``RTSimulator``，``RTChannel`` 经 ``paths`` 回调取路径。
+        - ``rt``：由 ``[rt_simulator]`` 构建 ``RTSimulator``，``RTChannel`` 经 ``paths`` 回调取路径。
         - ``rcs``：由 ``RCSScene`` + ``Callable`` 构建 ``RCSChannel``。
 
         前置校验由 ``SystemParams._validate_channel_dependencies`` 完成。
@@ -197,17 +197,17 @@ class SystemComponents:
 
         match channel_cfg.type:
             case "rt":
-                rt_scene = RTSimulator(
-                    scene_params=system_params.rt_scene,
+                rt_simulator = RTSimulator(
+                    rt_simulator_params=system_params.rt_simulator,
                     frequency=carrier_frequency,
                     bandwidth=float(rg.bandwidth),
                 )
                 return {
-                    "rt_scene": rt_scene,
+                    "rt_simulator": rt_simulator,
                     "channel": RTChannel(
                         rg=rg,
                         # 延迟绑定：paths 在每次信道调用时按当前场景状态求解
-                        paths=lambda: rt_scene.paths,
+                        paths=lambda: rt_simulator.paths,
                         device=device,
                     ),
                 }

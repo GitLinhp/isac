@@ -78,7 +78,7 @@ def main() -> None:
     set_random_seed(args.seed)
     system = System(args)
 
-    scene = system.components.rt_scene
+    scene = system.components.rt_simulator
     comps = system.components
     dd = comps.delay_doppler_spectrum
 

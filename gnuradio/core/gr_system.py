@@ -88,7 +88,7 @@ class GrSystemContext:
         return ctx
 
     def _apply_baseline_scene(self) -> None:
-        rt = self.system.components.rt_scene
+        rt = self.system.components.rt_simulator
         if rt is None:
             return
         try:
@@ -98,7 +98,7 @@ class GrSystemContext:
             pass
 
     def print_rt_paths(self) -> None:
-        rt = self.system.components.rt_scene
+        rt = self.system.components.rt_simulator
         if rt is None or rt.paths is None:
             return
         paths = rt.paths

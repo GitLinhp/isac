@@ -36,7 +36,7 @@ SystemParams
 | | `demodulator` | `OFDMDemodulator` | `[ofdm]` |
 | | `rg_demapper` | `ResourceGridDemapper` | `[ofdm]` + `[stream_management]` |
 | | `ls_channel_estimator` | `LSChannelEstimator` | `[ofdm]`（感知段，依赖 `rg`） |
-| 信道 | `rt_scene` | `RTSimulator` | `[rt_scene]`（与 channel 段同时存在时） |
+| 信道 | `rt_simulator` | `RTSimulator` | `[rt_simulator]`（与 channel 段同时存在时） |
 | | `rcs_scene` | `RCSScene` | `[rcs_scene]`（`channel.type=rcs` 时） |
 | | `channel` | `RTChannel` \| `RCSChannel` | `[channel]` + `[ofdm]` |
 | 感知 | `sensing_performance` | `SensingPerformance` | `[ofdm]` + `carrier_frequency` |
@@ -55,9 +55,9 @@ SystemParams
 | `ofdm` | `rg`, `rg_mapper`, `rg_demapper`, `modulator`, `demodulator` | Sionna OFDM |
 | `[ofdm]`（`rg` 就绪后） | `ls_channel_estimator` | [`LSChannelEstimator`](../src/isac/sensing/ls_channel_estimator.py) |
 | `stream_management` | `rg_demapper` | Sionna `ResourceGridDemapper` |
-| `rt_scene` | `rt_scene` | [`RTSimulator`](../src/isac/channel/rt/rt_simulator.py) |
+| `rt_simulator` | `rt_simulator` | [`RTSimulator`](../src/isac/channel/rt/rt_simulator.py) |
 | `rcs_scene` | `rcs_scene` | [`RCSScene`](../src/isac/channel/rcs/rcs_scene.py) |
-| `channel` + `rt_scene` | `channel` | [`RTChannel`](../src/isac/channel/rt/rt_channel.py) |
+| `channel` + `rt_simulator` | `channel` | [`RTChannel`](../src/isac/channel/rt/rt_channel.py) |
 | `channel` + `rcs_scene` | `channel` | [`RCSChannel`](../src/isac/channel/rcs/rcs_channel.py) |
 | `mti` | `moving_target_indication` | [`MovingTargetIndication`](../src/isac/sensing/clutter_suppression.py) |
 | `mtd` | `moving_target_detection` | [`MovingTargetDetection`](../src/isac/sensing/clutter_suppression.py) |
@@ -85,16 +85,16 @@ source.type == "zc"
 ### RT 信道（`channel.type = "rt"`）
 
 ```
-rt_scene = RTSimulator(
-    scene_params=params.rt_scene,
+rt_simulator = RTSimulator(
+    rt_simulator_params=params.rt_simulator,
     frequency=carrier_frequency,
     bandwidth=rg.bandwidth,
 )
-channel = RTChannel(rg=rg, paths=lambda: rt_scene.paths)
+channel = RTChannel(rg=rg, paths=lambda: rt_simulator.paths)
 ```
 
 - 频域 CFR：`domain="freq"`
-- 依赖 Sionna 射线追踪路径 `rt_scene.paths`
+- 依赖 Sionna 射线追踪路径 `rt_simulator.paths`
 
 ### RCS 信道（`channel.type = "rcs"`）
 
@@ -152,7 +152,7 @@ flowchart TB
     subgraph params [SystemParams]
         ofdm_p[ofdm]
         ch_p[channel]
-        rt_p[rt_scene]
+        rt_p[rt_simulator]
         rcs_p[rcs_scene]
         sens_p[mti / mtd / windows / cfar / music]
     end
@@ -160,7 +160,7 @@ flowchart TB
     subgraph comps [SystemComponents]
         rg[rg]
         ch[channel]
-        rt[rt_scene]
+        rt[rt_simulator]
         rcs[rcs_scene]
         sp[sensing_performance]
         dd[delay_doppler_spectrum]

@@ -51,7 +51,7 @@ def main() -> None:
     set_random_seed(args.seed)
     system = System(args)
 
-    scene = system.components.rt_scene
+    scene = system.components.rt_simulator
     domain = args.domain
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_bistatic"

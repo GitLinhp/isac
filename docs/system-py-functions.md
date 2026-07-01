@@ -10,7 +10,7 @@
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `_random_unit_vector_3d(rng)`                         | 在单位球上均匀采样三维单位方向向量 `(3,)`。                                                                                 |
 | `_roi_uniform_scalar(low, high, rng)`                 | ROI 单轴采样：`low==high` 返回固定值，否则在 `[low, high]` 上均匀采样（可用给定 RNG）。                                   |
-| `_scene_slug_from_rt_scene(scene)`                    | 从 RT 场景读取 `scene_params.filename`，规范化用于输出文件名的 slug（空、`None`、字面 `"none"` 等归一为 `"scene"`）。 |
+| `_scene_slug_from_rt_simulator(scene)`                    | 从 RT 仿真器读取 `rt_simulator_params.filename`，规范化用于输出文件名的 slug（空、`None`、字面 `"none"` 等归一为 `"scene"`）。 |
 | `_stack_ragged_cir_samples(cir_a_list, cir_tau_list)` | 各样本 CIR 路径条数不一致时，按各维取最大值零填充后堆叠为 `(N, …)`，供 HDF5 存储。                                         |
 
 ---

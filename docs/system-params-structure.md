@@ -31,7 +31,7 @@ TOML 配置文件
 | `stream_management` | `[stream_management]` | `StreamManagementParams \| None` | 通信解调流管理 |
 | `ofdm` | `[ofdm]` | `OFDMParams \| None` | OFDM 网格与调制 |
 | `channel` | `[channel]` | `ChannelParams \| None` | 信道类型与 SNR |
-| `rt_scene` | `[rt_scene]` | `RtSceneParams \| None` | 射线追踪场景（`channel.type=rt` 时必填） |
+| `rt_simulator` | `[rt_simulator]` | `RTSimulatorParams \| None` | 射线追踪场景（`channel.type=rt` 时必填） |
 | `rcs_scene` | `[rcs_scene]` | `RCSSceneParams \| None` | RCS 点目标场景（`channel.type=rcs` 时必填） |
 | `mti` | `[mti]` | `MTIParams \| None` | 动目标显示 |
 | `mtd` | `[mtd]` | `MTDParams \| None` | 动目标检测 |
@@ -47,7 +47,7 @@ TOML 配置文件
 
 | `channel.type` | 必须配置的 TOML 段 |
 |----------------|-------------------|
-| `rt` | `[rt_scene]` |
+| `rt` | `[rt_simulator]` |
 | `rcs` | `[rcs_scene]` |
 
 ## 模块与文件布局
@@ -59,7 +59,7 @@ src/isac/data_structures/params/
 ├── sensing_params.py         # MTI/MTD/Window/CFAR/Music
 └── channel_params/
     ├── channel_params.py     # ChannelParams
-    ├── rt_scene_params.py    # RtSceneParams 及子结构
+    ├── rt_simulator_params.py    # RTSimulatorParams 及子结构
     └── rcs_scene_params.py   # RCSTargetParams, RCSSceneParams
 ```
 
@@ -152,22 +152,22 @@ position_rx_m = 0.0
 
 **物理量**：`samp_rate`、`center_freq` 不在 params 中存储，由 `RCSChannel` 构造时从 `ofdm.samp_rate` 与 `carrier_frequency` 注入。
 
-### RT 场景 — `[rt_scene]`
+### RT 场景 — `[rt_simulator]`
 
-定义于 [`rt_scene_params.py`](../src/isac/data_structures/params/channel_params/rt_scene_params.py)。
+定义于 [`rt_simulator_params.py`](../src/isac/data_structures/params/channel_params/rt_simulator_params.py)。
 
-**RtSceneParams** 顶层：
+**RTSimulatorParams** 顶层：
 
 | 字段 | TOML 子段 | 说明 |
 |------|-----------|------|
 | `filename` | — | 场景 mesh 文件名 |
 | `merge_shapes` | — | 是否合并同材质形状 |
-| `camera` | `[rt_scene.camera]` | `CameraParams` |
-| `antenna_arrays` | `[rt_scene.antenna_arrays.*]` | 命名天线阵列 |
-| `transceivers` | `[rt_scene.transceivers.*]` | 命名收发器 |
-| `target_materials` | `[rt_scene.target_materials.*]` | 目标材质 |
-| `targets` | `[rt_scene.targets.*]` | 目标位姿/速度 |
-| `path_solver` | `[rt_scene.path_solver]` | 路径求解器 |
+| `camera` | `[rt_simulator.camera]` | `CameraParams` |
+| `antenna_arrays` | `[rt_simulator.antenna_arrays.*]` | 命名天线阵列 |
+| `transceivers` | `[rt_simulator.transceivers.*]` | 命名收发器 |
+| `target_materials` | `[rt_simulator.target_materials.*]` | 目标材质 |
+| `targets` | `[rt_simulator.targets.*]` | 目标位姿/速度 |
+| `path_solver` | `[rt_simulator.path_solver]` | 路径求解器 |
 
 常用子结构字段见 [`config/simulation/sensing/sensing_monostatic.toml`](../config/simulation/sensing/sensing_monostatic.toml) 示例。
 
@@ -220,7 +220,7 @@ position_rx_m = 0.0
 
 | 场景 | 配置文件 | `channel.type` | 场景段 |
 |------|----------|----------------|--------|
-| RT 单基地感知 | `config/simulation/sensing/sensing_monostatic.toml` | `rt` | `[rt_scene]` |
+| RT 单基地感知 | `config/simulation/sensing/sensing_monostatic.toml` | `rt` | `[rt_simulator]` |
 | RCS 点目标感知 | `config/simulation/sensing/static_target_simulation.toml` | `rcs` | `[rcs_scene]` |
 | 完整字段参考 | `config/system_params_example.toml` | 默认 `rt` | 含注释示例 |
 
@@ -233,7 +233,7 @@ flowchart TB
         source[source]
         ofdm[ofdm]
         channel[channel]
-        rt_scene[rt_scene]
+        rt_simulator[rt_simulator]
         rcs_scene[rcs_scene]
         sensing[mti / mtd / windows / cfar / music]
     end
@@ -246,11 +246,11 @@ flowchart TB
     source --> SP
     ofdm --> SP
     channel --> SP
-    rt_scene --> SP
+    rt_simulator --> SP
     rcs_scene --> SP
     sensing --> SP
 
-    channel -->|type=rt| rt_scene
+    channel -->|type=rt| rt_simulator
     channel -->|type=rcs| rcs_scene
     rcs_scene --> RCSSceneParams
     rcs_target["rcs_scene.target"] --> RCSTargetParams

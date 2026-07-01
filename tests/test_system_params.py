@@ -11,7 +11,7 @@ def test_empty_section_parses_as_none() -> None:
             "carrier_frequency": 6e9,
             "ofdm": {"fft_size": 1024, "num_symbols": 512},
             "channel": {"type": "rt"},
-            "rt_scene": {"filename": "test"},
+            "rt_simulator": {"filename": "test"},
             "music": {},
             "windows": {},
         }

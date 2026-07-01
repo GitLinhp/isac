@@ -1,5 +1,5 @@
 """
-射线追踪场景参数数据结构和配置类
+RT 仿真器参数数据结构和配置类
 """
 
 from dataclasses import dataclass, field
@@ -146,8 +146,8 @@ class PathSolverParams:
 
 
 @dataclass
-class RtSceneParams:
-    """射线追踪场景配置"""
+class RTSimulatorParams:
+    """RT 仿真器配置"""
 
     filename: str | None = None
     """场景文件名"""
@@ -167,7 +167,7 @@ class RtSceneParams:
     """路径解析器配置"""
 
     @classmethod
-    def from_dict(cls, config_dict: dict[str, Any]) -> "RtSceneParams":
+    def from_dict(cls, config_dict: dict[str, Any]) -> "RTSimulatorParams":
         antenna_arrays_cfg = config_dict.get("antenna_arrays", {})
         transceivers_cfg = config_dict.get("transceivers", {})
         target_materials_cfg = config_dict.get("target_materials", {})

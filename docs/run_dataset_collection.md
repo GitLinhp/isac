@@ -44,7 +44,7 @@
 ```mermaid
 flowchart TD
     start[CLI + set_random_seed] --> buildSys[构建 System]
-    buildSys --> prepScene[取 rt_scene / 首个 rt_target / ROI]
+    buildSys --> prepScene[取 rt_simulator / 首个 rt_target / ROI]
     prepScene --> mcBatch[generate_targets_monte_carlo 批量生成]
     mcBatch --> loopPlain[逐 episode 处理]
     loopPlain --> processEp[_process_episode]
@@ -149,7 +149,7 @@ flowchart TD
 | 参数 | 默认 | 说明 |
 |------|------|------|
 | `--batch_size` | 1 | 批处理大小（传入 `System`） |
-| `--config_file` | `simulation/sensing/sensing_monostatic_canyon.toml` | 须含非空 `[rt_scene]` |
+| `--config_file` | `simulation/sensing/sensing_monostatic_canyon.toml` | 须含非空 `[rt_simulator]` |
 | `--device` / `-d` | `cuda:0` | `cuda:0` 或 `cpu` |
 | `--seed` | 42 | 蒙特卡洛位置/速度采样种子 |
 

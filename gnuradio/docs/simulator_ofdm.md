@@ -45,7 +45,7 @@ GUI 顶部提供 **target_range** / **target_velocity** 滑块（界面标签仍
 - **Sionna 块内部**通过 `gr_config.merge_config()` 合并：`EffectiveConfig = merge(TOML, GrcOverrides)`，GPU 波形与 DD 处理以 **effective** 为准。
 - **Bootstrap** 在 Python 中通过 `merge_config` + `SensingPerformance` 计算并**打印**感知性能（分辨率、R_max、v_max 等）。
 - GRC 中**不再**维护 `bandwidth`、`R_max`、`v_max` 等派生 Variable；谱图轴使用与默认配置接近的占位值，滑块范围由 `run_simulator_ofdm.py` 启动时刷新。
-- **仅 TOML**（GRC 不覆盖）：ZC 源、窗函数、CFAR、`rt_scene` 场景、QAM/SNR 等。
+- **仅 TOML**（GRC 不覆盖）：ZC 源、窗函数、CFAR、`rt_simulator` 场景、QAM/SNR 等。
 - **仅 GRC**：`burst_pri_sec`、`tx_device`、谱图 `interval`、滑块、`sionna_static_target` 参数等。
 - **Python 脚本**（如 `run_sensing_monostatic.py`）不涉及 GRC，仍纯 TOML。
 

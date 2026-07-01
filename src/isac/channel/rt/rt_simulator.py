@@ -19,7 +19,7 @@ import sionna.rt.scene
 from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
 from .scene_filter import SceneFilter
-from ...data_structures.params.channel_params.rt_scene_params import RtSceneParams
+from ...data_structures.params.channel_params.rt_simulator_params import RTSimulatorParams
 from .rx_target_tx_geometric import RxTargetTxGeometric
 from ... import PROJECT_ROOT
 from . import RT_SCENES_DIR
@@ -36,12 +36,12 @@ class RTSimulator:
 
     def __init__(
         self,
-        scene_params: RtSceneParams,
+        rt_simulator_params: RTSimulatorParams,
         *,
         frequency: Optional[float] = None,
         bandwidth: Optional[float] = None,
     ):
-        self.scene_params = scene_params
+        self.rt_simulator_params = rt_simulator_params
 
         self._init_scene()  # 初始化场景
         if frequency is not None:
@@ -60,8 +60,8 @@ class RTSimulator:
     def _init_scene(self) -> None:
         """加载 Sionna 场景到 ``self.scene``。"""
         self.scene = load_scene(
-            filename=self._get_scene_filename(self.scene_params.filename),
-            merge_shapes=self.scene_params.merge_shapes,
+            filename=self._get_scene_filename(self.rt_simulator_params.filename),
+            merge_shapes=self.rt_simulator_params.merge_shapes,
         )
 
     def _init_scene_filter(self) -> None:
@@ -77,7 +77,7 @@ class RTSimulator:
         注意：Sionna 的 Camera 类不允许同时指定 orientation 和 look_at。
         如果 look_at 不为 None，则优先使用 look_at，忽略 orientation。
         """
-        camera = self.scene_params.camera
+        camera = self.rt_simulator_params.camera
         if camera is None:
             raise ValueError("camera 未配置，无法初始化相机。")
         if camera.look_at is not None:
@@ -91,11 +91,11 @@ class RTSimulator:
 
     def _init_antenna_array(self) -> None:
         """初始化天线阵列（赋给 ``self.tx_array`` / ``self.rx_array``）。"""
-        if self.scene_params.antenna_arrays is None:
+        if self.rt_simulator_params.antenna_arrays is None:
             raise ValueError("antenna_arrays 未配置，无法初始化天线阵列。")
 
-        tx_array_params = self.scene_params.antenna_arrays["tx_array"]
-        rx_array_params = self.scene_params.antenna_arrays["rx_array"]
+        tx_array_params = self.rt_simulator_params.antenna_arrays["tx_array"]
+        rx_array_params = self.rt_simulator_params.antenna_arrays["rx_array"]
         self.tx_array = PlanarArray(**asdict(tx_array_params))
         self.rx_array = PlanarArray(**asdict(rx_array_params))
         self.scene.tx_array = self.tx_array  # 将发射天线阵列添加到场景
@@ -105,10 +105,10 @@ class RTSimulator:
         """初始化收发器（仅填充 ``self.transceivers``）。"""
         self.transceivers: dict[str, RTTransceiver] = {}
 
-        if self.scene_params.transceivers is None:
+        if self.rt_simulator_params.transceivers is None:
             return
 
-        for name, transceiver_params in self.scene_params.transceivers.items():
+        for name, transceiver_params in self.rt_simulator_params.transceivers.items():
             transceiver = RTTransceiver(
                 name=name,
                 position=transceiver_params.position,
@@ -129,10 +129,10 @@ class RTSimulator:
         """初始化目标材料"""
         self.target_materials: dict[str, ITURadioMaterial] = {}
 
-        if self.scene_params.target_materials is None:
+        if self.rt_simulator_params.target_materials is None:
             return
 
-        for name, target_material_params in self.scene_params.target_materials.items():
+        for name, target_material_params in self.rt_simulator_params.target_materials.items():
             material = ITURadioMaterial(
                 name=name,
                 itu_type=target_material_params.type,
@@ -145,10 +145,10 @@ class RTSimulator:
         """初始化目标（``rt_targets``字典）"""
         self.rt_targets: dict[str, RTTarget] = {}
 
-        if self.scene_params.targets is None:
+        if self.rt_simulator_params.targets is None:
             return
 
-        for name, targets_params in self.scene_params.targets.items():
+        for name, targets_params in self.rt_simulator_params.targets.items():
             # 创建目标对象
             target = RTTarget(
                 name=name,
@@ -277,7 +277,7 @@ class RTSimulator:
     @property
     def paths(self) -> Paths:
         """获取路径，每次调用时自动重新计算最新结果。"""
-        cfg = self.scene_params.path_solver
+        cfg = self.rt_simulator_params.path_solver
         if cfg is None:
             return self._paths
         self._paths = self.path_solver(scene=self.scene, **asdict(cfg))

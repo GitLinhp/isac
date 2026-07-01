@@ -19,21 +19,21 @@ type = "rt"
 snr_db = 80              # 信噪比(dB)
 
 # 射线追踪场景参数
-[rt_scene]
+[rt_simulator]
 # filename = "simple_street_canyon" # 场景文件名
 filename = "None"
 merge_shapes = false # 是否合并相同材质的形状
 
 # 相机参数
-[rt_scene.camera]
+[rt_simulator.camera]
 # position = [0, 0, 250]
 position = [0, 0, 100]
 look_at = [0, 0, 0]
 
 # 天线阵列参数
-[rt_scene.antenna_arrays]
+[rt_simulator.antenna_arrays]
 # 发射天线阵列参数
-[rt_scene.antenna_arrays.tx_array]
+[rt_simulator.antenna_arrays.tx_array]
 num_rows = 1
 num_cols = 1
 vertical_spacing = 0.5
@@ -41,7 +41,7 @@ horizontal_spacing = 0.5
 pattern = "iso"
 polarization = "V"
 # 接收天线阵列参数
-[rt_scene.antenna_arrays.rx_array]
+[rt_simulator.antenna_arrays.rx_array]
 num_rows = 1
 num_cols = 1
 vertical_spacing = 0.5
@@ -50,34 +50,34 @@ pattern = "iso"
 polarization = "V"
 
 # 收发机参数
-[rt_scene.transceivers]
-[rt_scene.transceivers.bs1]
+[rt_simulator.transceivers]
+[rt_simulator.transceivers.bs1]
 position = [0, 0, 30]
 look_at = [0, 0, 0]
 type = ["tx", "rx"]
 # power_dbm = 44        # 发射功率 (dBm)，对应 Sionna RT Transmitter
-# [rt_scene.transceivers.bs2]
+# [rt_simulator.transceivers.bs2]
 # position = [40, 0, 20]
 # look_at = [0, 0, 0]
 # type = ["tx", "rx"]
 
 # 目标材质参数
-[rt_scene.target_materials]
-[rt_scene.target_materials.car_material]
+[rt_simulator.target_materials]
+[rt_simulator.target_materials.car_material]
 type = "metal"
 thickness = 0.01
 color = [0, 0.2, 0.6]
 
 # 目标参数
-[rt_scene.targets]
-[rt_scene.targets.car]
+[rt_simulator.targets]
+[rt_simulator.targets.car]
 fname = "low_poly_car"
 material = "car_material"
 position = [0, 0, 0]
 velocity = [0, 0, 10]
 
 # 路径解析器参数
-[rt_scene.path_solver]
+[rt_simulator.path_solver]
 max_depth = 1               # 最大路径交互次数
 max_num_paths_per_src = 1e6 # 每个信号源的最大路径数
 samples_per_src = 1e6       # 每个信号源的射线采样数

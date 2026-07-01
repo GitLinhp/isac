@@ -53,8 +53,8 @@ def _run_baseline_script() -> tuple[np.ndarray, tuple[int, int]]:
     )
     set_random_seed(SEED)
     system = System(args)
-    system.components.rt_scene.get("reflector").velocity = [0, 0, -20]
-    system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]
+    system.components.rt_simulator.get("reflector").velocity = [0, 0, -20]
+    system.components.rt_simulator.get("bs1_tx").velocity = [30, 0, 0]
 
     _, x_rg, x_time = system.transmit()
     y_time = system.components.channel(x_time, domain="time", snr_db=None)

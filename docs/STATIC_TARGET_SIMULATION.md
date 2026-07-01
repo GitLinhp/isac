@@ -7,7 +7,7 @@
 | 项目 | `run_sensing_monostatic.py` | `run_static_target_simulation.py` |
 |------|----------------------------|-----------------------------------|
 | 信道 | Sionna RT 射线追踪（`RTChannel` / `system.components.channel`） | `STChannel` 点散射 |
-| 配置 | 含 `[rt_scene]` | 无 RT，[`config/simulation/sensing/static_target_simulation.toml`](config/simulation/sensing/static_target_simulation.toml) |
+| 配置 | 含 `[rt_simulator]` | 无 RT，[`config/simulation/sensing/static_target_simulation.toml`](config/simulation/sensing/static_target_simulation.toml) |
 | 施加域 | 频域或时域（`--domain`） | **固定时域**（仿真器仅接受 IQ 样点流） |
 | 真值 | `RTSimulator.rx_target_tx_geometric` | CLI `--range_m` / `--velocity_mps` |
 | 场景渲染 | 有 | 无 |
@@ -75,7 +75,7 @@ flowchart TB
 
 1. 解析命令行（系统参数、目标参数、仿真器开关）。
 2. `set_random_seed(seed)` 固定随机性（ZC 源、AWGN、随机相位等）。
-3. `System(args)` 加载 TOML，构建 Sionna OFDM / 感知组件；**不构建 RT 场景**（配置中无 `[rt_scene]`）。
+3. `System(args)` 加载 TOML，构建 Sionna OFDM / 感知组件；**不构建 RT 场景**（配置中无 `[rt_simulator]`）。
 4. 将 `delay_doppler_spectrum.device` 与 `--device` 对齐，避免 CPU/CUDA 混用。
 5. 打印 `sensing_performance.display_performance()`（距离/速度分辨率、最大探测范围等）。
 

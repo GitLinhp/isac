@@ -1,10 +1,10 @@
 from .channel_params import ChannelParams
 from .rcs_scene_params import RCSSceneParams, RCSTargetParams
-from .rt_scene_params import (
+from .rt_simulator_params import (
     AntennaArrayParams,
     CameraParams,
     PathSolverParams,
-    RtSceneParams,
+    RTSimulatorParams,
     TargetMaterialParams,
     TargetParams,
     TransceiverParams,
@@ -17,7 +17,7 @@ __all__ = [
     "PathSolverParams",
     "RCSSceneParams",
     "RCSTargetParams",
-    "RtSceneParams",
+    "RTSimulatorParams",
     "TargetMaterialParams",
     "TargetParams",
     "TransceiverParams",

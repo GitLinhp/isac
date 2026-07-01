@@ -171,7 +171,7 @@ pytest tests/
 
 | 文件 | 用途 |
 |------|------|
-| [`config/system_params_example.toml`](config/system_params_example.toml) | 全参数模板（source / ofdm / channel / rt_scene / cfar / music 等） |
+| [`config/system_params_example.toml`](config/system_params_example.toml) | 全参数模板（source / ofdm / channel / rt_simulator / cfar / music 等） |
 | `config/simulation/sensing/*.toml` | 各感知工作流默认配置 |
 | `config/simulation/communication/*.toml` | 通信基线配置 |
 | `config/data_collection/*.toml` | 数据集采集配置 |

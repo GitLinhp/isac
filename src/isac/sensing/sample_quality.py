@@ -44,7 +44,7 @@ class SampleQualityResult:
 
 
 def _extract_path_slices(
-    rt_scene: object,
+    rt_simulator: object,
     *,
     rx_idx: int,
     tx_idx: int,
@@ -53,7 +53,7 @@ def _extract_path_slices(
 
     Sionna ``paths.a`` 为 ``(Re, Im)`` 元组且含天线维；改用 ``paths.cir`` 复增益。
     """
-    paths = rt_scene.paths
+    paths = rt_simulator.paths
     tau_np = np.asarray(paths.tau, dtype=np.float64)
     valid_np = np.asarray(paths.valid, dtype=bool)
 
@@ -109,7 +109,7 @@ def _squeeze_cfr_to_sf(cfr: np.ndarray | torch.Tensor) -> torch.Tensor:
 
 
 def check_los_path(
-    rt_scene: object,
+    rt_simulator: object,
     true_range_m: float,
     *,
     cfg: SampleQualityConfig,
@@ -120,7 +120,7 @@ def check_los_path(
 
     rx_i, tx_i = cfg.rx_idx, cfg.tx_idx
     tau_slice, valid_slice, amp_slice = _extract_path_slices(
-        rt_scene, rx_idx=rx_i, tx_idx=tx_i
+        rt_simulator, rx_idx=rx_i, tx_idx=tx_i
     )
 
     candidates = np.flatnonzero(valid_slice & (tau_slice >= 0.0))
@@ -255,7 +255,7 @@ def check_dd_peak(
 
 
 def evaluate_sample_quality(
-    rt_scene: object,
+    rt_simulator: object,
     cfr: np.ndarray | torch.Tensor | None,
     true_range_m: float,
     true_velocity_mps: float,
@@ -266,7 +266,7 @@ def evaluate_sample_quality(
 ) -> SampleQualityResult:
     """组合 LoS 与 DD 谱峰检查；任一失败即拒绝。"""
     qcfg = cfg or SampleQualityConfig()
-    los = check_los_path(rt_scene, true_range_m, cfg=qcfg)
+    los = check_los_path(rt_simulator, true_range_m, cfg=qcfg)
     if not los.passed:
         return los
     dd = check_dd_peak(

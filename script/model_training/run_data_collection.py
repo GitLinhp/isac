@@ -95,7 +95,7 @@ def main() -> None:
     system = System(args)
 
     # 3. 取 RT 场景与待驱动的目标
-    scene = system.components.rt_scene
+    scene = system.components.rt_simulator
     target_name, target = next(iter(scene.rt_targets.items()))
     print(target_name, target)
 

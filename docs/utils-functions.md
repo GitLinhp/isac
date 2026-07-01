@@ -15,7 +15,7 @@
 | 函数 / 模块 | 在流水线中的角色 |
 | ----------- | ---------------- |
 | `set_random_seed` | CLI 解析后固定 NumPy / PyTorch / Sionna 随机性，保证可复现采集。 |
-| `scene_slug_from_rt_scene` | 从 RT 场景文件名生成输出文件 slug（HDF5、CSV、GIF 前缀）。 |
+| `scene_slug_from_rt_simulator` | 从 RT 仿真器文件名生成输出文件 slug（HDF5、CSV、GIF 前缀）。 |
 | `target_generation.generate_targets_monte_carlo` | 批量生成全部 episode 的 `(位置, 速度)` 数组。 |
 | `target_generation.generate_monte_carlo_points` | 质量过滤循环中单样本 ROI 位置采样（与 `scene.is_position_valid` 配合）。 |
 | `target_generation.sample_monte_carlo_velocities` | 质量过滤循环中单样本速度采样。 |
@@ -107,7 +107,7 @@ flowchart LR
 
 | 函数 | 功能概要 |
 | ---- | -------- |
-| `scene_slug_from_rt_scene` | 将 `scene_params.filename` 规范为输出文件名片段（空/`none` → `scene`）。 |
+| `scene_slug_from_rt_simulator` | 将 `rt_simulator_params.filename` 规范为输出文件名片段（空/`none` → `scene`）。 |
 | `paths_cfr_numpy` | 在 OFDM 子载波频率网格上调用 RT `paths.cfr`，返回 numpy CFR。 |
 | `paths_cir_numpy` | 与 OFDM 符号对齐的 CIR；`cir_a` 末维 `[Re, Im]`，`tau` 为时延 (s)。 |
 | `paths_cfr_per_tx_torch` | 按 TX 切片 6D CFR，得到各发射机到 RX 的 `(S, F)` torch 张量字典。 |

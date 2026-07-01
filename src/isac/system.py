@@ -172,7 +172,7 @@ class System:
             )
 
         if display_geometry:
-            scene = comps.rt_scene
+            scene = comps.rt_simulator
             scene.rx_target_tx_geometric.display()
 
         est_ranges: Optional[torch.Tensor] = None
@@ -198,11 +198,11 @@ class System:
             tr = true_ranges
             tv = true_velocities
             if tr is None or tv is None:
-                scene = comps.rt_scene
+                scene = comps.rt_simulator
                 if scene is None:
                     raise ValueError(
                         "compute_rmse=True 须传入 true_ranges/true_velocities，"
-                        "或配置 rt_scene 以从 rx_target_tx_geometric 读取真值"
+                        "或配置 rt_simulator 以从 rx_target_tx_geometric 读取真值"
                     )
                 geom = scene.rx_target_tx_geometric
                 tr = geom.range_tensor

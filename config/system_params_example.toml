@@ -4,17 +4,17 @@
 # 顶层键未出现在 TOML 中 → SystemParams 对应字段为 None → build_from_params 不构建该组件。
 # 空段（如仅写 [windows] 无子键）仍算「已配置」，会走段内 from_dict 默认值。
 #
-# 默认可直接解析并通过校验：channel.type = "rt"，须配合 [rt_scene]。
+# 默认可直接解析并通过校验：channel.type = "rt"，须配合 [rt_simulator]。
 # 典型仿真链所需段：
 #   - 发射/接收：carrier_frequency, [source], [ofdm]
 #   - binary 源须在 [source] 中写 num_bits_per_symbol（见下方注释）
 #   - 通信解调：另需 [stream_management]
-#   - 信道： [channel] + [rt_scene] 或 [rcs_scene]
+#   - 信道： [channel] + [rt_simulator] 或 [rcs_scene]
 #   - 感知： [mti], [mtd], [windows], [cfar], [music]
 #
 # 若改用 channel.type = "rcs"：
 #   1. 将 [channel].type 改为 "rcs"
-#   2. 注释或删除 [rt_scene] 整段
+#   2. 注释或删除 [rt_simulator] 整段
 #   3. 启用文件末尾 [rcs_scene] 注释块中的配置
 # =============================================================================
 
@@ -48,21 +48,21 @@ dc_null = false              # 资源网格是否置空 DC 子载波
 type = "rt"   # rt | rcs
 snr_db = 10.0 # 接收端 SNR (dB)，components.channel 时使用
 
-# --- 射线追踪场景（SystemParams.rt_scene；channel.type=rt 时必填）---
-[rt_scene]
+# --- 射线追踪场景（SystemParams.rt_simulator；channel.type=rt 时必填）---
+[rt_simulator]
 filename = "simple_reflector" # 场景文件名（isac/channel/rt/scenes 下，或 Sionna 内置名）
 merge_shapes = false          # 是否合并相同材质的形状
 
 # 相机参数
-[rt_scene.camera]
+[rt_simulator.camera]
 position = [0, 100, 50] # 相机位置 [x, y, z]
 orientation = [0, 0, 0] # 可选：欧拉角 [yaw, pitch, roll]
 look_at = [0, 0, 30]    # 可选：注视点
 
 # 天线阵列参数
-[rt_scene.antenna_arrays]
+[rt_simulator.antenna_arrays]
 # 发射天线阵列参数
-[rt_scene.antenna_arrays.tx_array]
+[rt_simulator.antenna_arrays.tx_array]
 num_rows = 1
 num_cols = 1
 vertical_spacing = 0.5
@@ -70,7 +70,7 @@ horizontal_spacing = 0.5
 pattern = "iso"
 polarization = "V"
 # 接收天线阵列参数
-[rt_scene.antenna_arrays.rx_array]
+[rt_simulator.antenna_arrays.rx_array]
 num_rows = 1
 num_cols = 1
 vertical_spacing = 0.5
@@ -78,36 +78,36 @@ horizontal_spacing = 0.5
 pattern = "iso"
 polarization = "V"
 
-[rt_scene.transceivers]
+[rt_simulator.transceivers]
 # 协作拓扑示例：bs1 共址 TX/RX，bs2 仅 TX
-[rt_scene.transceivers.bs1]
+[rt_simulator.transceivers.bs1]
 position = [-25, 0, 30]
 look_at = [0, 0, 0]
 type = ["tx", "rx"]
 power_dbm = 44          # 可选；发射功率 (dBm)
 
-[rt_scene.transceivers.bs2]
+[rt_simulator.transceivers.bs2]
 position = [25, 0, 30]
 look_at = [0, 0, 0]
 type = ["tx"]
 
 # 目标材质参数
-[rt_scene.target_materials]
-[rt_scene.target_materials.car_material]
+[rt_simulator.target_materials]
+[rt_simulator.target_materials.car_material]
 type = "metal"
 thickness = 0.01
 color = [0, 0.2, 0.6]
 
 # 目标参数
-[rt_scene.targets]
-[rt_scene.targets.car]
+[rt_simulator.targets]
+[rt_simulator.targets.car]
 fname = "low_poly_car"
 material = "car_material"
 position = [-5, 0, 0]
 velocity = [-10, 0, -30]
 
 # 路径解析器参数
-[rt_scene.path_solver]
+[rt_simulator.path_solver]
 max_depth = 1
 max_num_paths_per_src = 1000000
 samples_per_src = 1000000
@@ -165,7 +165,7 @@ threshold = 0.1          # MUSICEstimator.__call__ 默认门限
 near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
 
 # =============================================================================
-# --- RCS 点目标信道（将 channel.type 改为 rcs 并注释 [rt_scene] 后启用）---
+# --- RCS 点目标信道（将 channel.type 改为 rcs 并注释 [rt_simulator] 后启用）---
 # samp_rate / center_freq 在 RCSChannel 构建时由 ofdm.samp_rate 与 carrier_frequency 注入
 #
 # [channel]

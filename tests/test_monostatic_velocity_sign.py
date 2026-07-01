@@ -40,7 +40,7 @@ def _music_velocity(
 def test_rt_monostatic_cfr_per_tx_velocity_sign_matches_geometry():
     """协作拓扑：单基地 bs1_tx 的 MUSIC 速度符号与 geom.vel_tensor 一致。"""
     comps = _build_cooperative_components()
-    scene = comps.rt_scene
+    scene = comps.rt_simulator
     geom = scene.rx_target_tx_geometric
     rg = comps.rg
 
@@ -58,7 +58,7 @@ def test_rt_monostatic_cfr_per_tx_velocity_sign_matches_geometry():
 def test_rt_bistatic_cfr_per_tx_velocity_sign_matches_geometry():
     """双基地 bs2_tx：``doppler_to_velocity`` 取反后与 ``geom.vel_tensor`` 同号。"""
     comps = _build_cooperative_components()
-    scene = comps.rt_scene
+    scene = comps.rt_simulator
     geom = scene.rx_target_tx_geometric
     rg = comps.rg
 

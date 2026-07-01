@@ -63,11 +63,11 @@ class EffectiveConfig:
 
 
 def _toml_path_solver_seed(config: dict) -> Optional[int]:
-    rt = config.get("rt_scene") or {}
+    rt = config.get("rt_simulator") or {}
     ps = rt.get("path_solver") if isinstance(rt, dict) else None
     if isinstance(ps, dict) and "seed" in ps:
         return int(ps["seed"])
-    ps2 = config.get("rt_scene.path_solver")
+    ps2 = config.get("rt_simulator.path_solver")
     if isinstance(ps2, dict) and "seed" in ps2:
         return int(ps2["seed"])
     return None

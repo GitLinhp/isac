@@ -47,11 +47,11 @@ def main() -> None:
     script_out_dir = PROJECT_ROOT / "out" / "sensing_baseline"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    system.components.rt_scene.render_to_file(
+    system.components.rt_simulator.render_to_file(
         filename=script_out_dir / "sensing_baseline_scene.png"
     )
-    system.components.rt_scene.get("reflector").velocity = [0, 0, -20]
-    system.components.rt_scene.get("bs1_tx").velocity = [30, 0, 0]
+    system.components.rt_simulator.get("reflector").velocity = [0, 0, -20]
+    system.components.rt_simulator.get("bs1_tx").velocity = [30, 0, 0]
 
     # --- 发射 ---
     _, x_rg, x_time = system.transmit()
@@ -77,16 +77,16 @@ def main() -> None:
         compute_rmse=False,
     )
 
-    rt_scene = system.components.rt_scene
-    print("Delay - LoS Path (ns) :", rt_scene.paths.tau[0, 0, 0] / 1e-9)
-    print("Doppler - LoS Path (Hz) :", rt_scene.paths.doppler[0, 0, 0])
+    rt_simulator = system.components.rt_simulator
+    print("Delay - LoS Path (ns) :", rt_simulator.paths.tau[0, 0, 0] / 1e-9)
+    print("Doppler - LoS Path (Hz) :", rt_simulator.paths.doppler[0, 0, 0])
     print(
         "Delay - Reflected Path (ns) :",
-        rt_scene.paths.tau[0, 0, 1].numpy() / 1e-9,
+        rt_simulator.paths.tau[0, 0, 1].numpy() / 1e-9,
     )
     print(
         "Doppler - Reflected Path (Hz) :",
-        rt_scene.paths.doppler[0, 0, 1],
+        rt_simulator.paths.doppler[0, 0, 1],
     )
 
 
