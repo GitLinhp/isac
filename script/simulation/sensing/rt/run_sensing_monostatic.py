@@ -55,11 +55,15 @@ def main() -> None:
     system = System(args)
 
     scene = system.components.rt_simulator
+    if scene is None:
+        raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
 
     script_out_dir = PROJECT_ROOT / "out" / "sensing_monostatic"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    scene.render_to_file(filename=script_out_dir / "sensing_monostatic_scene.png")
+    scene.render_to_file(
+        filename=str(script_out_dir / "sensing_monostatic_scene.png")
+    )
 
     # --- 发射 ---
     _, x_rg, x_time = system.transmit()

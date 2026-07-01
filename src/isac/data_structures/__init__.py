@@ -19,6 +19,7 @@ from .params import (
     TransceiverParams,
     WindowParams,
 )
+from .system_components import SystemComponents
 
 __all__ = [
     "AntennaArrayParams",
@@ -35,18 +36,10 @@ __all__ = [
     "RCSSceneParams",
     "RCSTargetParams",
     "StreamManagementParams",
-    "SystemComponents",
     "SystemParams",
     "TargetMaterialParams",
     "TargetParams",
     "TransceiverParams",
     "WindowParams",
+    "SystemComponents",
 ]
-
-
-def __getattr__(name: str):
-    if name == "SystemComponents":
-        from .system_components import SystemComponents
-
-        return SystemComponents
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

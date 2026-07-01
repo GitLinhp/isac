@@ -72,7 +72,7 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.subcarrier_spacing = subcarrier_spacing = 30e3
+        self.subcarrier_spacing = subcarrier_spacing = 15000.0
         self.num_symbols = num_symbols = 32
         self.fft_size = fft_size = 2048
         self.cp_len = cp_len = 0
@@ -84,11 +84,11 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
         self.startup_delay_s = startup_delay_s = 0.2
         self.samp_rate = samp_rate = fft_size * subcarrier_spacing
         self.ofdm_burst_samples = ofdm_burst_samples = num_symbols * (fft_size + cp_len)
-        self.idle_ms = idle_ms = 400
+        self.idle_ms = idle_ms = 900
         self.gui_update_time_ms = gui_update_time_ms = 10
         self.freq_trig_level = freq_trig_level = -90
         self.device = device = "cuda:0"
-        self.config_file = config_file = "simulation/sensing/sensing_monostatic.toml"
+        self.config_file = config_file = "implementaion/ofdm_burst_source_large_sacle.toml"
         self.TX_gain = TX_gain = 45
         self.RX_gain = RX_gain = 35
 
@@ -189,7 +189,7 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
         self.qtgui_time_sink_x_0.enable_stem_plot(False)
 
 
-        labels = ['Signal 1', '', 'Signal 3', 'Signal 4', 'Signal 5',
+        labels = ['RX Mag', '', 'Signal 3', 'Signal 4', 'Signal 5',
             'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
         widths = [1, 1, 1, 1, 1,
             1, 1, 1, 1, 1]
@@ -215,11 +215,7 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
             self.qtgui_time_sink_x_0.set_line_alpha(i, alphas[i])
 
         self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
-        self.top_grid_layout.addWidget(self._qtgui_time_sink_x_0_win, 3, 0, 1, 3)
-        for r in range(3, 4):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 3):
-            self.top_grid_layout.setColumnStretch(c, 1)
+        self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.qtgui_time_sink_tx = qtgui.time_sink_f(
             int(ofdm_burst_samples), #size
             samp_rate, #samp_rate
@@ -241,7 +237,7 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
         self.qtgui_time_sink_tx.enable_stem_plot(False)
 
 
-        labels = ['Signal 1', '', 'Signal 3', 'Signal 4', 'Signal 5',
+        labels = ['TX Mag', '', 'Signal 3', 'Signal 4', 'Signal 5',
             'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
         widths = [1, 1, 1, 1, 1,
             1, 1, 1, 1, 1]
@@ -267,11 +263,7 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
             self.qtgui_time_sink_tx.set_line_alpha(i, alphas[i])
 
         self._qtgui_time_sink_tx_win = sip.wrapinstance(self.qtgui_time_sink_tx.qwidget(), Qt.QWidget)
-        self.top_grid_layout.addWidget(self._qtgui_time_sink_tx_win, 2, 0, 1, 3)
-        for r in range(2, 3):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 3):
-            self.top_grid_layout.setColumnStretch(c, 1)
+        self.top_layout.addWidget(self._qtgui_time_sink_tx_win)
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
             4096, #size
             window.WIN_BLACKMAN_hARRIS, #wintype

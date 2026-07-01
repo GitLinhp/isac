@@ -1,0 +1,8 @@
+{
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportOptionalCall": "none",
+    "reportOptionalMemberAccess": "none",
+    "reportOptionalOperand": "none",
+    "reportOptionalSubscript": "none"
+  }
+}
