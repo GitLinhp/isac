@@ -37,7 +37,11 @@ def argument_parser() -> argparse.Namespace:
 def main() -> None:
     args = argument_parser()  # 解析命令行参数
     set_random_seed(args.seed)  # 设置随机种子
-    system = System(args)  # 创建系统实例
+    system = System(  # 创建系统实例
+        config_file=args.config_file,
+        batch_size=args.batch_size,
+        device=args.device,
+    )
 
     # 通信基线当前仅打印 BER；产物目录与其他脚本一致，便于后续扩展写入。
     script_out_dir = PROJECT_ROOT / "out" / "communication_baseline"

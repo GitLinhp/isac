@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
-
 import pytest
 import torch
 
@@ -76,13 +74,11 @@ def test_rt_bistatic_cfr_per_tx_velocity_sign_matches_geometry():
 def test_static_target_sensing_velocity_stays_positive():
     """非 RT 静态目标：System.sensing 不翻转，MUSIC 速度仍与 CLI 真值同号。"""
     set_random_seed(42)
-    args = argparse.Namespace(
-        batch_size=1,
+    system = System(
         config_file="simulation/sensing/static_target_simulation.toml",
+        batch_size=1,
         device="cpu",
-        seed=42,
     )
-    system = System(args)
     comps = system.components
     comps.delay_doppler_spectrum.device = torch.device("cpu")
 

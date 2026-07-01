@@ -4,5 +4,8 @@
     "reportOptionalMemberAccess": "none",
     "reportOptionalOperand": "none",
     "reportOptionalSubscript": "none"
-  }
+  },
+  "pylint.args": [
+    "--disable=missing-module-docstring,missing-class-docstring,missing-function-docstring"
+  ]
 }

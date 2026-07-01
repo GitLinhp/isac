@@ -1,5 +1,4 @@
 """GRC 共享 System 上下文：发端 / RT 时域信道 / 接收感知与 run_sensing_baseline 对齐。"""
-import argparse
 import sys
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -58,12 +57,11 @@ class GrSystemContext:
         set_random_seed(effective.seed)
         sionna.phy.config.device = effective.device
 
-        args = argparse.Namespace(
+        system = System(
             config_file=str(effective.config_path),
-            device=effective.device,
             batch_size=1,
+            device=effective.device,
         )
-        system = System(args)
         system.params = effective.system_params
         system.components = SystemComponents.build_from_params(
             effective.system_params, device=effective.device

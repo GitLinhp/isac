@@ -54,22 +54,22 @@ class blk(gr.basic_block):
         fft_size=2048,
         subcarrier_spacing=15000.0,
         cp_len=0,
-        device="cuda:0",
+        device="cpu",
         seed=42,
     ):
         """
         参数:
-            config_file:         TOML 相对路径（经 load_config 解析）
-            idle_ms:             两次突发之间的纯静默间隔 (毫秒)，不含突发本身时长
-            tx_amp:              输出幅度缩放，建议 ≤ 1.0 以免 USRP 饱和
-            time_lead_s:         tx_time 相对当前 wall-clock 的提前量 (秒)
-            startup_delay_s:     首突发启动前的初始等待 (秒)
-            num_symbols:         OFDM 符号数，GRC 覆盖 TOML [ofdm]
-            fft_size:            FFT 点数，GRC 覆盖 TOML [ofdm]
-            subcarrier_spacing:  子载波间隔 (Hz)，GRC 覆盖 TOML [ofdm]
-            cp_len:              循环前缀长度（采样点），GRC 覆盖 TOML [ofdm]
-            device:              Sionna/Torch 计算设备（cpu / cuda）
-            seed:                随机种子，变更后需重建突发缓冲
+            - config_file:         TOML 相对路径（经 load_config 解析）
+            - idle_ms:             两次突发之间的纯静默间隔 (毫秒)，不含突发本身时长
+            - tx_amp:              输出幅度缩放，建议 ≤ 1.0 以免 USRP 饱和
+            - time_lead_s:         tx_time 相对当前 wall-clock 的提前量 (秒)
+            - startup_delay_s:     首突发启动前的初始等待 (秒)
+            - num_symbols:         OFDM 符号数，GRC 覆盖 TOML [ofdm]
+            - fft_size:            FFT 点数，GRC 覆盖 TOML [ofdm]
+            - subcarrier_spacing:  子载波间隔 (Hz)，GRC 覆盖 TOML [ofdm]
+            - cp_len:              循环前缀长度（采样点），GRC 覆盖 TOML [ofdm]
+            - device:              Sionna/Torch 计算设备（cpu / cuda）
+            - seed:                随机种子，变更后需重建突发缓冲
         """
         gr.basic_block.__init__(
             self,
@@ -93,6 +93,7 @@ class blk(gr.basic_block):
         self._burst_active = False
         self._burst_idx = 0
         self._next_burst_at = time.monotonic() + self._startup_delay_s
+        
         # 懒加载：共享 System、参考频域网格、时域突发缓冲
         self._system: System | None = None
         self._x_rg: Any = None

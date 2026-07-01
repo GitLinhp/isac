@@ -1,5 +1,4 @@
 # 标准库
-import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Union
@@ -32,21 +31,25 @@ class System:
 
     def __init__(
         self,
-        args: argparse.Namespace,
+        config_file: str | Path,
+        batch_size: int = 1,
+        device: str = "cuda:0",
     ) -> None:
         """
         初始化系统
 
         参数:
         -------
-        - config_file : str | Path, 可选
-            配置文件路径，默认为 "base.toml"
-        - device : torch.device, 可选
-            计算设备，如果为 None 则自动选择GPU或CPU
+        - config_file : str | Path
+            TOML 配置文件路径
+        - batch_size : int
+            批处理大小，供 ``transmit()`` 使用
+        - device : str
+            Sionna / Torch 计算设备
         """
-        self.args: argparse.Namespace = args
-        self.config: dict = load_config(args.config_file)
-        self.device: str = args.device
+        self.batch_size = batch_size
+        self.device = device
+        self.config: dict = load_config(config_file)
 
         # 设置 Sionna 全局设备
         sionna.phy.config.device = self.device
@@ -63,7 +66,7 @@ class System:
     def transmit(self) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """生成发射比特 ``b``（仅 binary 源）、频域资源网格 ``x_rg`` 与时域 ``x_time``。"""
         src_type = self.params.source.type
-        batch_size = self.args.batch_size
+        batch_size = self.batch_size
         comps = self.components
         rg = comps.rg
 

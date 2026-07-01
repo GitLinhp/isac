@@ -92,7 +92,11 @@ def main() -> None:
     set_random_seed(args.seed)
 
     # 2. 构建仿真系统
-    system = System(args)
+    system = System(
+        config_file=args.config_file,
+        batch_size=args.batch_size,
+        device=args.device,
+    )
 
     # 3. 取 RT 场景与待驱动的目标
     scene = system.components.rt_simulator

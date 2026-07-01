@@ -49,7 +49,11 @@ def argument_parser() -> argparse.Namespace:
 def main() -> None:
     args = argument_parser()
     set_random_seed(args.seed)
-    system = System(args)
+    system = System(
+        config_file=args.config_file,
+        batch_size=args.batch_size,
+        device=args.device,
+    )
 
     scene = system.components.rt_simulator
     domain = args.domain

@@ -76,7 +76,11 @@ def main() -> None:
     """构建系统、按 TX 分离信道并跑协作感知链。"""
     args = argument_parser()
     set_random_seed(args.seed)
-    system = System(args)
+    system = System(
+        config_file=args.config_file,
+        batch_size=args.batch_size,
+        device=args.device,
+    )
 
     scene = system.components.rt_simulator
     comps = system.components

@@ -58,6 +58,17 @@ filterwarnings = [
 pythonVersion = "3.11"
 extraPaths = ["src"]
 reportMissingModuleSource = false
+# SystemComponents 等 Optional 字段由 build_from_params 按配置保证非空，分支内不做重复断言
+reportOptionalCall = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalOperand = "none"
+
+[tool.pylint."messages control"]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+]
 
 [tool.pylint.typecheck]
 # gnuradio / pmt 为 C 扩展，允许动态成员访问

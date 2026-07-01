@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """验证 GRC GrSystemContext 与 run_sensing_baseline.py (--domain time) 数值对齐。"""
-import argparse
 import os
 import sys
 from pathlib import Path
@@ -40,19 +39,15 @@ def _grc_kw() -> dict:
 
 
 def _run_baseline_script() -> tuple[np.ndarray, tuple[int, int]]:
-    import argparse as ap
-
     from isac.system import System
     from isac.utils import set_random_seed
 
-    args = ap.Namespace(
-        batch_size=1,
-        config_file=CONFIG,
-        device=DEVICE,
-        seed=SEED,
-    )
     set_random_seed(SEED)
-    system = System(args)
+    system = System(
+        config_file=CONFIG,
+        batch_size=1,
+        device=DEVICE,
+    )
     system.components.rt_simulator.get("reflector").velocity = [0, 0, -20]
     system.components.rt_simulator.get("bs1_tx").velocity = [30, 0, 0]
 
