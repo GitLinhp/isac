@@ -77,17 +77,21 @@ def main() -> None:
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    system.sensing(
-        x_rg,
-        y_rg,
-        apply_mti=True,
-        evaluate=True,
+    h_dd = system.compute_sensing_spectrum(x_rg, y_rg, apply_mti=True)
+    system.display_sensing_performance()
+    system.display_sensing_geometry()
+    system.visualize_sensing_spectrum(
+        h_dd,
+        file=script_out_dir / "sensing_bistatic_delay_doppler_spectrum.png",
+        offset=100,
+        metric_mode=args.metric_mode,
+    )
+    music = system.estimate_sensing_music(
+        h_dd,
         metric_mode=args.metric_mode,
         sens_mode="bistatic",
-        spectrum_file=script_out_dir / "sensing_bistatic_delay_doppler_spectrum.png",
-        visualize_offset=100,
-        label="双基地感知",
     )
+    system.evaluate_sensing_rmse(music, label="双基地感知")
 
 
 if __name__ == "__main__":

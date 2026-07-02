@@ -54,7 +54,9 @@ def _run_baseline_script() -> tuple[np.ndarray, tuple[int, int]]:
 
     _, x_rg, x_time = system.transmit()
     y_time = system.components.channel(x_time, domain="time", snr_db=None)
-    h_dd = system.sensing(x_rg, system.components.demodulator(y_time).squeeze(), evaluate=False)
+    h_dd = system.compute_sensing_spectrum(
+        x_rg, system.components.demodulator(y_time).squeeze()
+    )
     h_np = h_dd.detach().cpu().numpy().astype(np.complex64)
     peak = np.unravel_index(int(np.argmax(np.abs(h_np) ** 2)), h_np.shape)
     return h_np, peak

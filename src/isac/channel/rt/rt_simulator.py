@@ -400,6 +400,7 @@ class RTSimulator:
         - None
         """
         out_path = (PROJECT_ROOT / "out" / filename).resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         self.scene.render_to_file(
             camera=self.camera,
             filename=str(out_path),

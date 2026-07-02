@@ -90,13 +90,16 @@ def main() -> None:
     true_ranges = torch.tensor([range_m], dtype=torch.float64, device=device)
     true_velocities = torch.tensor([velocity_mps], dtype=torch.float64, device=device)
 
-    system.sensing(
-        x_rg,
-        y_rg,
-        evaluate=True,
+    h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+    system.display_sensing_performance()
+    system.visualize_sensing_spectrum(
+        h_dd,
+        file=script_out_dir / "static_target_delay_doppler_spectrum.png",
         metric_mode=args.metric_mode,
-        spectrum_file=script_out_dir / "static_target_delay_doppler_spectrum.png",
-        display_geometry=False,
+    )
+    music = system.estimate_sensing_music(h_dd, metric_mode=args.metric_mode)
+    system.evaluate_sensing_rmse(
+        music,
         true_ranges=true_ranges,
         true_velocities=true_velocities,
         label="静态目标仿真",

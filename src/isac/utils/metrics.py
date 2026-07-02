@@ -55,9 +55,7 @@ def match_peaks_and_compute_radial_rmse(
     row_ind, col_ind = linear_sum_assignment(cost_np)
     k = int(row_ind.shape[0])
     if verbose:
-        print(
-            f"{label} — 匈牙利匹配: MUSIC 峰数 N={n}, 真值点数 M={m}, 匹配条数 K={k}"
-        )
+        print(f"{label} — 匈牙利匹配: MUSIC 峰数 N={n}, 真值点数 M={m}, 匹配条数 K={k}")
 
     if k == 0:
         raise RuntimeError("匈牙利匹配未产生任何配对")
@@ -107,6 +105,7 @@ def compute_mse(estimate: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return torch.mean((est - tgt) ** 2)
 
 
+# 感知参数换算
 def delay_to_range(
     tau_s: torch.Tensor,
     carrier_frequency: float,

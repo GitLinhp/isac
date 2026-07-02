@@ -75,16 +75,15 @@ def main() -> None:
     else:
         raise ValueError(f"不支持的域: {domain}")
 
-    system.sensing(
-        x_rg,
-        y_rg,
-        evaluate=True,
+    h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+    system.display_sensing_performance()
+    system.visualize_sensing_spectrum(
+        h_dd,
+        file=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
+        offset=20,
         metric_mode="delay_doppler",
-        spectrum_file=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
-        visualize_offset=20,
-        display_geometry=False,
-        compute_rmse=False,
     )
+    system.estimate_sensing_music(h_dd, metric_mode="delay_doppler")
 
     rt_simulator = system.components.rt_simulator
     print("Delay - LoS Path (ns) :", rt_simulator.paths.tau[0, 0, 0] / 1e-9)

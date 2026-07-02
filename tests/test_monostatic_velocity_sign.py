@@ -114,16 +114,11 @@ def test_static_target_sensing_velocity_stays_positive():
     y_time = comps.channel(x_time, domain="time")
     y_rg = comps.demodulator(y_time).squeeze()
 
-    result = system.sensing(
-        x_rg,
-        y_rg,
-        evaluate=True,
-        display_performance=False,
-        display_geometry=False,
-        run_music=True,
-        compute_rmse=False,
-        spectrum_file=None,
+    h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+    music = system.estimate_sensing_music(
+        h_dd,
         sens_mode="monostatic",
+        log_peaks=False,
     )
-    est_v = float(result.est_velocities.reshape(-1)[0].item())
+    est_v = float(music.est_velocities.reshape(-1)[0].item())
     assert est_v * true_v > 0.0

@@ -5,7 +5,7 @@
     python script/model_training/run_sample_roi_positions.py \\
         --num_samples 5 \\
         --roi 10 60 -20 20 \\
-        --sampling_mode uniform \\
+        --position_sampling_mode uniform \\
         --speed_range 1 5 \\
         --speed_sampling_mode gaussian \\
         --seed 0
@@ -19,161 +19,15 @@ from __future__ import annotations
 import argparse
 import csv
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 from tabulate import tabulate
 
 from isac import PROJECT_ROOT
-from isac.utils import (
-    cartesian_direction_to_yaw_pitch_roll,
-    csv_float2_scalar,
-    set_random_seed,
-)
-
-SamplingMode = Literal["uniform", "gaussian"]
+from isac.utils.data_collection.roi_sampling import sample_roi_kinematics
+from isac.utils import csv_float2_scalar, set_random_seed
 
 CSV_FIELDNAMES = ["idx", "position", "velocity", "orientation"]
-
-
-# 解析 ROI
-def parse_roi_xy(
-    roi4: list[float] | tuple[float, ...],
-) -> tuple[float, float, float, float]:
-    """解析平面 ROI 四元组，返回 ``(x_lo, x_hi, y_lo, y_hi)``。"""
-    if len(roi4) != 4:
-        raise ValueError("平面 ROI 须为四元组：XMIN XMAX YMIN YMAX")
-    x_lo, x_hi, y_lo, y_hi = (float(v) for v in roi4)
-    for name, lo, hi in (("x", x_lo, x_hi), ("y", y_lo, y_hi)):
-        if not np.isfinite(lo) or not np.isfinite(hi):
-            raise ValueError(f"ROI 维度 `{name}` 非法：须为有限值")
-        if lo > hi:
-            raise ValueError(f"ROI 维度 `{name}` 非法：须满足 min <= max")
-    return x_lo, x_hi, y_lo, y_hi
-
-
-# 解析速度范围
-def parse_speed_range(
-    pair: list[float] | tuple[float, ...],
-) -> tuple[float, float]:
-    """解析速度模值范围，返回 ``(smin, smax)``。"""
-    if len(pair) != 2:
-        raise ValueError("speed_range 须为二元组：MIN MAX")
-    smin, smax = float(pair[0]), float(pair[1])
-    if not np.isfinite(smin) or not np.isfinite(smax):
-        raise ValueError("speed_range 须为有限值")
-    if smin < 0 or smax <= smin:
-        raise ValueError("speed_range 须满足 0 <= min < max")
-    return smin, smax
-
-
-# 位置采样
-def sample_positions(
-    x_lo: float,
-    x_hi: float,
-    y_lo: float,
-    y_hi: float,
-    num_samples: int,
-    sampling_mode: SamplingMode,
-) -> np.ndarray:
-    """在平面 ROI 内采样位置，返回形状 ``(num_samples, 3)``。"""
-    if num_samples <= 0:
-        raise ValueError("num_samples 必须大于 0")
-
-    n = int(num_samples)
-    if sampling_mode == "uniform":
-        x = np.random.uniform(x_lo, x_hi, size=n)
-        y = np.random.uniform(y_lo, y_hi, size=n)
-        z = np.zeros(n, dtype=np.float64)
-        return np.column_stack((x, y, z)).astype(np.float64)
-    elif sampling_mode == "gaussian":
-        center = np.array(
-            [(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, 0.0], dtype=np.float64
-        )
-        std = np.array(
-            [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0], dtype=np.float64
-        )
-        pts = np.random.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
-        pts = np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
-        return pts
-    else:
-        raise ValueError("sampling_mode 仅支持 'uniform' 或 'gaussian'")
-
-
-# 速度采样
-def sample_speeds(
-    smin: float,
-    smax: float,
-    sampling_mode: SamplingMode,
-    num_samples: int,
-) -> np.ndarray:
-    """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples,)``。"""
-    if num_samples <= 0:
-        raise ValueError("num_samples 必须大于 0")
-
-    n = int(num_samples)
-    if sampling_mode == "uniform":
-        return np.random.uniform(smin, smax, size=n).astype(np.float64)
-    elif sampling_mode == "gaussian":
-        center = (smin + smax) / 2.0
-        std = (smax - smin) / 6.0
-        speeds = np.random.normal(loc=center, scale=std, size=n).astype(np.float64)
-        return np.clip(speeds, smin, smax)
-    else:
-        raise ValueError("speed_sampling_mode 仅支持 'uniform' 或 'gaussian'")
-
-
-def sample_planar_directions(
-    num_samples: int,
-) -> np.ndarray:
-    """xy 平面均匀随机单位方向，返回形状 ``(num_samples, 3)``，``vz=0``。"""
-    n = int(num_samples)
-    theta = np.random.uniform(0.0, 2.0 * np.pi, size=n)
-    dirs = np.column_stack((np.cos(theta), np.sin(theta), np.zeros(n))).astype(
-        np.float64
-    )
-    return dirs
-
-
-def sample_velocities(
-    smin: float,
-    smax: float,
-    num_samples: int,
-    sampling_mode: SamplingMode,
-) -> tuple[np.ndarray, np.ndarray]:
-    """在 ``[smin, smax]`` 内采样速度模值，返回形状 ``(num_samples, 3)`` 与方向。"""
-    speeds = sample_speeds(smin, smax, sampling_mode, num_samples)  # 速度模值
-    dirs = sample_planar_directions(num_samples)  # 方向
-    orientations = cartesian_direction_to_yaw_pitch_roll(dirs)  # 方向转欧拉角
-    velocities = (speeds[:, None] * dirs).astype(np.float64)  # 速度 = 速度模值 * 方向
-    return velocities, orientations
-
-
-# 采样 ROI 内位置与速度
-def sample_roi_kinematics(
-    *,
-    roi: list[float] | tuple[float, ...],
-    position_sampling_mode: SamplingMode,
-    speed_range: list[float] | tuple[float, ...],
-    speed_sampling_mode: SamplingMode,
-    num_samples: int,
-    seed: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """解析 ROI / 速度范围，采样位置与速度，并打印摘要。
-
-    返回 ``(positions, velocities, orientations)``，形状均为 ``(num_samples, 3)``。
-    """
-    x_lo, x_hi, y_lo, y_hi = parse_roi_xy(roi)
-    smin, smax = parse_speed_range(speed_range)
-    n = int(num_samples)
-    positions = sample_positions(x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode)
-    velocities, orientations = sample_velocities(smin, smax, n, speed_sampling_mode)
-    print(
-        f"n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
-        f"pos_mode={position_sampling_mode}, speed_range=[{smin}, {smax}], "
-        f"speed_mode={speed_sampling_mode}, seed={seed}"
-    )
-    return positions, velocities, orientations
 
 
 def _csv_vec3(vec: np.ndarray) -> str:
@@ -211,7 +65,6 @@ def save_samples_csv(path: Path, rows: list[dict[str, str | int]]) -> None:
     print(f"CSV 已写入: {path}")
 
 
-# 参数解析
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="平面 ROI 内采样位置与速度并打印（位置 z=0，速度方向在 xy 平面）"
@@ -267,9 +120,7 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# 主函数
 def main() -> None:
-    # 解析参数
     args = argument_parser()
     set_random_seed(args.seed)
 
@@ -282,22 +133,18 @@ def main() -> None:
         seed=args.seed,
     )
 
-    # 构建 CSV 行
     csv_rows = [
         _build_sample_row(i, pos, vel, ori)
         for i, (pos, vel, ori) in enumerate(zip(positions, velocities, orientations))
     ]
 
-    # 打印表格
     table_rows = [
         [row["idx"], row["position"], row["velocity"], row["orientation"]]
         for row in csv_rows
     ]
     print(tabulate(table_rows, headers=CSV_FIELDNAMES, tablefmt="simple_grid"))
 
-    # 保存 CSV
-    csv_path = args.output
-    save_samples_csv(csv_path, csv_rows)
+    save_samples_csv(args.output, csv_rows)
 
 
 if __name__ == "__main__":

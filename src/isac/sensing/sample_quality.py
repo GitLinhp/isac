@@ -288,4 +288,4 @@ def evaluate_sample_quality(
     )
 
 
-from isac.data_collection.quality_filter import QualityFilterStats  # noqa: E402,F401
+from isac.utils.data_collection.quality_filter import QualityFilterStats  # noqa: E402,F401

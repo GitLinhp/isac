@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from isac.data_collection.quality_filter import (
+from isac.utils.data_collection.quality_filter import (
     MonteCarloSamplingParams,
     QualityFilterConfig,
     QualityFilterStats,
@@ -61,13 +61,13 @@ def test_assess_collection_sample_delegates_to_evaluate_sample_quality():
     expected = SampleQualityResult(passed=True, los_ratio=1.0)
 
     with patch(
-        "isac.data_collection.quality_filter.RxTargetTxGeometric.from_states",
+        "isac.utils.data_collection.quality_filter.RxTargetTxGeometric.from_states",
         return_value=_MockGeom(
             range_tensor=np.array([[[40.0]]]),
             vel_tensor=np.array([[[2.0]]]),
         ),
     ), patch(
-        "isac.data_collection.quality_filter.evaluate_sample_quality",
+        "isac.utils.data_collection.quality_filter.evaluate_sample_quality",
         return_value=expected,
     ) as mock_eval:
         result = assess_collection_sample(
@@ -108,13 +108,13 @@ def test_run_monte_carlo_with_quality_filter_accept_and_reject():
         accepted.append((episode_idx, pos.copy(), vel.copy()))
 
     with patch(
-        "isac.data_collection.quality_filter.tg.generate_monte_carlo_points",
+        "isac.utils.data_collection.quality_filter.tg.generate_monte_carlo_points",
         side_effect=pos_batches,
     ), patch(
-        "isac.data_collection.quality_filter.tg.sample_monte_carlo_velocities",
+        "isac.utils.data_collection.quality_filter.tg.sample_monte_carlo_velocities",
         side_effect=vel_batches,
     ), patch(
-        "isac.data_collection.quality_filter.assess_collection_sample",
+        "isac.utils.data_collection.quality_filter.assess_collection_sample",
         side_effect=assess_results,
     ):
         stats = run_monte_carlo_with_quality_filter(
@@ -151,13 +151,13 @@ def test_run_monte_carlo_with_quality_filter_accept_and_reject():
 
 def test_run_monte_carlo_with_quality_filter_raises_when_insufficient_samples():
     with patch(
-        "isac.data_collection.quality_filter.tg.generate_monte_carlo_points",
+        "isac.utils.data_collection.quality_filter.tg.generate_monte_carlo_points",
         return_value=[np.zeros(3)],
     ), patch(
-        "isac.data_collection.quality_filter.tg.sample_monte_carlo_velocities",
+        "isac.utils.data_collection.quality_filter.tg.sample_monte_carlo_velocities",
         return_value=[np.ones(3)],
     ), patch(
-        "isac.data_collection.quality_filter.assess_collection_sample",
+        "isac.utils.data_collection.quality_filter.assess_collection_sample",
         return_value=SampleQualityResult(passed=False, reason="weak_los"),
     ):
         with pytest.raises(RuntimeError, match="质量过滤后仅采集"):

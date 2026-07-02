@@ -189,7 +189,7 @@ class GrSystemContext:
         return y_np
 
     def compute_delay_doppler(self, y_time_np: np.ndarray) -> np.ndarray:
-        """解调 + ``System.sensing(..., evaluate=False)`` → DD 矩阵。"""
+        """解调 + ``System.compute_sensing_spectrum`` → DD 矩阵。"""
         import torch
 
         if self._x_rg is None:
@@ -205,7 +205,7 @@ class GrSystemContext:
         )
         with ctx:
             y_rg = self.system.components.demodulator(y_time).squeeze()
-            h_dd = self.system.sensing(self._x_rg, y_rg, evaluate=False)
+            h_dd = self.system.compute_sensing_spectrum(self._x_rg, y_rg)
         return h_dd.detach().cpu().numpy().astype(np.complex64)
 
     @property
