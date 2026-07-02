@@ -38,11 +38,26 @@ class RTSimulator:
     def __init__(
         self,
         rt_simulator_params: RTSimulatorParams,
+        device: Optional[str] = "cpu",
         *,
         frequency: Optional[float] = None,
         bandwidth: Optional[float] = None,
     ):
+        """初始化射线追踪仿真器
+
+        参数:
+        -------
+        - rt_simulator_params: RTSimulatorParams
+            射线追踪仿真器参数
+        - device: Optional[str]
+            设备类型，可选 ``"cpu"`` 或 ``"cuda"``，默认 ``"cpu"``
+        - frequency: Optional[float]
+            频率，默认 ``None``
+        - bandwidth: Optional[float]
+            带宽，默认 ``None``
+        """
         self.rt_simulator_params = rt_simulator_params
+        self.device = device
 
         self._init_scene()  # 初始化场景
         if frequency is not None:
@@ -61,7 +76,7 @@ class RTSimulator:
     def _init_scene(self) -> None:
         """加载 Sionna 场景到 ``self.scene``。"""
         self.scene = load_scene(
-            filename=self._get_scene_filename(self.rt_simulator_params.filename),
+            filename=self._resolve_fname(self.rt_simulator_params.filename),
             merge_shapes=self.rt_simulator_params.merge_shapes,
         )
 
@@ -120,6 +135,9 @@ class RTSimulator:
                 power_dbm=transceiver_params.power_dbm,
             )
 
+            if not self.scene_filter(transceiver.position):
+                raise ValueError(f"收发器 {name} 位置无效，落入障碍物包围盒。")
+
             # 将收发器添加到场景
             if transceiver.tx is not None:
                 self.scene.add(transceiver.tx)
@@ -162,6 +180,9 @@ class RTSimulator:
                 radio_material=self.target_materials[targets_params.material],
             )
 
+            if not self.scene_filter(target.position):
+                raise ValueError(f"目标 {name} 位置无效，落入障碍物包围盒。")
+
             # 先添加到场景，然后设置属性
             self.scene.edit(add=target)
 
@@ -173,7 +194,7 @@ class RTSimulator:
             self.rt_targets[name] = target  # 将目标添加到字典
 
     # ==================== 辅助方法 ====================
-    def _get_scene_filename(self, filename: str) -> Optional[Any]:
+    def _resolve_fname(self, filename: str) -> Optional[Any]:
         """解析场景文件路径。
 
         按以下顺序查找：
@@ -219,14 +240,41 @@ class RTSimulator:
         role_attr: str,
         empty_runtime_msg: str,
     ) -> dict[str, list[np.ndarray]]:
+        """从 ``self.transceivers`` 按角色收集位置/速度快照。
+
+        遍历各 ``RTTransceiver``，读取 ``role_attr``（``"tx"`` 或 ``"rx"``）对应的
+        Sionna 实体；未配置该角色的收发器跳过。结果以实体 ``name`` 为键，供
+        ``rx_states`` / ``tx_states`` 复用。
+
+        参数:
+        -------
+        - role_attr: str
+            ``RTTransceiver`` 上的角色属性名，取 ``"tx"`` 或 ``"rx"``。
+        - empty_runtime_msg: str
+            未收集到任何实体时 ``RuntimeError`` 的错误信息。
+
+        返回:
+        -------
+        - dict[str, list[np.ndarray]]
+            键为 Sionna 实体名，值为 ``_snapshot_pos_vel`` 返回的 ``[pos, vel]``。
+
+        异常:
+        -------
+        - RuntimeError
+            ``transceivers`` 中无任何收发器具备 ``role_attr`` 对应实体时抛出。
+        """
         states: dict[str, list[np.ndarray]] = {}
+
+        # 遍历所有收发器，收集位置/速度快照
         for tc in self.transceivers.values():
-            ent = getattr(tc, role_attr, None)
-            if ent is None:
-                continue
+            ent = getattr(tc, role_attr)
+            # 收集位置/速度快照
             states[ent.name] = self._snapshot_pos_vel(ent)
+
+        # 如果未收集到任何实体，抛出错误
         if not states:
             raise RuntimeError(empty_runtime_msg)
+
         return states
 
     # ==================== 属性 ====================
@@ -262,6 +310,12 @@ class RTSimulator:
     @property
     def tx_states(self) -> dict[str, list[np.ndarray]]:
         """所有发射机的位置/速度 NumPy 快照。"""
+
+        if not self.transceivers:
+            raise RuntimeError(
+                "transceivers 为空，无法进行径向真值对齐；请检查 transceivers 配置。"
+            )
+
         return self._collect_transceiver_states(
             role_attr="tx",
             empty_runtime_msg=(
@@ -276,7 +330,7 @@ class RTSimulator:
             self.targets_states,
             self.rx_states,
             self.tx_states,
-            device=None,
+            device=self.device,
         )
         return self._rx_target_tx_geometric
 

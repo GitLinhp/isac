@@ -29,13 +29,12 @@ class RTTarget(SceneObject):
         """初始化目标对象"""
         super().__init__(
             name=name,
-            fname=self.resolve_fname(name, fname),
+            fname=self._resolve_fname(name, fname),
             radio_material=radio_material,
         )
         self.scaling = scaling  # 只在目标初始化时设置，之后不可修改
 
-    @staticmethod
-    def resolve_fname(target_name: str, fname_str: str) -> str:
+    def _resolve_fname(self, target_name: str, fname_str: str) -> str:
         """解析目标 mesh 路径：``RT_SCENES_DIR/{name}.ply`` 或 Sionna 内置 mesh。
 
         参数:

@@ -10,7 +10,7 @@ from .awgn import AWGN
 
 
 class Channel(ABC):
-    """ISAC 信道基类：``_apply_clean`` 施加无噪信道，``__call__`` 可选 AWGN。"""
+    """ISAC 信道基类：``_apply_channel`` 施加无噪信道，``__call__`` 可选 AWGN。"""
 
     def __init__(
         self,
@@ -27,12 +27,12 @@ class Channel(ABC):
         snr_db: Optional[float] = None,
     ) -> torch.Tensor:
         """经信道；``snr_db`` 为数值时加 AWGN，默认 ``None`` 不加噪。"""
-        y_clean = self._apply_clean(inputs, domain)
+        y_clean = self._apply_channel(inputs, domain)
         if snr_db is None:
             return y_clean
         else:
             return self._awgn(y_clean, snr_db)
 
     @abstractmethod
-    def _apply_clean(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
-        """无 AWGN 的信道施加（子类实现）。"""
+    def _apply_channel(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
+        """施加无噪信道（子类实现）。"""

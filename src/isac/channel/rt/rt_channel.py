@@ -28,6 +28,19 @@ class RTChannel(Channel):
         precision: Optional[Precision] = None,
         device: Optional[str] = None,
     ) -> None:
+        """初始化 RT 信道
+
+        参数:
+        -------
+        - rg: ResourceGrid
+            资源网格
+        - paths: Callable[[], Paths]
+            路径生成器
+        - precision: Optional[Precision]
+            精度，可选 ``"float32"`` 或 ``"float64"``，默认 ``None``
+        - device: Optional[str]
+            设备类型，可选 ``"cpu"`` 或 ``"cuda"``，默认 ``None``
+        """
         super().__init__(precision=precision, device=device)
         self.rg = rg
 
@@ -37,6 +50,7 @@ class RTChannel(Channel):
         self._init_properties()
         self._init_components()
 
+    # ==================== 初始化方法 ====================
     def _init_properties(self) -> None:
         self.l_min, self.l_max = time_lag_discrete_time_channel(self.rg.bandwidth)
         self.l_tot = self.l_max - self.l_min + 1
@@ -46,11 +60,12 @@ class RTChannel(Channel):
         )
 
     def _init_components(self) -> None:
-        self.channel_freq = ApplyOFDMChannel(add_awgn=True)
+        self.channel_freq = ApplyOFDMChannel(add_awgn=False)
         self.channel_time = ApplyTimeChannel(
-            self.rg.num_time_samples, l_tot=self.l_tot, add_awgn=True
+            self.rg.num_time_samples, l_tot=self.l_tot, add_awgn=False
         )
 
+    # ==================== 计算方法 ====================
     def cir(
         self, num_time_steps: int, sampling_frequency: float
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -79,6 +94,7 @@ class RTChannel(Channel):
             out_type=out_type,
         )
 
+    # ==================== 属性 ====================
     @property
     def h_time(self) -> torch.Tensor:
         a, tau = self.cir(
@@ -102,9 +118,24 @@ class RTChannel(Channel):
         )
         return cir_to_ofdm_channel(self.frequencies, a, tau, normalize=False)
 
-    def _apply_clean(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
+    def _apply_channel(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
+        """施加信道
+
+        参数:
+        ----------
+        - inputs: torch.Tensor
+            输入信号
+        - domain: str
+            域，可选 ``"time"`` 或 ``"frequency"``
+
+        返回:
+        -------
+        - torch.Tensor
+            输出信号
+        """
         if domain == "time":
-            return self.channel_time(inputs, self.h_time, None)
-        if domain == "frequency":
-            return self.channel_freq(inputs, self.h_freq, None)
-        raise ValueError(f"不支持的域: {domain}。支持的值: 'time', 'frequency'")
+            return self.channel_time(inputs, self.h_time)
+        elif domain == "frequency":
+            return self.channel_freq(inputs, self.h_freq)
+        else:
+            raise ValueError(f"不支持的域: {domain}。支持的值: 'time', 'frequency'")
