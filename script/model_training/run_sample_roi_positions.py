@@ -24,17 +24,10 @@ import numpy as np
 from tabulate import tabulate
 
 from isac import PROJECT_ROOT
-from isac.utils.data_collection.roi_sampling import sample_roi_kinematics
-from isac.utils import csv_float2_scalar, set_random_seed
+from isac.utils.data_collection.roi_sampling import RoiKinematicsSampler
+from isac.utils import csv_vec3, set_random_seed
 
 CSV_FIELDNAMES = ["idx", "position", "velocity", "orientation"]
-
-
-def _csv_vec3(vec: np.ndarray) -> str:
-    """将三维向量格式化为 CSV 单元格字符串，如 ``[1.00, 2.00, 3.00]``。"""
-    row = np.asarray(vec, dtype=np.float64).reshape(-1)
-    parts = ", ".join(csv_float2_scalar(row[i]) for i in range(3))
-    return f"[{parts}]"
 
 
 def _build_sample_row(
@@ -49,9 +42,9 @@ def _build_sample_row(
     ori_row = np.asarray(orientation, dtype=np.float64).reshape(-1)
     return {
         "idx": idx,
-        "position": _csv_vec3(pos_row),
-        "velocity": _csv_vec3(vel_row),
-        "orientation": _csv_vec3(ori_row),
+        "position": csv_vec3(pos_row),
+        "velocity": csv_vec3(vel_row),
+        "orientation": csv_vec3(ori_row),
     }
 
 
@@ -124,18 +117,16 @@ def main() -> None:
     args = argument_parser()
     set_random_seed(args.seed)
 
-    positions, velocities, orientations = sample_roi_kinematics(
+    sampler = RoiKinematicsSampler(
         roi=args.roi,
         position_sampling_mode=args.position_sampling_mode,
         speed_range=args.speed_range,
         speed_sampling_mode=args.speed_sampling_mode,
         num_samples=args.num_samples,
-        seed=args.seed,
     )
 
     csv_rows = [
-        _build_sample_row(i, pos, vel, ori)
-        for i, (pos, vel, ori) in enumerate(zip(positions, velocities, orientations))
+        _build_sample_row(i, *sampler.pop()) for i in range(len(sampler))
     ]
 
     table_rows = [

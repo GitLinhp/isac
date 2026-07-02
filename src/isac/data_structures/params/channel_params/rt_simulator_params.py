@@ -158,6 +158,22 @@ class PathSolverParams:
 
 
 @dataclass
+class RenderParams:
+    """场景渲染配置（preview / render / render_to_file）。"""
+
+    clip_at: float | None = None
+    with_paths: bool = True
+
+    @classmethod
+    def from_dict(cls, config_dict: dict[str, Any]) -> "RenderParams":
+        clip_at_raw = config_dict.get("clip_at")
+        return cls(
+            clip_at=float(clip_at_raw) if clip_at_raw is not None else None,
+            with_paths=config_dict.get("with_paths", True),
+        )
+
+
+@dataclass
 class RTSimulatorParams:
     """RT 仿真器配置"""
 
@@ -179,6 +195,8 @@ class RTSimulatorParams:
     """目标配置"""
     path_solver: PathSolverParams | None = None
     """路径解析器配置"""
+    render: RenderParams | None = None
+    """场景渲染配置"""
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "RTSimulatorParams":
@@ -235,6 +253,11 @@ class RTSimulatorParams:
             path_solver=(
                 PathSolverParams.from_dict(config_dict["path_solver"])
                 if isinstance(config_dict.get("path_solver"), dict)
+                else None
+            ),
+            render=(
+                RenderParams.from_dict(config_dict["render"])
+                if isinstance(config_dict.get("render"), dict)
                 else None
             ),
         )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 from sionna.phy.channel import (
@@ -21,7 +21,11 @@ from ..channel import Channel
 
 
 class RTChannel(Channel):
-    """RT 信道：CIR/CFR 计算与 Sionna 时/频域卷积施加。"""
+    """RT 信道：CIR/CFR 计算与 Sionna 时/频域卷积施加。
+
+    可通过 ``cir`` / ``cfr`` 属性注入预计算响应；未注入时由 ``get_cir`` / ``get_cfr``
+    从 ``paths`` 实时求解。
+    """
 
     def __init__(
         self,
@@ -49,6 +53,8 @@ class RTChannel(Channel):
             精度，可选 ``"float32"`` 或 ``"float64"``，默认 ``None``
         - device: Optional[str]
             设备类型，可选 ``"cpu"`` 或 ``"cuda"``，默认 ``None``
+
+        CIR/CFR 注入请使用 ``channel.cir = ...`` / ``channel.cfr = ...``（初始均为 ``None``）。
         """
         super().__init__(precision=precision, device=device)
         self.rg = rg
@@ -57,6 +63,8 @@ class RTChannel(Channel):
         self.paths = paths
         self._rx_names = rx_names
         self._tx_names = tx_names
+        self._cir: tuple[torch.Tensor, torch.Tensor] | None = None
+        self._cfr: torch.Tensor | None = None
 
         self._init_properties()
         self._init_components()
@@ -76,10 +84,32 @@ class RTChannel(Channel):
             self.rg.num_time_samples, l_tot=self.l_tot, add_awgn=False
         )
 
+    # ==================== CIR / CFR 注入属性 ====================
+    @property
+    def cir(self) -> tuple[torch.Tensor, torch.Tensor] | None:
+        """注入的 CIR ``(a, tau)``；``None`` 表示每次从 ``paths`` 计算。"""
+        return self._cir
+
+    @cir.setter
+    def cir(self, value: tuple[torch.Tensor, torch.Tensor] | None) -> None:
+        self._cir = value
+
+    @property
+    def cfr(self) -> torch.Tensor | None:
+        """注入的 CFR；``None`` 表示每次从 ``paths`` 计算。"""
+        return self._cfr
+
+    @cfr.setter
+    def cfr(self, value: torch.Tensor | None) -> None:
+        self._cfr = value
+
     # ==================== 计算方法 ====================
-    def cir(
+    def get_cir(
         self, num_time_steps: int, sampling_frequency: float
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """获取 CIR；已注入 ``cir`` 时直接返回注入值。"""
+        if self._cir is not None:
+            return self._cir
         paths = self.paths()
         a, tau = paths.cir(
             num_time_steps=num_time_steps,
@@ -91,16 +121,23 @@ class RTChannel(Channel):
         tau = torch.unsqueeze(tau, dim=0)
         return a, tau
 
-    def cfr(
+    def get_cfr(
         self, num_time_steps: int, sampling_frequency: float, out_type: str = "torch"
-    ):
-        """获取信道频率响应。
+    ) -> Any:
+        """获取信道频率响应；已注入 ``cfr`` 时直接返回注入值（仅 ``out_type='torch'``）。
 
         ``out_type='torch'`` 时通常为 7D：
         ``[batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, num_frequencies]``；
         单天线合成阵列下也可能为 6D：
         ``[batch, num_rx, num_tx, num_rx_ant, num_time_steps, num_frequencies]``。
         """
+        if self._cfr is not None:
+            if out_type != "torch":
+                raise ValueError(
+                    "注入 cfr 仅支持 out_type='torch'，"
+                    f"收到 {out_type!r}；请先清除 channel.cfr 或改用 torch。"
+                )
+            return self._cfr
         paths = self.paths()
         return paths.cfr(
             frequencies=self.frequencies,
@@ -124,7 +161,7 @@ class RTChannel(Channel):
     ) -> dict[str, torch.Tensor]:
         """计算 CFR 并按 (RX, TX) 对切片。
 
-        参数与 ``cfr()`` 一致；返回键为 ``cfr_pair_key(rx, tx)``，
+        参数与 ``get_cfr()`` 一致；返回键为 ``cfr_pair_key(rx, tx)``，
         值为 ``(num_time_steps, num_frequencies)`` 张量。
         """
         if self._rx_names is None or self._tx_names is None:
@@ -134,13 +171,9 @@ class RTChannel(Channel):
         rx_name_list = self._rx_names()
         tx_name_list = self._tx_names()
 
-        paths = self.paths()
-        cfr = paths.cfr(
-            frequencies=self.frequencies,
+        cfr = self.get_cfr(
             num_time_steps=num_time_steps,
             sampling_frequency=sampling_frequency,
-            normalize_delays=False,
-            normalize=True,
             out_type=out_type,
         )
         if not isinstance(cfr, torch.Tensor):
@@ -184,7 +217,7 @@ class RTChannel(Channel):
     # ==================== 属性 ====================
     @property
     def h_time(self) -> torch.Tensor:
-        a, tau = self.cir(
+        a, tau = self.get_cir(
             num_time_steps=self.rg.num_time_samples + self.l_tot - 1,
             sampling_frequency=self.rg.bandwidth,
         )
@@ -199,7 +232,9 @@ class RTChannel(Channel):
 
     @property
     def h_freq(self) -> torch.Tensor:
-        a, tau = self.cir(
+        if self._cfr is not None:
+            return self._cfr
+        a, tau = self.get_cir(
             num_time_steps=self.rg.num_ofdm_symbols,
             sampling_frequency=1 / self.rg.ofdm_symbol_duration,
         )

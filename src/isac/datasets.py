@@ -1,6 +1,8 @@
 """ISAC 仿真采集结果的 HDF5 数据集读写与元数据封装。
 
 由 ``run_data_collection.py`` 写入；训练侧通过 ``Dataset.load`` 消费。
+``Dataset`` 支持 CIFAR10 风格序列访问：``cfr, label = dataset[i]``，
+或 ``for cfr, label in dataset: ...``（可再包装为 ``torch.utils.data.Dataset``）。
 
 HDF5 文件布局
 --------------
@@ -23,6 +25,7 @@ HDF5 文件布局
 - TOML：采集配置副本（保留原文件名）
 - ``{scene_slug}_mc_dataset_episodes.csv``
 - ``{scene_slug}_mc_sionna_dataset.h5``
+- ``{scene_slug}_scene.png``
 """
 
 from __future__ import annotations
@@ -32,13 +35,20 @@ import csv
 import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import h5py
 import numpy as np
 
 from isac import PROJECT_ROOT
 from isac.utils.config_loader import resolve_config_path
+
+if TYPE_CHECKING:
+    from isac.channel.rt.rt_simulator import RTSimulator
+
+DatasetLabel = list[tuple[float, float, float]]
+"""单样本标签：``[position_xyz, velocity_xyz]``。"""
+DatasetSample = tuple[np.ndarray, DatasetLabel]
 
 # --- 路径与键名常量 ---
 
@@ -47,15 +57,12 @@ DEFAULT_COLLECTION_OUT_DIR = PROJECT_ROOT / "out" / "dataset_collection"
 
 _EPISODE_CSV_SUFFIX = "_mc_dataset_episodes.csv"
 _H5_SUFFIX = "_mc_sionna_dataset.h5"
+_SCENE_PNG_SUFFIX = "_scene.png"
 
 _EPISODE_CSV_COLUMNS = (
     "sample_idx",
-    "pos_x_m",
-    "pos_y_m",
-    "pos_z_m",
-    "vel_x_mps",
-    "vel_y_mps",
-    "vel_z_mps",
+    "position",
+    "velocity",
     "true_range_m",
     "true_radial_velocity_mps",
 )
@@ -82,6 +89,11 @@ _ARRAY_DATASET_SPECS: tuple[tuple[str, str, bool], ...] = (
 def collection_h5_path(scene_slug: str, out_dir: Path) -> Path:
     """HDF5 输出路径 ``{out_dir}/{scene_slug}_mc_sionna_dataset.h5``。"""
     return out_dir / f"{scene_slug}{_H5_SUFFIX}"
+
+
+def collection_scene_png_path(scene_slug: str, out_dir: Path) -> Path:
+    """场景渲染 PNG 路径 ``{out_dir}/{scene_slug}_scene.png``。"""
+    return out_dir / f"{scene_slug}{_SCENE_PNG_SUFFIX}"
 
 
 def collection_dataset_description(scene_slug: str, n_episodes: int) -> str:
@@ -263,6 +275,12 @@ class Dataset:
 
     ``num_slots`` 由 ``cfr`` 第一维（episode 数）推断。
 
+    序列协议
+    --------
+    - ``len(dataset)`` → ``num_slots``
+    - ``dataset[i]`` → ``(cfr_i, [(px, py, pz), (vx, vy, vz)])``
+    - 仅支持非负整数索引；越界抛出 ``IndexError``
+
     Attributes
     ----------
     - bs_pos : np.ndarray
@@ -287,6 +305,20 @@ class Dataset:
     def num_slots(self) -> int:
         """有效 episode 数（与 ``cfr`` 第一维一致）。"""
         return int(self.cfr.shape[0])
+
+    def __len__(self) -> int:
+        return self.num_slots
+
+    def __getitem__(self, idx: int) -> DatasetSample:
+        if idx < 0 or idx >= self.num_slots:
+            raise IndexError(f"index {idx} out of range for {self.num_slots} slots")
+        pos = self.target_position[idx]
+        vel = self.target_velocity[idx]
+        label: DatasetLabel = [
+            (float(pos[0]), float(pos[1]), float(pos[2])),
+            (float(vel[0]), float(vel[1]), float(vel[2])),
+        ]
+        return self.cfr[idx], label
 
     def __repr__(self) -> str:
         return f"Dataset(num_slots={self.num_slots}, cfr_shape={self.cfr.shape})"
@@ -373,6 +405,16 @@ def _save_episodes_csv(
             writer.writerow({k: row.get(k, "") for k in keys})
 
 
+def _save_scene_render(
+    rt_simulator: RTSimulator,
+    scene_slug: str,
+    output_root: Path,
+) -> Path:
+    """渲染场景 PNG 至采集产物目录（``clip_at`` 由 TOML ``[rt_simulator.render]`` 提供）。"""
+    filename = f"{scene_slug}{_SCENE_PNG_SUFFIX}"
+    return rt_simulator.render_to_file(filename, output_dir=output_root)
+
+
 def save_collection_artifacts(
     *,
     scene_slug: str,
@@ -380,9 +422,10 @@ def save_collection_artifacts(
     buffers: EpisodeBuffers,
     bs_pos: np.ndarray,
     args: argparse.Namespace,
+    rt_simulator: RTSimulator,
     out_dir: Path | None = None,
 ) -> None:
-    """一次写出采集产物：TOML 配置副本、Episode CSV 与 HDF5 数据集。"""
+    """一次写出采集产物：TOML 配置副本、Episode CSV、HDF5 数据集与场景 PNG。"""
     collection_meta = CollectionMetadata.from_collection_args(args)
     target_dir = _resolve_out_dir(out_dir)
     _save_collection_config(config_file=config_file, output_root=target_dir)
@@ -395,4 +438,5 @@ def save_collection_artifacts(
         Dataset.from_buffers(
             buffers, bs_pos, collection_meta=collection_meta
         ).save(collection_h5_path(scene_slug, target_dir), scene_slug=scene_slug)
+    _save_scene_render(rt_simulator, scene_slug, target_dir)
     print(f"采集产物已保存至: {target_dir}")

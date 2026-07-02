@@ -23,11 +23,15 @@ from isac.datasets import (
 )
 from isac.system import System
 from isac.utils import load_config, set_random_seed
-from isac.utils.data_collection.channel_export import scene_slug_from_rt_simulator
+from isac.utils.data_collection.channel_export import (
+    paths_intersect_target,
+    scene_slug_from_rt_simulator,
+)
+from isac.utils.data_collection.episode_filter import accept_episode_kinematics
 from isac.utils.data_collection.episode import (
     process_episode,
 )
-from isac.utils.data_collection.roi_sampling import sample_roi_kinematics
+from isac.utils.data_collection.roi_sampling import RoiKinematicsSampler
 
 warnings.filterwarnings(
     "ignore",
@@ -45,7 +49,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="simulation/sensing/sensing_monostatic.toml",
+        default="config/data_collection/data_collection.toml",
         help="配置文件路径",
     )
     parser.add_argument(
@@ -65,7 +69,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--num_samples",
         type=int,
-        default=10,
+        default=100,
         help="采样条数",
     )
     parser.add_argument(
@@ -73,7 +77,7 @@ def argument_parser() -> argparse.Namespace:
         nargs=4,
         type=float,
         metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
-        default=[0.0, 80.0, -40.0, 40.0],
+        default=[-2.8, 2.8, -4.8, 4.8],
         help="平面 ROI 四元组",
     )
     parser.add_argument(
@@ -88,7 +92,7 @@ def argument_parser() -> argparse.Namespace:
         nargs=2,
         type=float,
         metavar=("MIN", "MAX"),
-        default=[0.1, 10.0],
+        default=[0.1, 3.0],
         help="速度模值范围 (m/s)",
     )
     parser.add_argument(
@@ -98,15 +102,23 @@ def argument_parser() -> argparse.Namespace:
         choices=["uniform", "gaussian"],
         help="速度模值采样分布（均匀或高斯）",
     )
+    parser.add_argument(
+        "--sampler_pool_factor",
+        type=int,
+        default=5,
+        help="采样池倍数：预采样 num_samples * factor 条，循环中过滤至 num_samples",
+    )
 
     return parser.parse_args()
 
 
-def _print_sampling_config(args: argparse.Namespace) -> None:
+def _print_sampling_config(args: argparse.Namespace, *, pool_size: int) -> None:
     """以 tabulate 打印采样配置参数。"""
     x_lo, x_hi, y_lo, y_hi = args.roi
     config_rows = [
         ["num_samples", args.num_samples],
+        ["sampler_pool_size", pool_size],
+        ["sampler_pool_factor", args.sampler_pool_factor],
         ["roi", f"x=[{x_lo}, {x_hi}], y=[{y_lo}, {y_hi}], z=0"],
         ["position_sampling_mode", args.position_sampling_mode],
         ["speed_range", f"[{args.speed_range[0]}, {args.speed_range[1]}] m/s"],
@@ -119,18 +131,19 @@ def _print_sampling_config(args: argparse.Namespace) -> None:
 def main() -> None:
     """蒙特卡洛采集 episode → 写出 TOML / CSV / HDF5。"""
     args = argument_parser()
+    if args.sampler_pool_factor < 1:
+        raise ValueError("sampler_pool_factor 须 >= 1")
     set_random_seed(args.seed)
 
-    # 采样 ROI 内位置与速度
-    positions, velocities, orientations = sample_roi_kinematics(
+    pool_size = args.num_samples * args.sampler_pool_factor
+    sampler = RoiKinematicsSampler(
         roi=args.roi,
         position_sampling_mode=args.position_sampling_mode,
         speed_range=args.speed_range,
         speed_sampling_mode=args.speed_sampling_mode,
-        num_samples=args.num_samples,
-        seed=args.seed,
+        num_samples=pool_size,
     )
-    _print_sampling_config(args)
+    _print_sampling_config(args, pool_size=pool_size)
 
     # 加载配置，构建 System
     config = load_config(args.config_file)
@@ -139,38 +152,70 @@ def main() -> None:
         batch_size=args.batch_size,
         device=args.device,
     )
-
     # 获取 RT 模拟器与目标
     rt_simulator = system.components.rt_simulator
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = scene_slug_from_rt_simulator(rt_simulator)
     print(f"目标: {target_name}, 场景: {scene_slug}")
 
+    # 初始化缓冲区
     buffers = EpisodeBuffers()
 
-    for i in tqdm(range(args.num_samples), desc="采集 episode", unit="ep"):
+    # 采集 episode
+    accepted = 0
+    attempts = 0
+    pbar = tqdm(total=args.num_samples, desc="数据采集", unit="ep")
+    while accepted < args.num_samples:
+        if len(sampler) == 0:
+            raise RuntimeError(
+                f"采样池已耗尽：已采纳 {accepted}/{args.num_samples} 条。"
+                "请增大 --sampler_pool_factor 或放宽过滤条件（scene_filter / 目标路径交互）。"
+            )
+        pos, vel, ori = sampler.pop()
+        attempts += 1
+        # 过滤不符合条件的 episode
+        if not accept_episode_kinematics(
+            pos=pos,
+            vel=vel,
+            ori=ori,
+            scene_filter=rt_simulator.scene_filter,
+        ):
+            continue
+
         # 更新 RT 目标位姿
         target(
-            position=positions[i],
-            velocity=velocities[i],
-            orientation=orientations[i],
+            position=pos,
+            velocity=vel,
+            orientation=ori,
         )
-        # 采集 CFR / 几何真值
+        # 判断是否与目标路径交互
+        if not paths_intersect_target(rt_simulator, target):
+            continue
+
+        # 采集 episode
         process_episode(
             system=system,
             rt_simulator=rt_simulator,
-            episode_idx=i,
-            pos=positions[i],
-            vel=velocities[i],
+            episode_idx=accepted,
+            pos=pos,
+            vel=vel,
             buffers=buffers,
         )
+        accepted += 1
+        pbar.update(1)
+    pbar.close()
 
+    acceptance_rate = accepted / attempts if attempts else 0.0
+    print(f"接受率: {acceptance_rate:.1%} ({accepted}/{attempts})")
+
+    # 写出数据集
     save_collection_artifacts(
         scene_slug=scene_slug,
         config_file=args.config_file,
         buffers=buffers,
         bs_pos=np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64),
         args=args,
+        rt_simulator=rt_simulator,
         out_dir=DEFAULT_COLLECTION_OUT_DIR,
     )
 

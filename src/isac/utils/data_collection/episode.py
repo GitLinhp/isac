@@ -9,7 +9,7 @@ from isac.channel.rt import RTTarget, RTSimulator, RxTargetTxGeometric
 from isac.datasets import EpisodeBuffers
 from isac.system import System
 
-from ..misc import csv_float2_scalar
+from ..misc import csv_float2_scalar, csv_vec3
 from .channel_export import paths_cfr_numpy
 
 
@@ -41,12 +41,8 @@ def kinematics_row(
     vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
     return {
         "sample_idx": episode_idx,
-        "pos_x_m": csv_float2_scalar(pos_row[0]),
-        "pos_y_m": csv_float2_scalar(pos_row[1]),
-        "pos_z_m": csv_float2_scalar(pos_row[2]),
-        "vel_x_mps": csv_float2_scalar(vel_row[0]),
-        "vel_y_mps": csv_float2_scalar(vel_row[1]),
-        "vel_z_mps": csv_float2_scalar(vel_row[2]),
+        "position": csv_vec3(pos_row),
+        "velocity": csv_vec3(vel_row),
         "true_range_m": csv_float2_scalar(true_range),
         "true_radial_velocity_mps": csv_float2_scalar(true_velocity),
     }

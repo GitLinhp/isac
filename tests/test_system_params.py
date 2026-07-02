@@ -159,6 +159,24 @@ def test_rt_target_call_scaling_invalid_length_raises() -> None:
         target(scaling=[1, 2])
 
 
+def test_rt_simulator_render_params_from_dict() -> None:
+    from isac.data_structures.params.channel_params.rt_simulator_params import (
+        RenderParams,
+        RTSimulatorParams,
+    )
+
+    render = RenderParams.from_dict({"clip_at": 3.4, "with_paths": False})
+    assert render.clip_at == 3.4
+    assert render.with_paths is False
+
+    params = RTSimulatorParams.from_dict(
+        {"filename": "empty_room", "render": {"clip_at": 3.4}}
+    )
+    assert params.render is not None
+    assert params.render.clip_at == 3.4
+    assert params.render.with_paths is True
+
+
 def test_rt_simulator_init_with_default_target_scaling() -> None:
     from isac.system import System
     from isac.utils import load_config

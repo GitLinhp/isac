@@ -1,4 +1,5 @@
 # 标准库
+from pathlib import Path
 from typing import Optional, Any
 from matplotlib.figure import Figure
 import numpy as np
@@ -347,7 +348,16 @@ class RTSimulator:
         return self._paths
 
     # ==================== 场景可视化方法 ====================
-    def preview(self, with_paths: bool = True) -> None:
+
+    def _resolve_clip_at(self, clip_at: Optional[float]) -> Optional[float]:
+        if clip_at is not None:
+            return clip_at
+        cfg = self.rt_simulator_params.render
+        if cfg is not None and cfg.clip_at is not None:
+            return cfg.clip_at
+        return None
+
+    def preview(self, with_paths: bool = True, clip_at: Optional[float] = None) -> None:
         """预览场景
 
         参数:
@@ -359,9 +369,12 @@ class RTSimulator:
         -------
         - None
         """
-        self.scene.preview(paths=self.paths if with_paths else None)
+        clip_at = self._resolve_clip_at(clip_at)
+        self.scene.preview(paths=self.paths if with_paths else None, clip_at=clip_at)
 
-    def render(self, with_paths: bool = True) -> Figure | Bitmap:
+    def render(
+        self, with_paths: bool = True, clip_at: Optional[float] = None
+    ) -> Figure | Bitmap:
         """渲染场景
 
         参数:
@@ -373,19 +386,26 @@ class RTSimulator:
         -------
         - Figure
         """
+        clip_at = self._resolve_clip_at(clip_at)
         camera = self.camera
         if not with_paths:
-            return self.scene.render(camera=camera)
+            return self.scene.render(camera=camera, clip_at=clip_at)
         else:
             paths = self.paths
             a: np.ndarray = paths.cir(out_type="numpy")[0]
 
             if a.size == 0:  # 不存在有效路径，只渲染场景
-                return self.scene.render(camera=camera)
+                return self.scene.render(camera=camera, clip_at=clip_at)
             else:  # 存在有效路径，渲染场景和路径
-                return self.scene.render(camera=camera, paths=paths)
+                return self.scene.render(camera=camera, paths=paths, clip_at=clip_at)
 
-    def render_to_file(self, filename: str, with_paths: bool = True) -> None:
+    def render_to_file(
+        self,
+        filename: str,
+        with_paths: bool = True,
+        clip_at: Optional[float] = None,
+        output_dir: Path | None = None,
+    ) -> Path:
         """渲染场景到文件
 
         参数:
@@ -394,15 +414,22 @@ class RTSimulator:
             输出文件名
         - with_paths: bool
             是否渲染路径
+        - output_dir: Path | None
+            输出目录，默认 ``PROJECT_ROOT / "out"``
 
         返回:
         -------
-        - None
+        - Path
+            写入的文件路径
         """
-        out_path = (PROJECT_ROOT / "out" / filename).resolve()
+        clip_at = self._resolve_clip_at(clip_at)
+        base = output_dir or (PROJECT_ROOT / "out")
+        out_path = (base / filename).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
         self.scene.render_to_file(
             camera=self.camera,
             filename=str(out_path),
             paths=self.paths if with_paths else None,
+            clip_at=clip_at,
         )
+        return out_path

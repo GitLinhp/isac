@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 # 收集 mesh 障碍物 AABB 时，按对象名子串排除的场景构件（匹配时不区分大小写）。
 # 这些对象通常表示地面、顶棚或装饰性几何，不应阻挡目标/采样点放置。
 EXCLUDED_MESH_OBSTACLE_NAME_SUBSTRINGS: frozenset[str] = frozenset(
-    ("ground", "terrain", "floor", "ceiling", "baseboard")
+    ("ground", "terrain", "floor", "ceiling", "baseboard", "room")
 )
 
 

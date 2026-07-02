@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Literal
 
 import numpy as np
@@ -114,22 +115,41 @@ def sample_velocities(
     return velocities, orientations
 
 
-def sample_roi_kinematics(
-    *,
-    roi: list[float] | tuple[float, ...],
-    position_sampling_mode: SamplingMode,
-    speed_range: list[float] | tuple[float, ...],
-    speed_sampling_mode: SamplingMode,
-    num_samples: int,
-    seed: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """解析 ROI / 速度范围并采样位置与速度。
+class RoiKinematicsSampler:
+    """平面 ROI 运动学采样器：构造时批量采样，逐条 ``pop()`` 消费。"""
 
-    返回 ``(positions, velocities, orientations)``，形状均为 ``(num_samples, 3)``。
-    """
-    x_lo, x_hi, y_lo, y_hi = parse_roi_xy(roi)
-    smin, smax = parse_speed_range(speed_range)
-    n = int(num_samples)
-    positions = sample_positions(x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode)
-    velocities, orientations = sample_velocities(smin, smax, n, speed_sampling_mode)
-    return positions, velocities, orientations
+    def __init__(
+        self,
+        *,
+        roi: list[float] | tuple[float, ...],
+        position_sampling_mode: SamplingMode,
+        speed_range: list[float] | tuple[float, ...],
+        speed_sampling_mode: SamplingMode,
+        num_samples: int,
+    ) -> None:
+        x_lo, x_hi, y_lo, y_hi = parse_roi_xy(roi)
+        smin, smax = parse_speed_range(speed_range)
+        n = int(num_samples)
+        positions = sample_positions(
+            x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode
+        )
+        velocities, orientations = sample_velocities(
+            smin, smax, n, speed_sampling_mode
+        )
+        self._positions: deque[np.ndarray] = deque(positions)
+        self._velocities: deque[np.ndarray] = deque(velocities)
+        self._orientations: deque[np.ndarray] = deque(orientations)
+
+    def pop(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """弹出一条 ``(position, velocity, orientation)``，均为 shape ``(3,)``。"""
+        if not self._positions:
+            raise IndexError("ROI 采样队列已空")
+        return (
+            self._positions.popleft(),
+            self._velocities.popleft(),
+            self._orientations.popleft(),
+        )
+
+    def __len__(self) -> int:
+        """剩余可 pop 条数。"""
+        return len(self._positions)

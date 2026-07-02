@@ -8,6 +8,7 @@ from .rt_simulator_params import (
     TargetMaterialParams,
     TargetParams,
     PathSolverParams,
+    RenderParams,
     RTSimulatorParams,
 )
 
@@ -19,6 +20,7 @@ __all__ = [
     "TargetMaterialParams",
     "TargetParams",
     "PathSolverParams",
+    "RenderParams",
     "RTSimulatorParams",
     "ChannelParams",
     "RCSSceneParams",

@@ -47,3 +47,10 @@ def set_random_seed(seed: int) -> None:
 def csv_float2_scalar(value: object) -> str:
     """将标量格式化为保留两位小数的 CSV 字段字符串。"""
     return f"{convert(value, 'float'):.2f}"
+
+
+def csv_vec3(vec: np.ndarray | object) -> str:
+    """三维向量 → CSV 单元格 ``[x, y, z]``。"""
+    row = np.asarray(vec, dtype=np.float64).reshape(-1)
+    parts = ", ".join(csv_float2_scalar(row[i]) for i in range(3))
+    return f"[{parts}]"
