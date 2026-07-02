@@ -68,7 +68,9 @@ class RTSimulator:
     def _init_scene_filter(self) -> None:
         """初始化场景过滤器（与 ``scene`` 同级，读取 mesh 包围盒）。"""
         if getattr(self, "scene") is not None:
-            self.scene_filter = RTSceneFilter(self.scene, safe_margin=1.0)
+            cfg = self.rt_simulator_params.scene_filter
+            safe_margin = cfg.safe_margin if cfg is not None else 1.0
+            self.scene_filter = RTSceneFilter(self.scene, safe_margin=safe_margin)
         else:
             raise ValueError("scene 未初始化，无法初始化 scene_filter。")
 

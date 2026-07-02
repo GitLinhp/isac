@@ -7,6 +7,18 @@ from typing import Any
 
 
 @dataclass
+class SceneFilterParams:
+    """场景过滤器配置"""
+
+    safe_margin: float = 1.0
+    """障碍物 AABB 各轴外扩距离（米）"""
+
+    @classmethod
+    def from_dict(cls, config_dict: dict[str, Any]) -> "SceneFilterParams":
+        return cls(safe_margin=float(config_dict.get("safe_margin", 1.0)))
+
+
+@dataclass
 class CameraParams:
     """相机配置"""
 
@@ -153,6 +165,8 @@ class RTSimulatorParams:
     """场景文件名"""
     merge_shapes: bool = False
     """是否合并相同材质的形状"""
+    scene_filter: SceneFilterParams | None = None
+    """场景过滤器配置"""
     camera: CameraParams | None = None
     """相机配置"""
     antenna_arrays: dict[str, AntennaArrayParams] | None = None
@@ -176,6 +190,11 @@ class RTSimulatorParams:
         return cls(
             filename=config_dict.get("filename", None),
             merge_shapes=config_dict.get("merge_shapes", False),
+            scene_filter=(
+                SceneFilterParams.from_dict(config_dict["scene_filter"])
+                if isinstance(config_dict.get("scene_filter"), dict)
+                else None
+            ),
             camera=(
                 CameraParams.from_dict(config_dict["camera"])
                 if isinstance(config_dict.get("camera"), dict)

@@ -53,6 +53,10 @@ snr_db = 10.0 # 接收端 SNR (dB)，components.channel 时使用
 filename = "simple_reflector" # 场景文件名（isac/channel/rt/scenes 下，或 Sionna 内置名）
 merge_shapes = false          # 是否合并相同材质的形状
 
+# 场景过滤器参数
+[rt_simulator.scene_filter]
+safe_margin = 1.0             # 障碍物 AABB 各轴外扩距离 (m)
+
 # 相机参数
 [rt_simulator.camera]
 position = [0, 100, 50] # 相机位置 [x, y, z]
