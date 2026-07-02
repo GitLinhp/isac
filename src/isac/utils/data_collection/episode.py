@@ -13,19 +13,6 @@ from ..misc import csv_float2_scalar
 from .channel_export import paths_cfr_numpy
 
 
-def update_rt_target_pose(
-    target: RTTarget,
-    pos: np.ndarray,
-    vel: np.ndarray,
-    orientation: np.ndarray,
-) -> None:
-    """更新 RT 目标位置、速度与朝向。"""
-    pos_a = np.asarray(pos, dtype=np.float64).reshape(-1)
-    vel_a = np.asarray(vel, dtype=np.float64).reshape(-1)
-    ori_a = np.asarray(orientation, dtype=np.float64).reshape(-1)
-    if pos_a.size != 3 or vel_a.size != 3 or ori_a.size != 3:
-        raise ValueError("位置、速度与朝向须为三维向量")
-    target(position=pos_a, velocity=vel_a, orientation=ori_a)
 
 
 def los_truth_at_first_triple(

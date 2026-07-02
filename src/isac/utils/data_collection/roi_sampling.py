@@ -123,7 +123,7 @@ def sample_roi_kinematics(
     num_samples: int,
     seed: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """解析 ROI / 速度范围，采样位置与速度，并打印摘要。
+    """解析 ROI / 速度范围并采样位置与速度。
 
     返回 ``(positions, velocities, orientations)``，形状均为 ``(num_samples, 3)``。
     """
@@ -132,9 +132,4 @@ def sample_roi_kinematics(
     n = int(num_samples)
     positions = sample_positions(x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode)
     velocities, orientations = sample_velocities(smin, smax, n, speed_sampling_mode)
-    print(
-        f"n={n}, roi=({x_lo}, {x_hi}) x ({y_lo}, {y_hi}), z=0, "
-        f"pos_mode={position_sampling_mode}, speed_range=[{smin}, {smax}], "
-        f"speed_mode={speed_sampling_mode}, seed={seed}"
-    )
     return positions, velocities, orientations

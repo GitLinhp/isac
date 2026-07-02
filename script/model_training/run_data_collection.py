@@ -1,10 +1,10 @@
-"""ISAC 数据集采集入口：平面 ROI 蒙特卡洛采样 → RT 目标位姿驱动 → CSV / HDF5。
+"""ISAC 数据集采集入口：平面 ROI 蒙特卡洛采样 → RT 目标位姿驱动 → TOML / CSV / HDF5。
 
 流程概要
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
 2. 构建 ``System``，循环更新 RT 目标位姿并采集 CFR / 几何真值。
-3. 写出 ``out/dataset_collection/`` 下的 CSV 与 HDF5。
+3. 写出 ``out/dataset_collection/`` 下的 TOML、CSV 与 HDF5。
 """
 
 from __future__ import annotations
@@ -13,20 +13,19 @@ import argparse
 import warnings
 
 import numpy as np
+from tabulate import tabulate
+from tqdm import tqdm
 
 from isac.datasets import (
     DEFAULT_COLLECTION_OUT_DIR,
-    CollectionMetadata,
     EpisodeBuffers,
-    save_episode_buffers_h5,
-    save_episodes_csv,
+    save_collection_artifacts,
 )
 from isac.system import System
 from isac.utils import load_config, set_random_seed
 from isac.utils.data_collection.channel_export import scene_slug_from_rt_simulator
 from isac.utils.data_collection.episode import (
     process_episode,
-    update_rt_target_pose,
 )
 from isac.utils.data_collection.roi_sampling import sample_roi_kinematics
 
@@ -103,8 +102,22 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _print_sampling_config(args: argparse.Namespace) -> None:
+    """以 tabulate 打印采样配置参数。"""
+    x_lo, x_hi, y_lo, y_hi = args.roi
+    config_rows = [
+        ["num_samples", args.num_samples],
+        ["roi", f"x=[{x_lo}, {x_hi}], y=[{y_lo}, {y_hi}], z=0"],
+        ["position_sampling_mode", args.position_sampling_mode],
+        ["speed_range", f"[{args.speed_range[0]}, {args.speed_range[1]}] m/s"],
+        ["speed_sampling_mode", args.speed_sampling_mode],
+        ["seed", args.seed],
+    ]
+    print(tabulate(config_rows, headers=["参数", "值"], tablefmt="simple_grid"))
+
+
 def main() -> None:
-    """蒙特卡洛采集 episode → 写出 CSV / HDF5。"""
+    """蒙特卡洛采集 episode → 写出 TOML / CSV / HDF5。"""
     args = argument_parser()
     set_random_seed(args.seed)
 
@@ -117,6 +130,7 @@ def main() -> None:
         num_samples=args.num_samples,
         seed=args.seed,
     )
+    _print_sampling_config(args)
 
     # 加载配置，构建 System
     config = load_config(args.config_file)
@@ -134,12 +148,14 @@ def main() -> None:
 
     buffers = EpisodeBuffers()
 
-    for i in range(args.num_samples):
+    for i in tqdm(range(args.num_samples), desc="采集 episode", unit="ep"):
+        # 更新 RT 目标位姿
         target(
             position=positions[i],
             velocity=velocities[i],
             orientation=orientations[i],
         )
+        # 采集 CFR / 几何真值
         process_episode(
             system=system,
             rt_simulator=rt_simulator,
@@ -148,23 +164,13 @@ def main() -> None:
             vel=velocities[i],
             buffers=buffers,
         )
-        print(f"episode {i + 1}/{args.num_samples} 完成")
 
-    collection_meta = CollectionMetadata.from_collection_args(args, scene_slug)
-    save_episodes_csv(
+    save_collection_artifacts(
         scene_slug=scene_slug,
-        rows=buffers.csv_rows,
-        output_root=DEFAULT_COLLECTION_OUT_DIR,
-    )
-    save_episode_buffers_h5(
-        buffers,
-        scene_slug=scene_slug,
-        n_episodes=args.num_samples,
+        config_file=args.config_file,
+        buffers=buffers,
         bs_pos=np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64),
-        carrier_frequency=system.params.carrier_frequency,
-        subcarrier_spacing=system.params.ofdm.subcarrier_spacing,
-        num_subcarriers=system.params.ofdm.fft_size,
-        collection_meta=collection_meta,
+        args=args,
         out_dir=DEFAULT_COLLECTION_OUT_DIR,
     )
 
