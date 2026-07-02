@@ -79,20 +79,6 @@ class RTChannel(Channel):
             out_type=out_type,
         )
 
-    def cfr_per_tx(
-        self,
-        rt_simulator: object,
-        *,
-        device: Optional[torch.device] = None,
-        dtype: torch.dtype = torch.complex64,
-    ) -> dict[str, torch.Tensor]:
-        """按发射机分离的 OFDM 频域信道，每个 TX 对应 ``(num_ofdm_symbols, fft_size)``。"""
-        return rt_simulator.cfr_per_tx(
-            self.rg,
-            device=device,
-            dtype=dtype,
-        )
-
     @property
     def h_time(self) -> torch.Tensor:
         a, tau = self.cir(

@@ -1,4 +1,4 @@
-"""SceneFilter 与收发机–障碍物包围盒校验单元测试。"""
+"""RTSceneFilter 与收发机–障碍物包围盒校验单元测试。"""
 
 import numpy as np
 import pytest
@@ -6,7 +6,7 @@ import pytest
 from sionna.rt import Scene
 
 from isac.channel.rt.rt_simulator import RTSimulator
-from isac.channel.rt.scene_filter import SceneFilter
+from isac.channel.rt.rt_scene_filter import RTSceneFilter
 
 
 class _Mesh:
@@ -28,7 +28,7 @@ def test_point_inside_aabb():
         objects = {"building_1": _Obj([0, 0, 0], [2, 2, 2])}
         transceivers = {}
 
-    filt = SceneFilter(_Scene(), safe_margin=0.0)
+    filt = RTSceneFilter(_Scene(), safe_margin=0.0)
     assert not filt(np.array([1.0, 1.0, 1.0]))
     assert filt(np.array([3.0, 1.0, 1.0]))
 
@@ -63,6 +63,6 @@ def test_scene_filter_mc_sampling_unchanged():
         objects = {"building_1": _Obj([0, 0, 0], [10, 10, 10])}
         transceivers = {}
 
-    filt = SceneFilter(_Scene(), safe_margin=1.0)
+    filt = RTSceneFilter(_Scene(), safe_margin=1.0)
     assert filt(np.array([50.0, 0.0, 0.0]))
     assert not filt(np.array([5.0, 5.0, 5.0]))

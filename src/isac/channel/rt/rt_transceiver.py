@@ -5,7 +5,6 @@
 """
 
 from typing import Optional, Union, List, Tuple
-
 import numpy as np
 from sionna.rt import Transmitter, Receiver
 
@@ -46,7 +45,7 @@ class RTTransceiver:
         - look_at: list[float] | tuple[float, ...] | None
             观察点世界坐标 ``[x, y, z]``（米）；``None`` 表示不设置。
         - transceiver_type: str | list[str] | tuple[str, ...]
-            ``"tx"``、``"rx"`` 或二者组合；去重后至少含一项。
+            ``"tx"``、``"rx"`` 或二者组合；至少含一项。
         - tx_color: tuple[float, float, float] | None
             发射机可视化 RGB ``[0, 1]``；默认 ``DEFAULT_TX_COLOR``。
         - rx_color: tuple[float, float, float] | None
@@ -58,10 +57,6 @@ class RTTransceiver:
         self._position = self._validate_position(position)
         self._orientation = self._validate_orientation(orientation)
         self._look_at = self._validate_look_at(look_at)
-
-        self.tx = None
-        self.rx = None
-
         type_list = self._validate_type(transceiver_type)
 
         # 按 type 创建 Sionna Transmitter（name_tx）
@@ -74,6 +69,8 @@ class RTTransceiver:
                 color=tx_color or DEFAULT_TX_COLOR,
                 power_dbm=power_dbm,
             )
+        else:
+            self.tx = None
 
         # 按 type 创建 Sionna Receiver（name_rx）
         if "rx" in type_list:
@@ -84,6 +81,8 @@ class RTTransceiver:
                 look_at=look_at,
                 color=rx_color or DEFAULT_RX_COLOR,
             )
+        else:
+            self.rx = None
 
     # ==================== 基本属性 ====================
     @property
@@ -127,52 +126,6 @@ class RTTransceiver:
         self._look_at = self._validate_look_at(look_at)
 
     # ==================== 验证函数 ====================
-    def _validate_type(
-        self, transceiver_type: Union[str, List[str], Tuple[str, ...]]
-    ) -> List[str]:
-        """校验并规范化 ``transceiver_type``。
-
-        接受单个字符串或字符串序列，去重并保持原顺序；结果至少含 ``"tx"`` 或 ``"rx"`` 之一。
-
-        参数:
-        -------
-        transceiver_type: str | list[str] | tuple[str, ...]
-            收发器类型配置。
-
-        返回:
-        -------
-        list[str]
-            规范化后的类型列表（元素为 ``"tx"`` / ``"rx"``）。
-        """
-        if isinstance(transceiver_type, str):
-            type_list = [transceiver_type]
-        elif isinstance(transceiver_type, (list, tuple)):
-            type_list = list(transceiver_type)
-        else:
-            raise TypeError(
-                f"transceiver_type must be str or list[str]/tuple[str, ...], got {type(transceiver_type)}"
-            )
-
-        valid_types = {"tx", "rx"}
-        for t in type_list:
-            if not isinstance(t, str):
-                raise TypeError(f"type list elements must be str, got {type(t)}")
-            if t not in valid_types:
-                raise ValueError(f"type must be one of {valid_types}, got '{t}'")
-
-        # 去重并保持顺序
-        seen = set()
-        result = []
-        for t in type_list:
-            if t not in seen:
-                seen.add(t)
-                result.append(t)
-
-        if len(result) == 0:
-            raise ValueError("type must contain at least one of 'tx' or 'rx'")
-
-        return result
-
     def _validate_name(self, name: str) -> str:
         """名称校验：非空字符串。
 
@@ -267,12 +220,12 @@ class RTTransceiver:
 
         参数:
         -------
-        look_at: list[float] | tuple[float, ...] | None
+        - look_at: list[float] | tuple[float, ...] | None
             待校验观察点；``None`` 表示不设置。
 
         返回:
         -------
-        list[float] | None
+        - list[float] | None
             规范化后的观察点列表，或 ``None``。
         """
         if look_at is None:
@@ -291,3 +244,41 @@ class RTTransceiver:
                     )
 
             return list(look_at)
+
+    def _validate_type(
+        self, transceiver_type: Union[str, List[str], Tuple[str, ...]]
+    ) -> List[str]:
+        """校验并规范化 ``transceiver_type``。
+
+        接受单个字符串或字符串序列，保持原顺序；结果至少含 ``"tx"`` 或 ``"rx"`` 之一。
+
+        参数:
+        -------
+        - transceiver_type: str | list[str] | tuple[str, ...]
+            收发器类型配置。
+
+        返回:
+        -------
+        - list[str]
+            规范化后的类型列表（元素为 ``"tx"`` / ``"rx"``）。
+        """
+        if isinstance(transceiver_type, str):
+            type_list = [transceiver_type]
+        elif isinstance(transceiver_type, (list, tuple)):
+            type_list = list(transceiver_type)
+        else:
+            raise TypeError(
+                f"transceiver_type must be str or list[str]/tuple[str, ...], got {type(transceiver_type)}"
+            )
+
+        valid_types = {"tx", "rx"}
+        for t in type_list:
+            if not isinstance(t, str):
+                raise TypeError(f"type list elements must be str, got {type(t)}")
+            if t not in valid_types:
+                raise ValueError(f"type must be one of {valid_types}, got '{t}'")
+
+        if len(type_list) == 0:
+            raise ValueError("type must contain at least one of 'tx' or 'rx'")
+
+        return type_list

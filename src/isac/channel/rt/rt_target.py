@@ -40,14 +40,14 @@ class RTTarget(SceneObject):
 
         参数:
         -------
-        target_name: str
+        - target_name: str
             目标名称，仅用于错误信息。
-        fname_str: str
+        - fname_str: str
             mesh 逻辑名（如 ``cube``）。
 
         返回:
         -------
-        str
+        - str
             绝对路径字符串（Mitsuba/Sionna 要求 ``fname`` 为 str，非 Path）。
         """
         # 检查 fname_str 是否为逻辑名
@@ -72,7 +72,17 @@ class RTTarget(SceneObject):
             )
 
     def __call__(self, **kwargs: Any) -> None:
-        """在对象已加入场景后更新位姿/速度（仅 ``_SCENE_OBJECT_ATTRIBUTES``）。"""
+        """在对象已加入场景后更新位姿/速度（仅 ``_SCENE_OBJECT_ATTRIBUTES``）。
+
+        参数:
+        ----------
+        - kwargs: Any
+            更新属性，仅支持 ``_SCENE_OBJECT_ATTRIBUTES`` 中的属性。
+
+        返回:
+        -------
+        - None
+        """
         # 检查是否存在不支持的属性
         unknown = set(kwargs) - set(self._SCENE_OBJECT_ATTRIBUTES)
         if unknown:
@@ -83,7 +93,5 @@ class RTTarget(SceneObject):
 
         # 更新目标属性
         for attr_name, value in kwargs.items():
-            if value is None:
-                continue
             arr = np.asarray(value, dtype=np.float64).reshape(-1)
             setattr(self, attr_name, arr.tolist())

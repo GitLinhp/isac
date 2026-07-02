@@ -1,6 +1,6 @@
 # 标准库
 from typing import Optional, Any
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import numpy as np
 from dataclasses import asdict
 
@@ -14,12 +14,13 @@ from sionna.rt import (
     Paths,
 )
 import sionna.rt.scene
+from mitsuba import Bitmap
 
 # 本地模块
+from ...data_structures.params import RTSimulatorParams
+from .rt_scene_filter import RTSceneFilter
 from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
-from .scene_filter import SceneFilter
-from ...data_structures.params.channel_params.rt_simulator_params import RTSimulatorParams
 from .rx_target_tx_geometric import RxTargetTxGeometric
 from ... import PROJECT_ROOT
 from . import RT_SCENES_DIR
@@ -67,7 +68,7 @@ class RTSimulator:
     def _init_scene_filter(self) -> None:
         """初始化场景过滤器（与 ``scene`` 同级，读取 mesh 包围盒）。"""
         if getattr(self, "scene") is not None:
-            self.scene_filter = SceneFilter(self.scene, safe_margin=0.0)
+            self.scene_filter = RTSceneFilter(self.scene, safe_margin=1.0)
         else:
             raise ValueError("scene 未初始化，无法初始化 scene_filter。")
 
@@ -96,8 +97,8 @@ class RTSimulator:
 
         tx_array_params = self.rt_simulator_params.antenna_arrays["tx_array"]
         rx_array_params = self.rt_simulator_params.antenna_arrays["rx_array"]
-        self.tx_array = PlanarArray(**asdict(tx_array_params))
-        self.rx_array = PlanarArray(**asdict(rx_array_params))
+        self.tx_array = PlanarArray(**asdict(tx_array_params))  # 创建发射天线阵列
+        self.rx_array = PlanarArray(**asdict(rx_array_params))  # 创建接收天线阵列
         self.scene.tx_array = self.tx_array  # 将发射天线阵列添加到场景
         self.scene.rx_array = self.rx_array  # 将接收天线阵列添加到场景
 
@@ -132,7 +133,10 @@ class RTSimulator:
         if self.rt_simulator_params.target_materials is None:
             return
 
-        for name, target_material_params in self.rt_simulator_params.target_materials.items():
+        for (
+            name,
+            target_material_params,
+        ) in self.rt_simulator_params.target_materials.items():
             material = ITURadioMaterial(
                 name=name,
                 itu_type=target_material_params.type,
@@ -296,12 +300,9 @@ class RTSimulator:
         -------
         - None
         """
-        self.scene.preview(
-            camera=self.camera,
-            paths=self.paths if with_paths else None,
-        )
+        self.scene.preview(paths=self.paths if with_paths else None)
 
-    def render(self, with_paths: bool = True) -> plt.Figure:
+    def render(self, with_paths: bool = True) -> Figure | Bitmap:
         """渲染场景
 
         参数:
@@ -311,14 +312,14 @@ class RTSimulator:
 
         返回:
         -------
-        - plt.Figure
+        - Figure
         """
         camera = self.camera
         if not with_paths:
             return self.scene.render(camera=camera)
         else:
             paths = self.paths
-            a = paths.cir(out_type="numpy")[0]
+            a: np.ndarray = paths.cir(out_type="numpy")[0]
 
             if a.size == 0:  # 不存在有效路径，只渲染场景
                 return self.scene.render(camera=camera)

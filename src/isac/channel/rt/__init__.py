@@ -6,5 +6,5 @@ from .rt_simulator import *
 from .rt_transceiver import *
 from .rt_target import *
 from .rx_target_tx_geometric import *
-from .scene_filter import SceneFilter
+from .rt_scene_filter import RTSceneFilter
 from .rt_channel import RTChannel

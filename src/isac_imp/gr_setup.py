@@ -20,8 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
-
-import sionna
+import sionna.phy
 import torch
 
 from isac.system import System
@@ -63,20 +62,6 @@ def apply_grc_ofdm_overrides(
     return merged
 
 
-def _normalize_ofdm_overrides(
-    ofdm_overrides: _OfdmOverrides,
-) -> tuple[int, int, float, int]:
-    """提取 OFDM 四元组供 cache_key 使用；None 时返回全零占位。"""
-    if ofdm_overrides is None:
-        return (0, 0, 0.0, 0)
-    return (
-        int(ofdm_overrides["num_symbols"]),
-        int(ofdm_overrides["fft_size"]),
-        float(ofdm_overrides["subcarrier_spacing"]),
-        int(ofdm_overrides["cyclic_prefix_length"]),
-    )
-
-
 def make_cache_key(
     config_file: str,
     device: str,
@@ -88,7 +73,13 @@ def make_cache_key(
     Returns:
         (config_file, device, seed, num_symbols, fft_size, subcarrier_spacing, cp_len)
     """
-    n_sym, fft_size, scs, cp = _normalize_ofdm_overrides(ofdm_overrides)
+    if ofdm_overrides is None:
+        n_sym, fft_size, scs, cp = 0, 0, 0.0, 0
+    else:
+        n_sym = int(ofdm_overrides["num_symbols"])
+        fft_size = int(ofdm_overrides["fft_size"])
+        scs = float(ofdm_overrides["subcarrier_spacing"])
+        cp = int(ofdm_overrides["cyclic_prefix_length"])
     return (str(config_file), str(device), int(seed), n_sym, fft_size, scs, cp)
 
 
@@ -189,16 +180,18 @@ def create_system(
 
     相同 ``cache_key`` 下 TX/RX epy_block 得到同一 ``System`` 对象。
 
-    Args:
-        config_file: TOML 相对路径（经 ``load_config`` 解析）
-        device: Sionna/Torch 计算设备
-        seed: 随机种子
-        batch_size: 批大小，传入 ``System.batch_size``
-        ofdm_overrides: GRC OFDM 四参数覆盖；None 表示不覆盖 TOML [ofdm]
-        use_cache: True 时命中 registry 直接返回已有实例
+    参数:
+    ----------
+        - config_file: TOML 相对路径（经 ``load_config`` 解析）
+        - device: Sionna/Torch 计算设备
+        - seed: 随机种子
+        - batch_size: 批大小，传入 ``System.batch_size``
+        - ofdm_overrides: GRC OFDM 四参数覆盖；None 表示不覆盖 TOML [ofdm]
+        - use_cache: True 时命中 registry 直接返回已有实例
 
-    Returns:
-        新建或缓存的 ``System`` 实例
+    返回:
+    ----------
+        - 新建或缓存的 ``System`` 实例
     """
     # 生成 cache_key
     cache_key = make_cache_key(config_file, device, seed, ofdm_overrides)

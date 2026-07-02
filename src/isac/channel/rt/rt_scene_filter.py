@@ -24,7 +24,7 @@ EXCLUDED_MESH_OBSTACLE_NAME_SUBSTRINGS: frozenset[str] = frozenset(
 )
 
 
-class SceneFilter:
+class RTSceneFilter:
     """场景障碍物过滤器：基于 mesh AABB 判定点是否可放置。
 
     实例化时一次性收集并缓存 ``self.obstacles``；之后通过 ``filter(position)``

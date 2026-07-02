@@ -3,7 +3,9 @@
     "reportOptionalCall": "none",
     "reportOptionalMemberAccess": "none",
     "reportOptionalOperand": "none",
-    "reportOptionalSubscript": "none"
+    "reportOptionalSubscript": "none",
+    "reportArgumentType": "none",
+    "reportAssignmentType": "none"
   },
   "pylint.args": [
     "--disable=missing-module-docstring,missing-class-docstring,missing-function-docstring"

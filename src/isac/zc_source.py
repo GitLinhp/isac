@@ -43,6 +43,13 @@ class ZCSource(Block):
         self,
         inputs: Union[List[int], Tuple[int, ...], torch.Size],
     ) -> torch.Tensor:
+        """生成给定形状的 Zadoff-Chu 序列（最后一维为序列长度 ``N``，其余维广播复制）。
+
+        参数:
+        ----------
+        - inputs: 输入形状，与 ``BinarySource`` 相同，``list`` / ``tuple`` / ``torch.Size`` 的整型尺寸；
+            最后一维为 ZC 长度 ``N``。
+        """
         shape = list(inputs)
         if len(shape) < 1:
             raise ValueError("shape must have at least one dimension")

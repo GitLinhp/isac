@@ -62,6 +62,8 @@ reportMissingModuleSource = false
 reportOptionalCall = "none"
 reportOptionalMemberAccess = "none"
 reportOptionalOperand = "none"
+reportArgumentType = "none"
+reportAssignmentType = "none"
 
 [tool.pylint."messages control"]
 disable = [
