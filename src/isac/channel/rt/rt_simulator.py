@@ -190,6 +190,7 @@ class RTSimulator:
             target(
                 position=targets_params.position,
                 velocity=targets_params.velocity,
+                scaling=targets_params.scaling,
             )
             self.rt_targets[name] = target  # 将目标添加到字典
 
@@ -268,7 +269,9 @@ class RTSimulator:
         # 遍历所有收发器，收集位置/速度快照
         for tc in self.transceivers.values():
             ent = getattr(tc, role_attr)
-            # 收集位置/速度快照
+            # 如果实体为 None，跳过
+            if ent is None:
+                continue
             states[ent.name] = self._snapshot_pos_vel(ent)
 
         # 如果未收集到任何实体，抛出错误

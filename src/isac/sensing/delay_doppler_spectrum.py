@@ -268,6 +268,7 @@ class DelayDopplerSpectrum:
         metric_mode: Optional[str] = None,
         backend: Optional[str] = "matplotlib",
         panel_labels: Optional[list[str]] = None,
+        announce_save: bool = True,
     ) -> None:
         """可视化谱图（时延-多普勒 / 距离-速度），可选叠加 CFAR 阈值。
 
@@ -296,6 +297,8 @@ class DelayDopplerSpectrum:
             - `None`：保持向后兼容，`delay_doppler->matplotlib`，`range_velocity->plotly`
             - `"matplotlib"`：使用 matplotlib 3D
             - `"plotly"`：使用 plotly 3D
+        announce_save : bool
+            保存到 ``file_name`` 时是否打印保存路径，默认 ``True``。
         """
 
         if not hasattr(self, "h_delay_doppler"):
@@ -384,7 +387,8 @@ class DelayDopplerSpectrum:
                 out_path = self._ensure_parent_and_path(file_name)
                 plt.savefig(out_path)
                 plt.close()
-                print(f"谱图已保存: {out_path.resolve()}")
+                if announce_save:
+                    print(f"谱图已保存: {out_path.resolve()}")
             else:
                 plt.show()
             return
@@ -439,7 +443,8 @@ class DelayDopplerSpectrum:
             if file_name is not None:
                 out_path = self._ensure_parent_and_path(file_name)
                 fig.write_image(str(out_path))
-                print(f"谱图已保存: {out_path.resolve()}")
+                if announce_save:
+                    print(f"谱图已保存: {out_path.resolve()}")
             else:
                 fig.show()
             return

@@ -1,5 +1,7 @@
 """Sionna RT 射线追踪信道：多径 CIR/CFR 与时/频域施加。"""
 
+from __future__ import annotations
+
 from typing import Callable, Optional, Tuple
 
 import torch
@@ -25,6 +27,9 @@ class RTChannel(Channel):
         self,
         rg: ResourceGrid,
         paths: Callable[[], Paths],
+        *,
+        rx_names: Callable[[], list[str]] | None = None,
+        tx_names: Callable[[], list[str]] | None = None,
         precision: Optional[Precision] = None,
         device: Optional[str] = None,
     ) -> None:
@@ -36,6 +41,10 @@ class RTChannel(Channel):
             资源网格
         - paths: Callable[[], Paths]
             路径生成器
+        - rx_names: Callable[[], list[str]] | None
+            接收机名称列表提供器，供 ``cfr_split`` 构造 ``{rx}-{tx}`` 键
+        - tx_names: Callable[[], list[str]] | None
+            发射机名称列表提供器，供 ``cfr_split`` 构造 ``{rx}-{tx}`` 键
         - precision: Optional[Precision]
             精度，可选 ``"float32"`` 或 ``"float64"``，默认 ``None``
         - device: Optional[str]
@@ -46,6 +55,8 @@ class RTChannel(Channel):
 
         assert callable(paths), "paths 必须是可调用对象：Callable[[], Paths]"
         self.paths = paths
+        self._rx_names = rx_names
+        self._tx_names = tx_names
 
         self._init_properties()
         self._init_components()
@@ -83,7 +94,13 @@ class RTChannel(Channel):
     def cfr(
         self, num_time_steps: int, sampling_frequency: float, out_type: str = "torch"
     ):
-        """获取信道频率响应"""
+        """获取信道频率响应。
+
+        ``out_type='torch'`` 时通常为 7D：
+        ``[batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, num_frequencies]``；
+        单天线合成阵列下也可能为 6D：
+        ``[batch, num_rx, num_tx, num_rx_ant, num_time_steps, num_frequencies]``。
+        """
         paths = self.paths()
         return paths.cfr(
             frequencies=self.frequencies,
@@ -93,6 +110,76 @@ class RTChannel(Channel):
             normalize=True,
             out_type=out_type,
         )
+
+    @staticmethod
+    def cfr_pair_key(rx_name: str, tx_name: str) -> str:
+        """收发机对字典键：``{rx_name}-{tx_name}``。"""
+        return f"{rx_name}-{tx_name}"
+
+    def cfr_split(
+        self,
+        num_time_steps: int,
+        sampling_frequency: float,
+        out_type: str = "torch",
+    ) -> dict[str, torch.Tensor]:
+        """计算 CFR 并按 (RX, TX) 对切片。
+
+        参数与 ``cfr()`` 一致；返回键为 ``cfr_pair_key(rx, tx)``，
+        值为 ``(num_time_steps, num_frequencies)`` 张量。
+        """
+        if self._rx_names is None or self._tx_names is None:
+            raise ValueError(
+                "cfr_split 需要构造 RTChannel 时提供 rx_names 与 tx_names"
+            )
+        rx_name_list = self._rx_names()
+        tx_name_list = self._tx_names()
+
+        paths = self.paths()
+        cfr = paths.cfr(
+            frequencies=self.frequencies,
+            num_time_steps=num_time_steps,
+            sampling_frequency=sampling_frequency,
+            normalize_delays=False,
+            normalize=True,
+            out_type=out_type,
+        )
+        if not isinstance(cfr, torch.Tensor):
+            raise TypeError(
+                f"cfr_split out_type='torch' 须返回 Tensor，收到 {type(cfr)!r}"
+            )
+
+        if cfr.ndim == 7:
+            num_rx = int(cfr.shape[1])
+            num_tx = int(cfr.shape[3])
+            tx_axis = 3
+        elif cfr.ndim == 6:
+            num_rx = int(cfr.shape[1])
+            num_tx = int(cfr.shape[2])
+            tx_axis = 2
+        else:
+            raise ValueError(
+                "cfr 须为 6D (batch, num_rx, num_tx, num_rx_ant, S, F) 或 "
+                "7D (batch, num_rx, num_rx_ant, num_tx, num_tx_ant, S, F)，"
+                f"收到 ndim={cfr.ndim}, shape={tuple(cfr.shape)}"
+            )
+        if num_rx != len(rx_name_list):
+            raise ValueError(
+                f"CFR 的 rx 维 ({num_rx}) 与 rx_names 数量 ({len(rx_name_list)}) 不一致"
+            )
+        if num_tx != len(tx_name_list):
+            raise ValueError(
+                f"CFR 的 tx 维 ({num_tx}) 与 tx_names 数量 ({len(tx_name_list)}) 不一致"
+            )
+
+        out: dict[str, torch.Tensor] = {}
+        for rx_i, rx_name in enumerate(rx_name_list):
+            for tx_i, tx_name in enumerate(tx_name_list):
+                if tx_axis == 3:
+                    slab = cfr[0, rx_i, 0, tx_i, 0]
+                else:
+                    slab = cfr[0, rx_i, tx_i, 0]
+                out[self.cfr_pair_key(rx_name, tx_name)] = slab
+        return out
 
     # ==================== 属性 ====================
     @property

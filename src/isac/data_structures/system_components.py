@@ -59,8 +59,8 @@ class SystemComponents:
     """OFDM解调器"""
 
     # 信道组件
-    channel: Optional[Channel] = None
-    """统一信道入口（``RTChannel`` 频域 / ``RCSChannel`` 时域，可选 AWGN）"""
+    channel: RTChannel | RCSChannel = None
+    """统一信道入口（``RTChannel`` 频域）"""
     rt_simulator: Optional[RTSimulator] = None
     """RT 仿真器；``channel.type='rt'`` 时构建"""
     rcs_scene: Optional[RCSScene] = None
@@ -208,6 +208,8 @@ class SystemComponents:
                         rg=rg,
                         # 延迟绑定：paths 在每次信道调用时按当前场景状态求解
                         paths=lambda: rt_simulator.paths,
+                        rx_names=lambda: list(rt_simulator.rx_states.keys()),
+                        tx_names=lambda: list(rt_simulator.tx_states.keys()),
                         device=device,
                     ),
                 }

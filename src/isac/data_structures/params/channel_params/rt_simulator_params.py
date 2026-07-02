@@ -67,17 +67,15 @@ class TransceiverParams:
     position: list[float] = field(default_factory=lambda: [0, 100, 50])
     look_at: list[float] = field(default_factory=lambda: [0, 0, 30])
     type: str = "tx"
-    power_dbm: float | None = None
+    power_dbm: float = 44.0
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TransceiverParams":
-        raw_power = config_dict.get("power_dbm")
-        power_dbm = float(raw_power) if raw_power is not None else None
         return cls(
             position=config_dict.get("position", [0, 100, 50]),
             look_at=config_dict.get("look_at", [0, 0, 30]),
             type=config_dict.get("type", "tx"),
-            power_dbm=power_dbm,
+            power_dbm=config_dict.get("power_dbm", 44.0),
         )
 
 
@@ -107,6 +105,7 @@ class TargetParams:
     material: str = "car_material"
     position: list[float] = field(default_factory=lambda: [0, 0, 0])
     velocity: list[float] = field(default_factory=lambda: [0, 0, 0])
+    scaling: float | list[float] = 1.0
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TargetParams":
@@ -119,6 +118,7 @@ class TargetParams:
             material=config_dict.get("material", "car_material"),
             position=config_dict.get("position", [0, 0, 0]),
             velocity=config_dict.get("velocity", [0, 0, 0]),
+            scaling=config_dict.get("scaling", 1.0),
         )
 
 

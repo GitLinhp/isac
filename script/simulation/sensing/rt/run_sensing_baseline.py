@@ -10,7 +10,10 @@ def argument_parser() -> argparse.Namespace:
 
     parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
-        "--config_file", type=str, default="simulation/sensing/sensing_baseline.toml", help="配置文件路径"
+        "--config_file",
+        type=str,
+        default="simulation/sensing/sensing_baseline.toml",
+        help="配置文件路径",
     )
     parser.add_argument(
         "--device",
@@ -55,8 +58,9 @@ def main() -> None:
     system.components.rt_simulator.render_to_file(
         filename=script_out_dir / "sensing_baseline_scene.png"
     )
-    system.components.rt_simulator.get("reflector").velocity = [0, 0, -20]
-    system.components.rt_simulator.get("bs1_tx").velocity = [30, 0, 0]
+    rt = system.components.rt_simulator
+    rt.scene.objects["reflector"].velocity = [0, 0, -20]
+    rt.transceivers["bs1"].tx.velocity = [30, 0, 0]
 
     # --- 发射 ---
     _, x_rg, x_time = system.transmit()

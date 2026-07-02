@@ -14,6 +14,7 @@ def match_peaks_and_compute_radial_rmse(
     label: str = "单基地感知",
     distance_axis_label: str = "径向距离",
     velocity_axis_label: str = "径向速度",
+    verbose: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """用匈牙利算法在 MUSIC 峰与真值格点间做一对一最小代价匹配，并计算径向 RMSE。
 
@@ -53,9 +54,10 @@ def match_peaks_and_compute_radial_rmse(
 
     row_ind, col_ind = linear_sum_assignment(cost_np)
     k = int(row_ind.shape[0])
-    print(
-        f"{label} — 匈牙利匹配: MUSIC 峰数 N={n}, 真值点数 M={m}, 匹配条数 K={k}"
-    )
+    if verbose:
+        print(
+            f"{label} — 匈牙利匹配: MUSIC 峰数 N={n}, 真值点数 M={m}, 匹配条数 K={k}"
+        )
 
     if k == 0:
         raise RuntimeError("匈牙利匹配未产生任何配对")
@@ -78,15 +80,16 @@ def match_peaks_and_compute_radial_rmse(
     true_v_show = tv_m[best].detach()
     music_peak_db = torch.tensor(float("nan"), dtype=dtype, device=device)
 
-    print(
-        f"{label} — {distance_axis_label} 真值: {convert(true_r_show, 'float'):.2f} m, "
-        f"估计: {convert(est_range_m, 'float'):.2f} m, RMSE: {convert(rmse_range, 'float'):.2f} m"
-    )
-    print(
-        f"{label} — {velocity_axis_label} 真值: {convert(true_v_show, 'float'):.2f} m/s, "
-        f"估计: {convert(est_velocity_mps, 'float'):.2f} m/s, "
-        f"RMSE: {convert(rmse_velocity, 'float'):.2f} m/s"
-    )
+    if verbose:
+        print(
+            f"{label} — {distance_axis_label} 真值: {convert(true_r_show, 'float'):.2f} m, "
+            f"估计: {convert(est_range_m, 'float'):.2f} m, RMSE: {convert(rmse_range, 'float'):.2f} m"
+        )
+        print(
+            f"{label} — {velocity_axis_label} 真值: {convert(true_v_show, 'float'):.2f} m/s, "
+            f"估计: {convert(est_velocity_mps, 'float'):.2f} m/s, "
+            f"RMSE: {convert(rmse_velocity, 'float'):.2f} m/s"
+        )
     return rmse_range, rmse_velocity, est_range_m, est_velocity_mps, music_peak_db
 
 

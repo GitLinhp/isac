@@ -11,7 +11,9 @@
 import argparse
 import re
 
+import numpy as np
 import torch
+from tabulate import tabulate
 
 from isac import PROJECT_ROOT
 from isac.sensing.localization import (
@@ -20,6 +22,7 @@ from isac.sensing.localization import (
 )
 from isac.system import System
 from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.channel import RTChannel
 
 
 def _slug_tx_name(tx_name: str) -> str:
@@ -92,15 +95,22 @@ def main() -> None:
 
     comps.sensing_performance.display_performance()
 
-    scene.render_to_file(
-        filename=script_out_dir / "sensing_cooperative_scene.png"
-    )
+    scene.render_to_file(filename=script_out_dir / "sensing_cooperative_scene.png")
 
     # 发射参考波形（协作感知信道仍由 RT CFR 按 TX 分离）
     _, x_rg, x_time = system.transmit()
 
     device = torch.device(args.device)
-    h_per_tx = comps.channel.cfr_per_tx(scene, device=device)
+    rt_channel = comps.channel
+    if not isinstance(rt_channel, RTChannel):
+        raise TypeError("协作感知脚本需要 channel.type='rt'")
+    if scene is None or comps.rg is None:
+        raise ValueError("协作感知需要 rt_simulator 与 OFDM 资源网格 rg")
+    rg = comps.rg
+    h_pairs = rt_channel.cfr_split(
+        rg.num_ofdm_symbols,
+        1 / rg.ofdm_symbol_duration,
+    )
 
     geom = scene.rx_target_tx_geometric
     geom.display()
@@ -112,14 +122,17 @@ def main() -> None:
     if len(geom.target_names) != 1:
         raise ValueError(f"协作感知假定单目标，收到 target={geom.target_names!r}")
 
-    missing = set(geom.tx_names) - set(h_per_tx.keys())
-    if missing:
-        raise ValueError(f"CFR 按 TX 分离缺少: {sorted(missing)!r}")
-
     rx_idx = 0
     target_idx = 0
     rx_name = geom.rx_names[rx_idx]
     target_name = geom.target_names[target_idx]
+
+    expected_pair_keys = {
+        RTChannel.cfr_pair_key(rx_name, tx_name) for tx_name in geom.tx_names
+    }
+    missing = expected_pair_keys - set(h_pairs.keys())
+    if missing:
+        raise ValueError(f"CFR 按收发机对分离缺少: {sorted(missing)!r}")
 
     tx_order = sorted(
         geom.tx_names,
@@ -137,6 +150,7 @@ def main() -> None:
     est_r_bistatic: torch.Tensor | None = None
     true_r_mono: torch.Tensor | None = None
     true_r_bistatic: torch.Tensor | None = None
+    link_result_rows: list[list[object]] = []
 
     for tx_name in tx_order:
         tx_idx = geom.tx_names.index(tx_name)
@@ -144,7 +158,7 @@ def main() -> None:
         sens_mode = "bistatic" if is_bistatic else "monostatic"
         path_label = "双基地" if is_bistatic else "单基地"
 
-        h_tx = h_per_tx[tx_name]
+        h_tx = h_pairs[RTChannel.cfr_pair_key(rx_name, tx_name)].to(device)
         h_tx = system.components.moving_target_indication(h_tx, axis=-2)
         h_dd_tx = dd(h_tx)
 
@@ -156,8 +170,8 @@ def main() -> None:
             to_db=False,
             metric_mode=args.metric_mode,
             backend="matplotlib",
+            announce_save=False,
         )
-        print(f"协同感知 — 已保存 {tx_name} 时延–多普勒谱")
 
         spectra_stack.append(h_dd_tx)
         panel_labels.append(tx_name)
@@ -167,6 +181,7 @@ def main() -> None:
             metric_mode=args.metric_mode,
             sens_mode=sens_mode,
             num_sources=1,
+            log_peaks=False,
         )
 
         true_range = geom.range_tensor[rx_idx, target_idx, tx_idx]
@@ -179,17 +194,36 @@ def main() -> None:
             distance_label = "径向距离"
             velocity_label = "径向速度"
 
-        _, _, est_range_m, est_velocity_mps, _ = match_peaks_and_compute_radial_rmse(
-            est_ranges=est_ranges,
-            est_velocities=est_velocities,
-            true_ranges=true_range,
-            true_velocities=true_velocity,
-            label=(
-                f"协同感知 — RX {rx_name} / TX {tx_name} "
-                f"({path_label}, sens_mode={sens_mode})"
-            ),
-            distance_axis_label=distance_label,
-            velocity_axis_label=velocity_label,
+        rmse_range, rmse_velocity, est_range_m, est_velocity_mps, _ = (
+            match_peaks_and_compute_radial_rmse(
+                est_ranges=est_ranges,
+                est_velocities=est_velocities,
+                true_ranges=true_range,
+                true_velocities=true_velocity,
+                label=(
+                    f"协同感知 — RX {rx_name} / TX {tx_name} "
+                    f"({path_label}, sens_mode={sens_mode})"
+                ),
+                distance_axis_label=distance_label,
+                velocity_axis_label=velocity_label,
+                verbose=False,
+            )
+        )
+
+        true_r = float(true_range.reshape(-1)[0].item())
+        true_v = float(true_velocity.reshape(-1)[0].item())
+        link_result_rows.append(
+            [
+                rx_name,
+                tx_name,
+                path_label,
+                true_r,
+                float(est_range_m.item()),
+                float(rmse_range.item()),
+                true_v,
+                float(est_velocity_mps.item()),
+                float(rmse_velocity.item()),
+            ]
         )
 
         if is_bistatic:
@@ -201,6 +235,26 @@ def main() -> None:
             est_r_mono = est_range_m
             true_r_mono = true_range.reshape(-1)[0]
 
+    print("各链路感知结果:")
+    print(
+        tabulate(
+            link_result_rows,
+            headers=[
+                "RX",
+                "TX",
+                "路径",
+                "距离真值(m)",
+                "距离估计(m)",
+                "距离RMSE(m)",
+                "速度真值(m/s)",
+                "速度估计(m/s)",
+                "速度RMSE(m/s)",
+            ],
+            tablefmt="simple_grid",
+            floatfmt=".2f",
+        )
+    )
+
     h_dd_all = torch.stack(spectra_stack, dim=0)
     dd.h_delay_doppler = h_dd_all
     dd.visualize(
@@ -210,9 +264,13 @@ def main() -> None:
         metric_mode=args.metric_mode,
         backend="matplotlib",
         panel_labels=panel_labels,
+        announce_save=False,
     )
 
-    h_combined = sum(h_per_tx[name] for name in geom.tx_names)
+    h_combined = sum(
+        h_pairs[RTChannel.cfr_pair_key(rx_name, name)].to(device)
+        for name in geom.tx_names
+    )
     h_combined = system.components.moving_target_indication(h_combined, axis=-2)
     h_dd_combined = dd(h_combined)
     dd.h_delay_doppler = h_dd_combined
@@ -222,6 +280,7 @@ def main() -> None:
         to_db=False,
         metric_mode=args.metric_mode,
         backend="matplotlib",
+        announce_save=False,
     )
 
     if mono_tx_name is None or bistatic_tx_name is None:
@@ -234,8 +293,9 @@ def main() -> None:
     rx_states = scene.rx_states
     tx_states = scene.tx_states
     true_pos = scene.targets_states[target_name][0]
-    true_xy = (float(true_pos[0]), float(true_pos[1]))
-    y_hint = float(true_pos[1])
+    pos = np.asarray(true_pos, dtype=np.float64).reshape(-1)
+    true_xy = (pos[0].item(), pos[1].item())
+    y_hint = pos[1].item()
 
     mono_pos = rx_states[rx_name][0]
     bi_pos = tx_states[bistatic_tx_name][0]
@@ -257,11 +317,19 @@ def main() -> None:
         tx_pos=mono_tx_pos,
     )
     rmse_truth_ranges = position_rmse_xy(xy_truth_ranges, true_xy)
-    print(
-        f"协同感知 — z=0 平面定位 (真值距离 r_m={r_m_true:.2f} m, r_b={r_b_true:.2f} m) — "
-        f"估计 (x,y)=({xy_truth_ranges[0]:.2f}, {xy_truth_ranges[1]:.2f}) m, "
-        f"真值 ({true_xy[0]:.2f}, {true_xy[1]:.2f}) m, 位置 RMSE: {rmse_truth_ranges:.2f} m"
-    )
+
+    localization_rows: list[list[object]] = [
+        [
+            "真值距离",
+            r_m_true,
+            r_b_true,
+            xy_truth_ranges[0],
+            xy_truth_ranges[1],
+            true_xy[0],
+            true_xy[1],
+            rmse_truth_ranges,
+        ]
+    ]
 
     r_leg2_est = r_b_est - r_m_est
     if r_leg2_est <= 0.0:
@@ -269,27 +337,51 @@ def main() -> None:
             f"协同感知 — MUSIC 定位跳过：双基地折叠路径长 {r_b_est:.2f} m "
             f"不大于单基地斜距 {r_m_est:.2f} m"
         )
-        return
+    else:
+        try:
+            xy_music = localize_xy_z0_colocated_tx_mono_bistatic(
+                mono_pos,
+                bi_pos,
+                r_mono_slant_m=r_m_est,
+                r_bistatic_sum_m=r_b_est,
+                z_target_m=z_target,
+                y_hint=y_hint,
+                tx_pos=mono_tx_pos,
+            )
+        except ValueError as exc:
+            print(f"协同感知 — MUSIC 定位跳过：{exc}")
+        else:
+            rmse_music = position_rmse_xy(xy_music, true_xy)
+            localization_rows.append(
+                [
+                    "MUSIC距离",
+                    r_m_est,
+                    r_b_est,
+                    xy_music[0],
+                    xy_music[1],
+                    true_xy[0],
+                    true_xy[1],
+                    rmse_music,
+                ]
+            )
 
-    try:
-        xy_music = localize_xy_z0_colocated_tx_mono_bistatic(
-            mono_pos,
-            bi_pos,
-            r_mono_slant_m=r_m_est,
-            r_bistatic_sum_m=r_b_est,
-            z_target_m=z_target,
-            y_hint=y_hint,
-            tx_pos=mono_tx_pos,
-        )
-    except ValueError as exc:
-        print(f"协同感知 — MUSIC 定位跳过：{exc}")
-        return
-
-    rmse_music = position_rmse_xy(xy_music, true_xy)
+    print("z=0 平面定位:")
     print(
-        f"协同感知 — z=0 平面定位 (MUSIC 距离 r_m={r_m_est:.2f} m, r_b={r_b_est:.2f} m) — "
-        f"估计 (x,y)=({xy_music[0]:.2f}, {xy_music[1]:.2f}) m, "
-        f"真值 ({true_xy[0]:.2f}, {true_xy[1]:.2f}) m, 位置 RMSE: {rmse_music:.2f} m"
+        tabulate(
+            localization_rows,
+            headers=[
+                "来源",
+                "r_m (m)",
+                "r_b (m)",
+                "x_est (m)",
+                "y_est (m)",
+                "x_true (m)",
+                "y_true (m)",
+                "位置RMSE (m)",
+            ],
+            tablefmt="simple_grid",
+            floatfmt=".2f",
+        )
     )
 
 

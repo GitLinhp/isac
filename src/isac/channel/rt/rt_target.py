@@ -17,6 +17,7 @@ class RTTarget(SceneObject):
         "orientation",  # 目标朝向
         "look_at",  # 目标观察点
         "velocity",  # 目标速度
+        "scaling",  # 目标缩放比例
     ]
 
     def __init__(
@@ -24,7 +25,6 @@ class RTTarget(SceneObject):
         name: str,  # 目标名称
         fname: str,  # mesh 逻辑名（如 cube）
         radio_material: ITURadioMaterial,  # 目标材质
-        scaling: float = 1.0,  # 目标缩放比例
     ):
         """初始化目标对象"""
         super().__init__(
@@ -32,7 +32,6 @@ class RTTarget(SceneObject):
             fname=self._resolve_fname(name, fname),
             radio_material=radio_material,
         )
-        self.scaling = scaling  # 只在目标初始化时设置，之后不可修改
 
     def _resolve_fname(self, target_name: str, fname_str: str) -> str:
         """解析目标 mesh 路径：``RT_SCENES_DIR/{name}.ply`` 或 Sionna 内置 mesh。
@@ -93,4 +92,14 @@ class RTTarget(SceneObject):
         # 更新目标属性
         for attr_name, value in kwargs.items():
             arr = np.asarray(value, dtype=np.float64).reshape(-1)
-            setattr(self, attr_name, arr.tolist())
+            if attr_name == "scaling":
+                if arr.size == 1:
+                    setattr(self, attr_name, float(arr[0]))
+                elif arr.size == 3:
+                    setattr(self, attr_name, arr.tolist())
+                else:
+                    raise ValueError(
+                        f"scaling 须为标量或长度为 3 的向量，当前得到 {arr.tolist()}"
+                    )
+            else:
+                setattr(self, attr_name, arr.tolist())

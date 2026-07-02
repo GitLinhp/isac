@@ -154,7 +154,7 @@ class RCSChannel(Channel):
 
         return y
 
-    def _apply_clean(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
+    def _apply_channel(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:
         if domain != "time":
             raise ValueError("channel.type='rcs' 仅支持 domain='time'")
 

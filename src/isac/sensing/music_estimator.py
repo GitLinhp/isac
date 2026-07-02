@@ -168,6 +168,7 @@ class MUSICEstimator:
         *,
         sens_mode: SensMode = "monostatic",
         near_range_guard_m: Optional[float] = None,
+        log_peaks: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """使用 Torch 实现的 2D-MUSIC 估计谱峰（``__call__``，可直接 ``estimator(...)``）。
 
@@ -193,6 +194,8 @@ class MUSICEstimator:
             （``tau·c/2``、``v∝f_d/(2f_c)``）；``bistatic`` 对应单程几何路径尺度（``tau·c``、``v∝f_d/f_c``）。
         - near_range_guard_m : float | None
             单次调用覆盖近距保护距离 (m)；``None`` 时使用构造时的默认值。
+        - log_peaks : bool
+            是否在 stdout 打印谱峰表格，默认 ``True``。
 
         返回:
         ----------
@@ -286,17 +289,18 @@ class MUSICEstimator:
         )
 
         # --- 日志：按 metric_mode 仅影响表格列 ---
-        if peaks_delay.numel() > 0:
-            self._log_peak_table(
-                peaks_delay=peaks_delay,
-                peaks_doppler=peaks_doppler,
-                peaks_power=peaks_power,
-                sensing_performance=self.sensing_performance,
-                metric_mode=metric_mode_canon,
-                physics=(tau_s, fd_hz, range_m, v_mps),
-            )
-        else:
-            print("MUSIC算法未检测到谱峰")
+        if log_peaks:
+            if peaks_delay.numel() > 0:
+                self._log_peak_table(
+                    peaks_delay=peaks_delay,
+                    peaks_doppler=peaks_doppler,
+                    peaks_power=peaks_power,
+                    sensing_performance=self.sensing_performance,
+                    metric_mode=metric_mode_canon,
+                    physics=(tau_s, fd_hz, range_m, v_mps),
+                )
+            else:
+                print("MUSIC算法未检测到谱峰")
 
         return self._finalize_music_return(range_m, v_mps, peaks_power)
 
