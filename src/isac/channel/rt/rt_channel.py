@@ -165,9 +165,7 @@ class RTChannel(Channel):
         值为 ``(num_time_steps, num_frequencies)`` 张量。
         """
         if self._rx_names is None or self._tx_names is None:
-            raise ValueError(
-                "cfr_split 需要构造 RTChannel 时提供 rx_names 与 tx_names"
-            )
+            raise ValueError("cfr_split 需要构造 RTChannel 时提供 rx_names 与 tx_names")
         rx_name_list = self._rx_names()
         tx_name_list = self._tx_names()
 

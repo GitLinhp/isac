@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from isac.channel.rt import RTTarget, RTSimulator, RxTargetTxGeometric
-from isac.datasets import EpisodeBuffers
+from isac.datasets import EpisodeBuffers, Hdf5CollectionWriter
 from isac.system import System
 
 from ..misc import csv_float2_scalar, csv_vec3
@@ -15,18 +15,37 @@ from .channel_export import paths_cfr_numpy
 
 
 
-def los_truth_at_first_triple(
+def los_truth_from_kinematics(
+    pos: np.ndarray,
+    vel: np.ndarray,
     rt_simulator: RTSimulator,
     device: str | torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """返回默认三元组 ``(range, radial_velocity)``，形状均为标量张量。"""
+    """由目标运动学计算默认三元组 ``(range, radial_velocity)``，形状均为标量张量。"""
+    target_name = next(iter(rt_simulator.rt_targets.keys()))
+    target_states = {
+        target_name: [
+            np.asarray(pos, dtype=np.float64),
+            np.asarray(vel, dtype=np.float64),
+        ],
+    }
     geom = RxTargetTxGeometric.from_states(
-        rt_simulator.targets_states,
+        target_states,
         rt_simulator.rx_states,
         rt_simulator.tx_states,
         device=device,
     )
     return geom.range_tensor[0, 0, 0], geom.vel_tensor[0, 0, 0]
+
+
+def los_truth_at_first_triple(
+    rt_simulator: RTSimulator,
+    device: str | torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """返回默认三元组 ``(range, radial_velocity)``，形状均为标量张量。"""
+    target_name = next(iter(rt_simulator.rt_targets.keys()))
+    pos, vel = rt_simulator.targets_states[target_name]
+    return los_truth_from_kinematics(pos, vel, rt_simulator, device)
 
 
 def kinematics_row(
@@ -56,6 +75,7 @@ def process_episode(
     pos: np.ndarray,
     vel: np.ndarray,
     buffers: EpisodeBuffers,
+    h5_writer: Hdf5CollectionWriter | None = None,
 ) -> None:
     """单条 episode：几何真值 / CFR / CSV 缓冲写入。"""
     pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
@@ -67,4 +87,8 @@ def process_episode(
     row = kinematics_row(episode_idx, pos_row, vel_row, true_range, true_velocity)
 
     buffers.csv_rows.append(row)
-    buffers.h_freq_list.append(paths_cfr_numpy(system.components.rg, rt_simulator))
+    cfr = paths_cfr_numpy(system.components.rg, rt_simulator)
+    if h5_writer is not None:
+        h5_writer.append_episode(cfr, pos_row, vel_row)
+    else:
+        buffers.h_freq_list.append(cfr)

@@ -17,8 +17,11 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from isac.datasets import (
+    CollectionMetadata,
     DEFAULT_COLLECTION_OUT_DIR,
     EpisodeBuffers,
+    Hdf5CollectionWriter,
+    collection_h5_path,
     save_collection_artifacts,
 )
 from isac.system import System
@@ -69,7 +72,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--num_samples",
         type=int,
-        default=100,
+        default=5000,
         help="采样条数",
     )
     parser.add_argument(
@@ -107,6 +110,13 @@ def argument_parser() -> argparse.Namespace:
         type=int,
         default=5,
         help="采样池倍数：预采样 num_samples * factor 条，循环中过滤至 num_samples",
+    )
+    parser.add_argument(
+        "--h5_compression",
+        type=str,
+        default="lzf",
+        choices=["lzf", "gzip", "none"],
+        help="HDF5 CFR 压缩算法（流式写入，默认 lzf）",
     )
 
     return parser.parse_args()
@@ -158,65 +168,77 @@ def main() -> None:
     scene_slug = scene_slug_from_rt_simulator(rt_simulator)
     print(f"目标: {target_name}, 场景: {scene_slug}")
 
-    # 初始化缓冲区
+    # 初始化缓冲区与流式 HDF5 写入器
     buffers = EpisodeBuffers()
+    bs_pos = np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64)
+    h5_path = collection_h5_path(scene_slug, DEFAULT_COLLECTION_OUT_DIR)
+    collection_meta = CollectionMetadata.from_collection_args(args)
 
-    # 采集 episode
-    accepted = 0
-    attempts = 0
-    pbar = tqdm(total=args.num_samples, desc="数据采集", unit="ep")
-    while accepted < args.num_samples:
-        if len(sampler) == 0:
-            raise RuntimeError(
-                f"采样池已耗尽：已采纳 {accepted}/{args.num_samples} 条。"
-                "请增大 --sampler_pool_factor 或放宽过滤条件（scene_filter / 目标路径交互）。"
-            )
-        pos, vel, ori = sampler.pop()
-        attempts += 1
-        # 过滤不符合条件的 episode
-        if not accept_episode_kinematics(
-            pos=pos,
-            vel=vel,
-            ori=ori,
-            scene_filter=rt_simulator.scene_filter,
-        ):
-            continue
-
-        # 更新 RT 目标位姿
-        target(
-            position=pos,
-            velocity=vel,
-            orientation=ori,
-        )
-        # 判断是否与目标路径交互
-        if not paths_intersect_target(rt_simulator, target):
-            continue
-
+    with Hdf5CollectionWriter(
+        h5_path,
+        bs_pos,
+        compression=args.h5_compression,
+    ) as h5_writer:
         # 采集 episode
-        process_episode(
-            system=system,
-            rt_simulator=rt_simulator,
-            episode_idx=accepted,
-            pos=pos,
-            vel=vel,
-            buffers=buffers,
-        )
-        accepted += 1
-        pbar.update(1)
-    pbar.close()
+        accepted = 0
+        attempts = 0
+        pbar = tqdm(total=args.num_samples, desc="数据采集", unit="ep")
+        while accepted < args.num_samples:
+            if len(sampler) == 0:
+                raise RuntimeError(
+                    f"采样池已耗尽：已采纳 {accepted}/{args.num_samples} 条。"
+                    "请增大 --sampler_pool_factor 或放宽过滤条件（scene_filter / 目标路径交互）。"
+                )
+            pos, vel, ori = sampler.pop()
+            attempts += 1
+            # 过滤不符合条件的 episode
+            if not accept_episode_kinematics(
+                pos=pos,
+                vel=vel,
+                ori=ori,
+                scene_filter=rt_simulator.scene_filter,
+            ):
+                continue
 
-    acceptance_rate = accepted / attempts if attempts else 0.0
-    print(f"接受率: {acceptance_rate:.1%} ({accepted}/{attempts})")
+            # 更新 RT 目标位姿
+            target(
+                position=pos,
+                velocity=vel,
+                orientation=ori,
+            )
+            # 判断是否与目标路径交互
+            if not paths_intersect_target(rt_simulator, target):
+                continue
 
-    # 写出数据集
+            # 采集 episode
+            process_episode(
+                system=system,
+                rt_simulator=rt_simulator,
+                episode_idx=accepted,
+                pos=pos,
+                vel=vel,
+                buffers=buffers,
+                h5_writer=h5_writer,
+            )
+            accepted += 1
+            pbar.update(1)
+        pbar.close()
+
+        acceptance_rate = accepted / attempts if attempts else 0.0
+        print(f"接受率: {acceptance_rate:.1%} ({accepted}/{attempts})")
+
+        h5_writer.finalize(collection_meta=collection_meta, scene_slug=scene_slug)
+
+    # 写出其余采集产物（TOML / CSV / 场景 PNG）
     save_collection_artifacts(
         scene_slug=scene_slug,
         config_file=args.config_file,
         buffers=buffers,
-        bs_pos=np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64),
+        bs_pos=bs_pos,
         args=args,
         rt_simulator=rt_simulator,
         out_dir=DEFAULT_COLLECTION_OUT_DIR,
+        h5_already_written=True,
     )
 
 

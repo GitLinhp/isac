@@ -372,6 +372,134 @@ class Dataset:
             _write_root_attrs(f, self, scene_slug=scene_slug)
 
 
+# --- 流式 HDF5 写入 ---
+
+
+class Hdf5CollectionWriter:
+    """采集期按 episode 流式写入 HDF5，避免内存堆叠与整表压缩。
+
+    CFR 使用 ``chunks=(1, *episode_shape)`` 与可配置压缩（默认 ``lzf``）；
+    采集结束后调用 ``finalize`` 写入根属性并关闭文件。
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        bs_pos: np.ndarray,
+        *,
+        compression: str | None = "lzf",
+    ) -> None:
+        self._path = Path(path)
+        self._bs_pos = np.asarray(bs_pos, dtype=np.float64).reshape(-1)
+        self._compression = None if compression in (None, "none") else compression
+        self._file: h5py.File | None = None
+        self._cfr_ds: h5py.Dataset | None = None
+        self._pos_ds: h5py.Dataset | None = None
+        self._vel_ds: h5py.Dataset | None = None
+        self._count = 0
+        self._finalized = False
+
+    def __enter__(self) -> Hdf5CollectionWriter:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        if self._file is not None and not self._finalized:
+            self._file.close()
+            self._file = None
+
+    @property
+    def count(self) -> int:
+        return self._count
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def append_episode(
+        self,
+        cfr: np.ndarray,
+        pos: np.ndarray,
+        vel: np.ndarray,
+    ) -> None:
+        """追加单条 episode 的 CFR 与运动学。"""
+        cfr_arr = np.asarray(cfr)
+        pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
+        vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
+        if self._file is None:
+            self._open(cfr_arr)
+        idx = self._count
+        self._resize(idx + 1)
+        assert self._cfr_ds is not None
+        assert self._pos_ds is not None
+        assert self._vel_ds is not None
+        self._cfr_ds[idx] = cfr_arr
+        self._pos_ds[idx] = pos_row
+        self._vel_ds[idx] = vel_row
+        self._count += 1
+
+    def _open(self, cfr: np.ndarray) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = h5py.File(self._path, "w")
+        self._file.create_dataset(_DATASET_KEY_BS_POS, data=self._bs_pos)
+
+        cfr_chunks = (1,) + tuple(cfr.shape)
+        cfr_kwargs: dict[str, Any] = {
+            "maxshape": (None,) + tuple(cfr.shape),
+            "chunks": cfr_chunks,
+        }
+        if self._compression:
+            cfr_kwargs["compression"] = self._compression
+
+        self._cfr_ds = self._file.create_dataset(
+            _DATASET_KEY_CFR,
+            shape=(0,) + tuple(cfr.shape),
+            dtype=cfr.dtype,
+            **cfr_kwargs,
+        )
+        self._pos_ds = self._file.create_dataset(
+            _DATASET_KEY_TARGET_POSITION,
+            shape=(0, 3),
+            maxshape=(None, 3),
+            dtype=np.float64,
+            chunks=(1024, 3),
+        )
+        self._vel_ds = self._file.create_dataset(
+            _DATASET_KEY_TARGET_VELOCITY,
+            shape=(0, 3),
+            maxshape=(None, 3),
+            dtype=np.float64,
+            chunks=(1024, 3),
+        )
+
+    def _resize(self, new_count: int) -> None:
+        assert self._cfr_ds is not None
+        assert self._pos_ds is not None
+        assert self._vel_ds is not None
+        self._cfr_ds.resize((new_count,) + self._cfr_ds.shape[1:])
+        self._pos_ds.resize((new_count, 3))
+        self._vel_ds.resize((new_count, 3))
+
+    def finalize(
+        self,
+        *,
+        collection_meta: CollectionMetadata,
+        scene_slug: str,
+    ) -> None:
+        """写入根属性并关闭 HDF5 文件。"""
+        if self._file is None:
+            raise ValueError("Hdf5CollectionWriter 无 episode 数据")
+        if self._finalized:
+            return
+        self._file.attrs[_META_KEY_NUM_SLOTS] = self._count
+        self._file.attrs[_META_KEY_DESCRIPTION] = collection_dataset_description(
+            scene_slug, self._count
+        )
+        collection_meta.write_hdf5_attrs(self._file)
+        self._file.close()
+        self._file = None
+        self._finalized = True
+
+
 # --- 采集落盘 API ---
 
 
@@ -424,6 +552,7 @@ def save_collection_artifacts(
     args: argparse.Namespace,
     rt_simulator: RTSimulator,
     out_dir: Path | None = None,
+    h5_already_written: bool = False,
 ) -> None:
     """一次写出采集产物：TOML 配置副本、Episode CSV、HDF5 数据集与场景 PNG。"""
     collection_meta = CollectionMetadata.from_collection_args(args)
@@ -434,7 +563,7 @@ def save_collection_artifacts(
         rows=buffers.csv_rows,
         output_root=target_dir,
     )
-    if buffers.h_freq_list:
+    if not h5_already_written and buffers.h_freq_list:
         Dataset.from_buffers(
             buffers, bs_pos, collection_meta=collection_meta
         ).save(collection_h5_path(scene_slug, target_dir), scene_slug=scene_slug)

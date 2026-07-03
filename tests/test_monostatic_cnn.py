@@ -1,27 +1,31 @@
 """单基地 DD-CNN 前向与标签工具测试。"""
 
+import pytest
 import torch
 
-from isac.learning.dd_spectrum import (
-    crop_dd_roi,
-    dd_spectrum_to_features,
-    monostatic_labels_from_kinematics,
-)
-from isac.learning.monostatic_cnn import MonostaticCNNConfig, MonostaticDelayDopplerCNN
+from isac.models import MonostaticDelayDopplerCNN
 
 
 def test_monostatic_cnn_forward_shape():
-    cfg = MonostaticCNNConfig(in_channels=2, max_range_m=100.0, max_velocity_mps=10.0)
-    model = MonostaticDelayDopplerCNN(cfg)
+    model = MonostaticDelayDopplerCNN(
+        in_channels=2,
+        range_resolution=2.5,
+        velocity_resolution=0.5,
+        offset=128,
+    )
+    model.eval()
     x = torch.randn(4, 2, 256, 128)
-    y = model(x)
+    with torch.no_grad():
+        bins = model.forward_bins(x)
+        y = model.bins_to_physical(bins)
     assert y.shape == (4, 2)
-    assert (y[:, 0] >= 0).all()
-    assert (y[:, 1] >= -cfg.max_velocity_mps).all()
-    assert (y[:, 1] <= cfg.max_velocity_mps).all()
+    assert bins.shape == (4, 2)
+    assert torch.allclose(y, model(x))
 
 
 def test_dd_feature_and_crop():
+    from isac.models import crop_dd_roi, dd_spectrum_to_features
+
     h_dd = torch.randn(512, 2048, dtype=torch.complex64)
     roi = crop_dd_roi(h_dd, offset=64)
     assert roi.shape == (128, 64)
@@ -30,9 +34,60 @@ def test_dd_feature_and_crop():
 
 
 def test_monostatic_labels():
+    from isac.models import monostatic_labels_from_kinematics
+
     bs = [0.0, 0.0, 0.0]
     tgt = [30.0, 0.0, 0.0]
     vel = [5.0, 0.0, 0.0]
     r, v = monostatic_labels_from_kinematics(tgt, vel, bs)
     assert abs(r - 30.0) < 1e-6
     assert abs(v - 5.0) < 1e-6
+
+
+def test_roi_sensing_limits():
+    from types import SimpleNamespace
+
+    from isac.models import roi_sensing_limits
+
+    sp = SimpleNamespace(range_resolution=2.5, velocity_resolution=0.4)
+    max_range_m, max_velocity_mps = roi_sensing_limits(sp, offset=64)
+    assert max_range_m == pytest.approx(63 * 2.5)
+    assert max_velocity_mps == pytest.approx(64 * 0.4)
+
+
+def test_physical_bins_roundtrip():
+    from isac.models import bins_to_physical, physical_to_bins
+
+    range_m = torch.tensor([25.0, 100.0])
+    velocity_mps = torch.tensor([1.0, -2.5])
+    bins = physical_to_bins(
+        range_m,
+        velocity_mps,
+        range_resolution=2.5,
+        velocity_resolution=0.5,
+    )
+    assert bins[0, 0].item() == pytest.approx(10.0)
+    assert bins[1, 0].item() == pytest.approx(40.0)
+    assert bins[0, 1].item() == pytest.approx(2.0)
+    assert bins[1, 1].item() == pytest.approx(-5.0)
+
+    restored = bins_to_physical(
+        bins,
+        range_resolution=2.5,
+        velocity_resolution=0.5,
+    )
+    assert torch.allclose(restored[:, 0], range_m)
+    assert torch.allclose(restored[:, 1], velocity_mps)
+
+
+def test_model_physical_to_bins():
+    range_m = torch.tensor([50.0])
+    velocity_mps = torch.tensor([-1.0])
+    bins = MonostaticDelayDopplerCNN.physical_to_bins(
+        range_m,
+        velocity_mps,
+        range_resolution=10.0,
+        velocity_resolution=5.0,
+    )
+    assert bins[0, 0].item() == pytest.approx(5.0)
+    assert bins[0, 1].item() == pytest.approx(-0.2)
