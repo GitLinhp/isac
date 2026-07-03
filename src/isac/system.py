@@ -44,7 +44,7 @@ class System:
     典型感知链::
 
         compute_sensing_spectrum(x_rg, y_rg)
-        → display_sensing_performance / display_sensing_geometry / visualize_sensing_spectrum
+        → components.sensing_performance() / display_sensing_geometry / visualize_sensing_spectrum
         → estimate_sensing_music(h_dd)
         → evaluate_sensing_rmse(music)
     """
@@ -189,21 +189,6 @@ class System:
             h = comps.moving_target_indication(h, axis=mti_axis)
         return comps.delay_doppler_spectrum(h)
 
-    def display_sensing_performance(self) -> None:
-        """打印感知性能参数表（时间/距离/多普勒/速度分辨率与最大探测量程）。
-
-        异常:
-        ------
-        ValueError
-            未构建 ``sensing_performance`` 组件时抛出。
-        """
-        comps = self.components
-        if comps.sensing_performance is None:
-            raise ValueError(
-                "display_sensing_performance 要求已构建 sensing_performance 组件"
-            )
-        comps.sensing_performance.display_performance()
-
     def display_sensing_geometry(self) -> None:
         """打印 RT 场景各 (RX, 目标, TX) 三元组的路径类型、路径长度与径向速度。
 
@@ -214,9 +199,7 @@ class System:
         """
         scene = self.components.rt_simulator
         if scene is None:
-            raise ValueError(
-                "display_sensing_geometry 要求已配置 rt_simulator"
-            )
+            raise ValueError("display_sensing_geometry 要求已配置 rt_simulator")
         scene.rx_target_tx_geometric.display()
 
     def visualize_sensing_spectrum(
@@ -224,7 +207,6 @@ class System:
         h_delay_doppler: torch.Tensor,
         *,
         file: Union[Path, str],
-        offset: int | None = None,
         to_db: bool = False,
         metric_mode: MetricMode = "range_velocity",
         backend: str = "matplotlib",
@@ -238,8 +220,6 @@ class System:
             由 ``compute_sensing_spectrum`` 得到的 DD 谱
         - file : Path | str
             输出图像路径
-        - offset : int | None
-            可选 bin 半宽覆盖；默认使用 ``components.dd_spectrum_roi`` 物理 ROI
         - to_db : bool
             是否以 dB 显示幅度
         - metric_mode : MetricMode
@@ -252,20 +232,19 @@ class System:
         异常:
         ------
         ValueError
-            未构建 ``delay_doppler_spectrum`` 组件，或未配置 ROI 且未传 ``offset`` 时抛出。
+            未构建 ``delay_doppler_spectrum`` 组件，或未配置 ``[dd_spectrum_roi]`` 时抛出。
         """
-        comps = self.components
-        if comps.delay_doppler_spectrum is None:
+        dd = self.components.delay_doppler_spectrum
+        if dd is None:
             raise ValueError(
                 "visualize_sensing_spectrum 要求已构建 delay_doppler_spectrum 组件"
             )
-        if offset is None and comps.dd_spectrum_roi is None:
+        if not dd.has_roi:
             raise ValueError(
-                "visualize_sensing_spectrum 要求配置 [dd_spectrum_roi] 或显式传入 offset"
+                "visualize_sensing_spectrum 要求配置 [dd_spectrum_roi]"
             )
-        comps.delay_doppler_spectrum.h_delay_doppler = h_delay_doppler
-        comps.delay_doppler_spectrum.visualize(
-            offset=offset,
+        dd.h_delay_doppler = h_delay_doppler
+        dd.visualize(
             file_name=file,
             to_db=to_db,
             metric_mode=metric_mode,
@@ -314,9 +293,7 @@ class System:
         """
         comps = self.components
         if comps.music_estimator is None:
-            raise ValueError(
-                "estimate_sensing_music 要求已构建 music_estimator 组件"
-            )
+            raise ValueError("estimate_sensing_music 要求已构建 music_estimator 组件")
 
         music_kwargs: dict = {
             "spectrum_tensor": h_delay_doppler,
@@ -324,6 +301,10 @@ class System:
             "sens_mode": sens_mode,
             "log_peaks": log_peaks,
         }
+        dd = comps.delay_doppler_spectrum
+        if dd is not None and dd._roi_slices is not None:
+            dop_start, _, delay_start, _ = dd._roi_slices
+            music_kwargs["bin_origin"] = (dop_start, delay_start)
         if music_num_sources is not None:
             music_kwargs["num_sources"] = music_num_sources
         est_ranges, est_velocities, _ = comps.music_estimator(**music_kwargs)

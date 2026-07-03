@@ -13,27 +13,14 @@ import torch
 import torch.nn.functional as F
 from numpy.typing import NDArray
 
-
-def _to_torch(
-    data: Union[NDArray, torch.Tensor], dtype: Optional[torch.dtype] = None
-) -> torch.Tensor:
-    if isinstance(data, torch.Tensor):
-        t = data
-    else:
-        t = torch.as_tensor(data)
-    if dtype is not None:
-        t = t.to(dtype=dtype)
-    return t.detach().cpu()
+from isac.utils import convert
 
 
-def _to_numpy(data: torch.Tensor) -> NDArray:
-    return data.detach().cpu().numpy()
-
-
+# -------------------------- 辅助函数 --------------------------
 def _same_type_output(data: torch.Tensor, like: Union[NDArray, torch.Tensor]):
     if isinstance(like, torch.Tensor):
         return data
-    return _to_numpy(data)
+    return convert(data, "numpy")
 
 
 def _is_complex(data: Union[NDArray, torch.Tensor]) -> bool:
@@ -74,27 +61,32 @@ def cfar_ca_1d(
     """
     一维 CA-CFAR（Cell Averaging）。
 
-    :param data:
+    参数:
+    -------
+    - data:
         幅度/功率数据。``linear`` 使用幅度，``squarelaw`` 使用功率
-    :param guard:
+    - guard:
         单侧保护单元数（总计 ``2*guard``）
-    :param trailing:
+    - trailing:
         单侧参考单元数（总计 ``2*trailing``）
-    :param pfa:
+    - pfa:
         虚警率
-    :param axis:
+    - axis:
         计算轴，支持 0 或 1
-    :param detector:
+    - detector:
         ``linear`` 或 ``squarelaw``
-    :param offset:
+    - offset:
         阈值缩放因子。若为 None 则按 pfa 自动计算
-    :return:
+
+    返回:
+    -------
+    - cfar:
         与输入同形状的 CFAR 阈值
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
 
-    x = _to_torch(data, dtype=torch.float64)
+    x = convert(data, "torch", dtype=torch.float64, device=torch.device("cpu"))
     cfar = torch.zeros_like(x)
 
     if offset is None:
@@ -136,25 +128,30 @@ def cfar_ca_2d(
     """
     二维 CA-CFAR（Cell Averaging）。
 
-    :param data:
+    参数:
+    -------
+    - data:
         幅度/功率数据（二维）
-    :param guard:
+    - guard:
         保护单元，可为标量或 ``[axis0, axis1]``
-    :param trailing:
+    - trailing:
         参考单元，可为标量或 ``[axis0, axis1]``
-    :param pfa:
+    - pfa:
         虚警率
-    :param detector:
+    - detector:
         ``linear`` 或 ``squarelaw``
-    :param offset:
+    - offset:
         阈值缩放因子。若为 None 则按 pfa 自动计算
-    :return:
+
+    返回:
+    -------
+    - cfar:
         与输入同形状的 CFAR 阈值
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
 
-    x = _to_torch(data, dtype=torch.float64)
+    x = convert(data, "torch", dtype=torch.float64, device=torch.device("cpu"))
     guard_arr = np.array(guard, dtype=int)
     if guard_arr.size == 1:
         guard_arr = np.tile(guard_arr, 2)
@@ -192,7 +189,9 @@ def cfar_ca_2d(
     k4d = cfar_win.flip(0, 1).unsqueeze(0).unsqueeze(0)
     pad_h = cfar_win.shape[0] // 2
     pad_w = cfar_win.shape[1] // 2
-    y = F.conv2d(F.pad(x4d, (pad_w, pad_w, pad_h, pad_h), mode="constant", value=0), k4d)
+    y = F.conv2d(
+        F.pad(x4d, (pad_w, pad_w, pad_h, pad_h), mode="constant", value=0), k4d
+    )
     out = (a * y.squeeze(0).squeeze(0)).to(dtype=torch.float64)
 
     return _same_type_output(out, data)
@@ -204,6 +203,20 @@ def os_cfar_threshold(k: int, n: int, pfa: float) -> float:
 
     参考：
     Rohling, 1983.
+
+    参数:
+    -------
+    - k:
+        统计量索引
+    - n:
+        窗口大小
+    - pfa:
+        虚警率
+
+    返回:
+    -------
+    - threshold:
+        阈值缩放因子
     """
 
     def fun(k_: int, n_: int, t_os: float, pfa_: float) -> float:
@@ -250,11 +263,33 @@ def cfar_os_1d(
     一维 OS-CFAR（Ordered Statistic）。
 
     边界单元使用循环索引（rollover）补齐窗口。
+
+    参数:
+    -------
+    - data:
+        幅度/功率数据
+    - guard:
+        保护单元数
+    - trailing:
+        参考单元数
+    - k:
+        统计量索引
+    - pfa:
+        虚警率
+    - detector:
+        ``linear`` 或 ``squarelaw``
+    - offset:
+        阈值缩放因子。若为 None 则按 pfa 自动计算
+
+    返回:
+    -------
+    - cfar:
+        与输入同形状的 CFAR 阈值
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
 
-    x = _to_torch(data, dtype=torch.float64)
+    x = convert(data, "torch", dtype=torch.float64, device=torch.device("cpu"))
     cfar = torch.zeros_like(x)
     leading = trailing
 
@@ -278,7 +313,9 @@ def cfar_os_1d(
     if axis == 0:
         for idx in range(0, x.shape[0]):
             left = torch.arange(idx - leading - guard, idx - guard, 1, dtype=torch.long)
-            right = torch.arange(idx + 1 + guard, idx + 1 + trailing + guard, 1, dtype=torch.long)
+            right = torch.arange(
+                idx + 1 + guard, idx + 1 + trailing + guard, 1, dtype=torch.long
+            )
             win_idx = torch.remainder(torch.cat([left, right]), x.shape[0]).long()
             if x.ndim == 1:
                 samples, _ = torch.sort(x[win_idx])
@@ -289,7 +326,9 @@ def cfar_os_1d(
     elif axis == 1:
         for idx in range(0, x.shape[1]):
             left = torch.arange(idx - leading - guard, idx - guard, 1, dtype=torch.long)
-            right = torch.arange(idx + 1 + guard, idx + 1 + trailing + guard, 1, dtype=torch.long)
+            right = torch.arange(
+                idx + 1 + guard, idx + 1 + trailing + guard, 1, dtype=torch.long
+            )
             win_idx = torch.remainder(torch.cat([left, right]), x.shape[1]).long()
             samples, _ = torch.sort(x[:, win_idx], dim=1)
             cfar[:, idx] = a * samples[:, k]
@@ -310,11 +349,33 @@ def cfar_os_2d(
     二维 OS-CFAR（Ordered Statistic）。
 
     边界单元使用循环索引（rollover）补齐窗口。
+
+    参数:
+    -------
+    - data:
+        幅度/功率数据
+    - guard:
+        保护单元数
+    - trailing:
+        参考单元数
+    - k:
+        统计量索引
+    - pfa:
+        虚警率
+    - detector:
+        ``linear`` 或 ``squarelaw``
+    - offset:
+        阈值缩放因子。若为 None 则按 pfa 自动计算
+
+    返回:
+    -------
+    - cfar:
+        与输入同形状的 CFAR 阈值
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
 
-    x = _to_torch(data, dtype=torch.float64)
+    x = convert(data, "torch", dtype=torch.float64, device=torch.device("cpu"))
     cfar = torch.zeros_like(x)
 
     guard_arr = np.array(guard, dtype=int)
@@ -347,7 +408,9 @@ def cfar_os_2d(
             "Typically, ``k`` is on the order of ``0.75N``"
         )
 
-    cfar_win = torch.ones(int(tg_sum[0] * 2 + 1), int(tg_sum[1] * 2 + 1), dtype=torch.bool)
+    cfar_win = torch.ones(
+        int(tg_sum[0] * 2 + 1), int(tg_sum[1] * 2 + 1), dtype=torch.bool
+    )
     cfar_win[
         trailing_arr[0] : (trailing_arr[0] + guard_arr[0] * 2 + 1),
         trailing_arr[1] : (trailing_arr[1] + guard_arr[1] * 2 + 1),
@@ -356,11 +419,15 @@ def cfar_os_2d(
     for idx_0 in range(0, x.shape[0]):
         for idx_1 in range(0, x.shape[1]):
             win_idx_0 = torch.remainder(
-                torch.arange(idx_0 - tg_sum[0], idx_0 + 1 + tg_sum[0], 1, dtype=torch.long),
+                torch.arange(
+                    idx_0 - tg_sum[0], idx_0 + 1 + tg_sum[0], 1, dtype=torch.long
+                ),
                 x.shape[0],
             )
             win_idx_1 = torch.remainder(
-                torch.arange(idx_1 - tg_sum[1], idx_1 + 1 + tg_sum[1], 1, dtype=torch.long),
+                torch.arange(
+                    idx_1 - tg_sum[1], idx_1 + 1 + tg_sum[1], 1, dtype=torch.long
+                ),
                 x.shape[1],
             )
             grid0, grid1 = torch.meshgrid(win_idx_0, win_idx_1, indexing="ij")
@@ -449,16 +516,3 @@ class CFARDetector:
             detector=self.detector,
             offset=self.offset,
         )
-
-
-def default_cfar_detector() -> CFARDetector:
-    """与默认 ``SensingCFARParams()`` 一致的 ``CFARDetector``（CA 模式）。"""
-    return CFARDetector(
-        cfar_type="ca",
-        guard=2,
-        trailing=20,
-        pfa=1e-4,
-        detector="linear",
-        offset=None,
-        k=None,
-    )

@@ -91,7 +91,7 @@ def main() -> None:
     true_velocities = torch.tensor([velocity_mps], dtype=torch.float64, device=device)
 
     h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
-    system.display_sensing_performance()
+    comps.sensing_performance()
     system.visualize_sensing_spectrum(
         h_dd,
         file=script_out_dir / "static_target_delay_doppler_spectrum.png",

@@ -1,5 +1,7 @@
 """时延多普勒谱处理模块"""
 
+from __future__ import annotations
+
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,7 +11,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 import plotly.graph_objs as go
 
 from .sensing_performance import SensingPerformance
-from .dd_spectrum_roi import DelayDopplerRoi
 from ..utils import convert
 from ..utils.numerical import linear_to_db
 from ..utils.windows import apply_window
@@ -29,14 +30,76 @@ class DelayDopplerSpectrum:
         ),
         delay_window: Optional[Union[str, tuple[Any, ...], Dict[str, Any]]] = None,
         doppler_window: Optional[Union[str, tuple[Any, ...], Dict[str, Any]]] = None,
-        dd_spectrum_roi: Optional[DelayDopplerRoi] = None,
+        max_range_m: Optional[float] = None,
+        max_velocity_mps: Optional[float] = None,
     ):
         self.sensing_performance = sensing_performance  # 感知性能
         self.device = device  # 设备
         self.h_delay_doppler: Optional[torch.Tensor] = None  # 时延多普勒谱
         self.delay_window = delay_window  # 时延窗函数
         self.doppler_window = doppler_window  # 多普勒窗函数
-        self.dd_spectrum_roi = dd_spectrum_roi
+        self.max_range_m = max_range_m
+        self.max_velocity_mps = max_velocity_mps
+        self._roi_slices: Optional[Tuple[int, int, int, int]] = None
+
+    @property
+    def has_roi(self) -> bool:
+        return self.max_range_m is not None and self.max_velocity_mps is not None
+
+    def _validate_roi(self) -> None:
+        if not self.has_roi:
+            raise ValueError(
+                "__call__ 要求配置 max_range_m / max_velocity_mps（[dd_spectrum_roi]）"
+            )
+        assert self.max_range_m is not None and self.max_velocity_mps is not None
+        if self.max_range_m <= 0:
+            raise ValueError(f"max_range_m 须为正，收到 {self.max_range_m}")
+        if self.max_velocity_mps <= 0:
+            raise ValueError(
+                f"max_velocity_mps 须为正，收到 {self.max_velocity_mps}"
+            )
+
+    def roi_delay_bins(self) -> int:
+        dr = self.sensing_performance.range_resolution
+        assert self.max_range_m is not None
+        return max(1, int(self.max_range_m / dr) + 1)
+
+    def roi_doppler_half_bins(self) -> int:
+        dv = self.sensing_performance.velocity_resolution
+        assert self.max_velocity_mps is not None
+        return max(1, int(round(self.max_velocity_mps / dv)))
+
+    def bin_slices(self, h_dd: torch.Tensor) -> tuple[int, int, int, int]:
+        """返回 ``(dop_start, dop_end, delay_start, delay_end)`` 切片索引。"""
+        self._validate_roi()
+        n_doppler, n_delay = h_dd.shape[-2], h_dd.shape[-1]
+        delay_bins = min(n_delay, self.roi_delay_bins())
+        dop_half = min(n_doppler // 2, self.roi_doppler_half_bins())
+        dop_center = n_doppler // 2
+        dop_start = max(0, dop_center - dop_half)
+        dop_end = min(n_doppler, dop_center + dop_half)
+        return dop_start, dop_end, 0, delay_bins
+
+    def crop(self, h_dd: torch.Tensor) -> torch.Tensor:
+        """裁剪 DD 谱 ROI；末两维为 ``(多普勒, 时延)``。"""
+        dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_dd)
+        return h_dd[..., dop_start:dop_end, delay_start:delay_end]
+
+    def feature_shape(self, h_dd: torch.Tensor) -> tuple[int, int]:
+        """裁剪后 ``(多普勒, 时延)`` 尺寸。"""
+        dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_dd)
+        return dop_end - dop_start, delay_end - delay_start
+
+    def roi_limits(self, h_dd: torch.Tensor) -> tuple[float, float]:
+        """实际裁剪对应的 ``(max_range_m, max_velocity_mps)``。"""
+        _, _, _, delay_end = self.bin_slices(h_dd)
+        dop_start, dop_end, _, _ = self.bin_slices(h_dd)
+        dr = self.sensing_performance.range_resolution
+        dv = self.sensing_performance.velocity_resolution
+        eff_max_range_m = (delay_end - 1) * dr
+        dop_half = (dop_end - dop_start) // 2
+        eff_max_velocity_mps = dop_half * dv
+        return eff_max_range_m, eff_max_velocity_mps
 
     def __call__(self, h_freq: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """计算时延多普勒谱（使用 Torch 实现）
@@ -68,6 +131,13 @@ class DelayDopplerSpectrum:
         h_delay = apply_window(h_delay, dim=-2, window=self.doppler_window)
         h_delay_doppler = torch.fft.fft(h_delay, dim=-2, norm="ortho")
         h_delay_doppler = torch.fft.fftshift(h_delay_doppler, dim=-2)
+
+        self._validate_roi()
+        dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_delay_doppler)
+        self._roi_slices = (dop_start, dop_end, delay_start, delay_end)
+        h_delay_doppler = h_delay_doppler[
+            ..., dop_start:dop_end, delay_start:delay_end
+        ]
 
         self.h_delay_doppler = h_delay_doppler.to(
             device=self.device, dtype=torch.complex64
@@ -118,13 +188,13 @@ class DelayDopplerSpectrum:
         cfar_2d: Optional[np.ndarray],
         *,
         mode: str,
-        offset: Optional[int],
-        roi_slices: Optional[Tuple[int, int, int, int]] = None,
         to_db: bool,
         eps: float,
     ) -> Dict[str, Any]:
         """为单路 2D 谱 ``(多普勒, 时延)`` 准备 matplotlib/plotly 曲面数据。"""
-        n_doppler_bins, n_delay_bins = h_abs_2d.shape[0], h_abs_2d.shape[1]
+        if self._roi_slices is None:
+            raise ValueError("_prepare_surface_grids 要求已通过 __call__ 设置 _roi_slices")
+        dop_start, dop_end, delay_start, delay_end = self._roi_slices
 
         x_label = y_label = z_label = ""
         title_mpl = ""
@@ -132,34 +202,13 @@ class DelayDopplerSpectrum:
         z_title_plotly = ""
         plotly_cfar_opacity = 0.7
 
-        if roi_slices is not None:
-            dop_start, dop_end, delay_start, delay_end = roi_slices
-        elif offset is not None:
-            delay_start, delay_end = 0, min(n_delay_bins, offset)
-            dop_start = int(n_doppler_bins / 2) - offset
-            dop_end = int(n_doppler_bins / 2) + offset
-        else:
-            dop_start = delay_start = 0
-            dop_end, delay_end = n_doppler_bins, n_delay_bins
-
         if mode == "delay_doppler":
             sp = self.sensing_performance
-            x, y = np.meshgrid(sp.delay_bins, sp.doppler_bins, indexing="xy")
-
-            if roi_slices is not None or offset is not None:
-                x_grid = x[dop_start:dop_end, delay_start:delay_end]
-                y_grid = y[dop_start:dop_end, delay_start:delay_end]
-                h_sl = h_abs_2d[dop_start:dop_end, delay_start:delay_end]
-                cf_sl = (
-                    cfar_2d[dop_start:dop_end, delay_start:delay_end]
-                    if cfar_2d is not None
-                    else None
-                )
-            else:
-                x_grid = x
-                y_grid = y
-                h_sl = h_abs_2d
-                cf_sl = cfar_2d
+            delay_axis = sp.delay_bins[delay_start:delay_end]
+            doppler_axis = sp.doppler_bins[dop_start:dop_end]
+            x_grid, y_grid = np.meshgrid(delay_axis, doppler_axis, indexing="xy")
+            h_sl = h_abs_2d
+            cf_sl = cfar_2d
 
             z_disp, cfar_disp, z_label, z_title_plotly = self._linear_or_db_amplitude(
                 h_sl, cf_sl, to_db, eps
@@ -182,20 +231,10 @@ class DelayDopplerSpectrum:
             range_bins = sp.range_bins
             velocity_bins = sp.velocity_bins
 
-            if roi_slices is not None or offset is not None:
-                range_axis = range_bins[delay_start:delay_end]
-                velocity_axis = velocity_bins[dop_start:dop_end]
-                h_sl = h_abs_2d[dop_start:dop_end, delay_start:delay_end]
-                cf_sl = (
-                    cfar_2d[dop_start:dop_end, delay_start:delay_end]
-                    if cfar_2d is not None
-                    else None
-                )
-            else:
-                range_axis = range_bins
-                velocity_axis = velocity_bins
-                h_sl = h_abs_2d
-                cf_sl = cfar_2d
+            range_axis = range_bins[delay_start:delay_end]
+            velocity_axis = velocity_bins[dop_start:dop_end]
+            h_sl = h_abs_2d
+            cf_sl = cfar_2d
 
             z_disp, cfar_disp, z_label, z_title_plotly = self._linear_or_db_amplitude(
                 h_sl, cf_sl, to_db, eps
@@ -274,7 +313,6 @@ class DelayDopplerSpectrum:
         self,
         file_name: Union[Path, str] = None,
         cfar: Optional[Union[np.ndarray, torch.Tensor]] = None,
-        offset: Optional[int] = None,
         to_db: bool = True,
         eps: float = 1e-12,
         mode: str = "delay_doppler",
@@ -290,11 +328,6 @@ class DelayDopplerSpectrum:
         - cfar : np.ndarray | torch.Tensor | None
             当 `cfar` 不为 `None` 时，会在两种模式下叠加 CFAR（以 `abs(h)` 的同一单位体系）。
             两种 mode 在两种 backend 下都支持透明 CFAR 曲面叠加。
-        - offset : int | None
-            裁剪显示局部区域（offset 按 bin 数理解）。末两维为 (多普勒, 时延)：
-            - 时延/距离轴：`[0, offset)`
-            - 多普勒轴：以中心为基准宽度 `2*offset`
-            3D 输入 ``(rx_num, S, F)`` 时对第一维各切片分别绘图；``panel_labels`` 为各子图标题。
         - file_name : Path | str | None
             保存图像路径；为 None 时直接显示。
         - to_db : bool
@@ -354,11 +387,8 @@ class DelayDopplerSpectrum:
             )
             backend_to_use = "matplotlib"
 
-        roi_slices: Optional[Tuple[int, int, int, int]] = None
-        if offset is None and self.dd_spectrum_roi is not None:
-            roi_slices = self.dd_spectrum_roi.bin_slices(
-                self.h_delay_doppler, self.sensing_performance
-            )
+        if self._roi_slices is None:
+            raise ValueError("visualize 要求先通过 __call__ 计算并裁剪 DD 谱")
 
         # ----------------------
         # 2) 渲染区
@@ -379,8 +409,6 @@ class DelayDopplerSpectrum:
                         h_abs_np[r],
                         cfar_r,
                         mode=mode,
-                        offset=offset,
-                        roi_slices=roi_slices,
                         to_db=to_db,
                         eps=eps,
                     )
@@ -395,8 +423,6 @@ class DelayDopplerSpectrum:
                     h_abs_np,
                     cfar_np,
                     mode=mode,
-                    offset=offset,
-                    roi_slices=roi_slices,
                     to_db=to_db,
                     eps=eps,
                 )
@@ -423,8 +449,6 @@ class DelayDopplerSpectrum:
                 h_abs_np,
                 cfar_np,
                 mode=mode,
-                offset=offset,
-                roi_slices=roi_slices,
                 to_db=to_db,
                 eps=eps,
             )

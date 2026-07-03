@@ -204,7 +204,7 @@ class SensingPerformance:
         return (num_doppler_bins // 2) * self.velocity_resolution
 
     # ==================== 打印性能参数 ====================
-    def display_performance(self):
+    def __call__(self) -> None:
         """打印感知性能参数"""
         table = [
             ["时间分辨率", f"{self.delay_resolution * 1e9:.2f}", "ns"],

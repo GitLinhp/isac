@@ -5,11 +5,6 @@ import torch
 from types import SimpleNamespace
 
 from isac.models import MonostaticDelayDopplerCNN
-from isac.sensing.dd_spectrum_roi import DelayDopplerRoi
-
-
-def _test_roi() -> DelayDopplerRoi:
-    return DelayDopplerRoi(max_range_m=317.5, max_velocity_mps=64.0)
 
 
 def test_monostatic_cnn_forward_shape():
@@ -17,7 +12,8 @@ def test_monostatic_cnn_forward_shape():
         in_channels=2,
         range_resolution=2.5,
         velocity_resolution=0.5,
-        dd_spectrum_roi=_test_roi(),
+        max_range_m=317.5,
+        max_velocity_mps=64.0,
     )
     model.eval()
     x = torch.randn(4, 2, 256, 128)
@@ -32,12 +28,32 @@ def test_monostatic_cnn_forward_shape():
 def test_dd_feature_and_crop():
     from isac.models import crop_dd_roi, dd_spectrum_to_features
 
-    sp = SimpleNamespace(range_resolution=2.5, velocity_resolution=0.4)
-    roi = DelayDopplerRoi(max_range_m=157.5, max_velocity_mps=25.6)
-    h_dd = torch.randn(512, 2048, dtype=torch.complex64)
-    cropped = crop_dd_roi(h_dd, roi=roi, sensing_performance=sp)
-    assert cropped.shape == (128, 64)
-    feat = dd_spectrum_to_features(h_dd, roi=roi, sensing_performance=sp)
+    sp = SimpleNamespace(
+        range_resolution=2.5,
+        velocity_resolution=0.4,
+        rg=SimpleNamespace(num_ofdm_symbols=512, fft_size=2048),
+    )
+    max_range_m, max_velocity_mps = 157.5, 25.6
+    h_full = torch.randn(512, 2048, dtype=torch.complex64)
+    h_cropped = crop_dd_roi(
+        h_full,
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+        sensing_performance=sp,
+    )
+    assert h_cropped.shape == (128, 64)
+    assert crop_dd_roi(
+        h_cropped,
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+        sensing_performance=sp,
+    ) is h_cropped
+    feat = dd_spectrum_to_features(
+        h_cropped,
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+        sensing_performance=sp,
+    )
     assert feat.shape == (2, 128, 64)
 
 
@@ -56,8 +72,11 @@ def test_roi_sensing_limits():
     from isac.models import roi_sensing_limits
 
     sp = SimpleNamespace(range_resolution=2.5, velocity_resolution=0.4)
-    roi = DelayDopplerRoi(max_range_m=157.5, max_velocity_mps=25.6)
-    max_range_m, max_velocity_mps = roi_sensing_limits(sp, roi)
+    max_range_m, max_velocity_mps = roi_sensing_limits(
+        sp,
+        max_range_m=157.5,
+        max_velocity_mps=25.6,
+    )
     assert max_range_m == pytest.approx(63 * 2.5)
     assert max_velocity_mps == pytest.approx(64 * 0.4)
 

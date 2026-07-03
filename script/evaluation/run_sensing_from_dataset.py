@@ -97,7 +97,8 @@ def _estimate_with_model(
     model_device = next(model.parameters()).device
     features = dd_spectrum_to_features(
         h_dd,
-        roi=model.dd_spectrum_roi,
+        max_range_m=model.max_range_m,
+        max_velocity_mps=model.max_velocity_mps,
         sensing_performance=sensing_performance,
         use_phase=use_phase,
     )
@@ -333,7 +334,7 @@ def main() -> None:
         output_dir=script_out_dir,
     )
 
-    system.display_sensing_performance()
+    system.components.sensing_performance()
 
     n_episodes = len(dataset)
     if args.max_episodes is not None:

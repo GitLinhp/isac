@@ -93,7 +93,7 @@ def main() -> None:
     script_out_dir = PROJECT_ROOT / "out" / "sensing_cooperative"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
-    comps.sensing_performance.display_performance()
+    comps.sensing_performance()
 
     scene.render_to_file(filename=script_out_dir / "sensing_cooperative_scene.png")
 
@@ -165,7 +165,6 @@ def main() -> None:
         slug = _slug_tx_name(tx_name)
         dd.h_delay_doppler = h_dd_tx
         dd.visualize(
-            offset=100,
             file_name=script_out_dir / f"sensing_cooperative_delay_doppler_{slug}.png",
             to_db=False,
             metric_mode=args.metric_mode,
@@ -258,7 +257,6 @@ def main() -> None:
     h_dd_all = torch.stack(spectra_stack, dim=0)
     dd.h_delay_doppler = h_dd_all
     dd.visualize(
-        offset=100,
         file_name=script_out_dir / "sensing_cooperative_delay_doppler_spectrum.png",
         to_db=False,
         metric_mode=args.metric_mode,
@@ -275,7 +273,6 @@ def main() -> None:
     h_dd_combined = dd(h_combined)
     dd.h_delay_doppler = h_dd_combined
     dd.visualize(
-        offset=100,
         file_name=script_out_dir / "sensing_cooperative_delay_doppler_combined.png",
         to_db=False,
         metric_mode=args.metric_mode,

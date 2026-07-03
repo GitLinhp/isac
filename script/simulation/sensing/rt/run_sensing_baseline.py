@@ -76,11 +76,10 @@ def main() -> None:
         raise ValueError(f"不支持的域: {domain}")
 
     h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
-    system.display_sensing_performance()
+    system.components.sensing_performance()
     system.visualize_sensing_spectrum(
         h_dd,
         file=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
-        offset=20,
         metric_mode="delay_doppler",
     )
     system.estimate_sensing_music(h_dd, metric_mode="delay_doppler")

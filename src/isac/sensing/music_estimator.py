@@ -169,6 +169,7 @@ class MUSICEstimator:
         sens_mode: SensMode = "monostatic",
         near_range_guard_m: Optional[float] = None,
         log_peaks: bool = True,
+        bin_origin: Tuple[int, int] = (0, 0),
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """使用 Torch 实现的 2D-MUSIC 估计谱峰（``__call__``，可直接 ``estimator(...)``）。
 
@@ -196,6 +197,8 @@ class MUSICEstimator:
             单次调用覆盖近距保护距离 (m)；``None`` 时使用构造时的默认值。
         - log_peaks : bool
             是否在 stdout 打印谱峰表格，默认 ``True``。
+        - bin_origin : tuple[int, int]
+            裁剪谱在全网格中的 ``(doppler_start, delay_start)`` 偏移，用于 bin→物理量换算。
 
         返回:
         ----------
@@ -286,6 +289,7 @@ class MUSICEstimator:
             peaks_delay,
             peaks_doppler,
             sens_mode=sens_mode,
+            bin_origin=bin_origin,
         )
 
         # --- 日志：按 metric_mode 仅影响表格列 ---
@@ -310,6 +314,7 @@ class MUSICEstimator:
         peaks_doppler: torch.Tensor,
         *,
         sens_mode: SensMode,
+        bin_origin: Tuple[int, int] = (0, 0),
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """由 bin 批量得到 τ(s)、f_d(Hz)、距离 (m)、速度 (m/s)。
 
@@ -318,6 +323,7 @@ class MUSICEstimator:
         sp = self.sensing_performance
         assert sp is not None
         dev = self.device
+        dop_origin, delay_origin = bin_origin
         d = peaks_delay.detach().to(device=dev, dtype=torch.float64).reshape(-1)
         dop = peaks_doppler.detach().to(device=dev, dtype=torch.float64).reshape(-1)
         if d.numel() == 0:
@@ -327,8 +333,10 @@ class MUSICEstimator:
         dt = float(sp.delay_resolution)
         dres = float(sp.doppler_resolution)
         half = float(sp.rg.num_ofdm_symbols // 2)
-        tau_s = d * dt
-        fd_hz = (dop - half) * dres
+        d_global = d + delay_origin
+        dop_global = dop + dop_origin
+        tau_s = d_global * dt
+        fd_hz = (dop_global - half) * dres
         fc = float(sp.carrier_frequency)
         range_m = delay_to_range(tau_s, fc, sens_mode)
         v_mps = doppler_to_velocity(fd_hz, fc, sens_mode)

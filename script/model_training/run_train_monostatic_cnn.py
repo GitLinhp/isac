@@ -112,8 +112,8 @@ def _checkpoint_payload(
         "dropout": model.dropout,
         "range_resolution": model.range_resolution,
         "velocity_resolution": model.velocity_resolution,
-        "max_range_m": model.dd_spectrum_roi.max_range_m,
-        "max_velocity_mps": model.dd_spectrum_roi.max_velocity_mps,
+        "max_range_m": model.max_range_m,
+        "max_velocity_mps": model.max_velocity_mps,
         "use_phase": full_ds.use_phase,
         "dataset_h5": str(h5_path),
         "config_file": str(config_path),
@@ -244,7 +244,8 @@ def main() -> None:
         in_channels=in_channels,
         range_resolution=full_ds.range_resolution,
         velocity_resolution=full_ds.velocity_resolution,
-        dd_spectrum_roi=full_ds.dd_spectrum_roi,
+        max_range_m=full_ds.max_range_m,
+        max_velocity_mps=full_ds.max_velocity_mps,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = MonostaticSensingLoss()

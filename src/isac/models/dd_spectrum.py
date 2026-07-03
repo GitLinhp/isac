@@ -5,35 +5,62 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from isac.sensing.dd_spectrum_roi import DelayDopplerRoi
+from isac.sensing.delay_doppler_spectrum import DelayDopplerSpectrum
 from isac.sensing.sensing_performance import SensingPerformance
 
 
 def crop_dd_roi(
     h_dd: torch.Tensor,
     *,
-    roi: DelayDopplerRoi,
+    max_range_m: float,
+    max_velocity_mps: float,
     sensing_performance: SensingPerformance,
 ) -> torch.Tensor:
-    """按物理 ROI 裁剪 DD 谱；``h_dd`` 末两维为 ``(多普勒, 时延)``。"""
-    return roi.crop(h_dd, sensing_performance)
+    """按物理 ROI 裁剪 DD 谱；``h_dd`` 末两维为 ``(多普勒, 时延)``。
+
+    若输入已在 ``DelayDopplerSpectrum.__call__`` 中裁剪，则原样返回。
+    """
+    dd = DelayDopplerSpectrum(
+        sensing_performance,
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+    )
+    sp = sensing_performance
+    full_ref = torch.empty(
+        *h_dd.shape[:-2],
+        sp.rg.num_ofdm_symbols,
+        sp.rg.fft_size,
+        device=h_dd.device,
+        dtype=h_dd.dtype,
+    )
+    expected = dd.feature_shape(full_ref)
+    if h_dd.shape[-2:] == expected:
+        return h_dd
+    return dd.crop(h_dd)
 
 
 def roi_sensing_limits(
     sensing_performance: SensingPerformance,
-    roi: DelayDopplerRoi,
+    *,
+    max_range_m: float,
+    max_velocity_mps: float,
     h_dd: torch.Tensor | None = None,
 ) -> tuple[float, float]:
     """裁切 ROI 对应的 ``(max_range_m, max_velocity_mps)``。"""
+    dd = DelayDopplerSpectrum(
+        sensing_performance,
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+    )
     if h_dd is not None:
-        return roi.limits(h_dd, sensing_performance)
-    max_range_m = (roi.delay_bins(sensing_performance) - 1) * (
+        return dd.roi_limits(h_dd)
+    eff_max_range_m = (dd.roi_delay_bins() - 1) * (
         sensing_performance.range_resolution
     )
-    max_velocity_mps = roi.doppler_half_bins(sensing_performance) * (
+    eff_max_velocity_mps = dd.roi_doppler_half_bins() * (
         sensing_performance.velocity_resolution
     )
-    return max_range_m, max_velocity_mps
+    return eff_max_range_m, eff_max_velocity_mps
 
 
 def physical_to_bins(
@@ -68,7 +95,8 @@ def bins_to_physical(
 def dd_spectrum_to_features(
     h_dd: torch.Tensor,
     *,
-    roi: DelayDopplerRoi,
+    max_range_m: float,
+    max_velocity_mps: float,
     sensing_performance: SensingPerformance,
     eps: float = 1e-12,
     use_phase: bool = True,
@@ -78,7 +106,12 @@ def dd_spectrum_to_features(
     - 通道 0：幅度 dB（逐样本零均值、单位方差）
     - 通道 1（可选）：相位，映射到 ``[-1, 1]``
     """
-    cropped = crop_dd_roi(h_dd, roi=roi, sensing_performance=sensing_performance)
+    cropped = crop_dd_roi(
+        h_dd,
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+        sensing_performance=sensing_performance,
+    )
     mag = torch.abs(cropped).clamp_min(eps)
     mag_db = 20.0 * torch.log10(mag)
     mag_db = (mag_db - mag_db.mean()) / (mag_db.std() + eps)

@@ -89,7 +89,7 @@ def main() -> None:
         raise ValueError(f"不支持的域: {domain}")
 
     # --- 感知 ---
-    system.display_sensing_performance()
+    system.components.sensing_performance()
     system.display_sensing_geometry()
 
     h_dd = system.compute_sensing_spectrum(x_rg, y_rg)

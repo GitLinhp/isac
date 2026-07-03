@@ -9,7 +9,6 @@ import torch
 from torch.utils.data import Dataset
 
 from isac.datasets import Dataset as IsacDataset
-from isac.sensing.dd_spectrum_roi import DelayDopplerRoi
 from isac.system import System
 from isac.utils import load_config
 from isac.utils.data_collection.channel_export import cfr_numpy_to_h_freq
@@ -66,12 +65,14 @@ class MonostaticSensingTorchDataset(Dataset):
             )
         if comps.sensing_performance is None:
             raise ValueError("训练数据集要求已构建 sensing_performance 组件")
-        if comps.dd_spectrum_roi is None:
+        dd = comps.delay_doppler_spectrum
+        if dd is None or not dd.has_roi:
             raise ValueError(
                 "训练数据集要求配置 [dd_spectrum_roi]（max_range_m / max_velocity_mps）"
             )
 
-        self.dd_spectrum_roi: DelayDopplerRoi = comps.dd_spectrum_roi
+        self.max_range_m = float(dd.max_range_m)
+        self.max_velocity_mps = float(dd.max_velocity_mps)
         self.range_resolution = float(comps.sensing_performance.range_resolution)
         self.velocity_resolution = float(
             comps.sensing_performance.velocity_resolution
@@ -94,7 +95,8 @@ class MonostaticSensingTorchDataset(Dataset):
 
         features = dd_spectrum_to_features(
             h_dd,
-            roi=self.dd_spectrum_roi,
+            max_range_m=self.max_range_m,
+            max_velocity_mps=self.max_velocity_mps,
             sensing_performance=system.components.sensing_performance,
             use_phase=self.use_phase,
         )
