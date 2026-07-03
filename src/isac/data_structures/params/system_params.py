@@ -9,6 +9,7 @@ from .basic_params import OFDMParams, SourceParams, StreamManagementParams
 from .channel_params import ChannelParams, RTSimulatorParams, RCSSceneParams
 from .sensing_params import (
     CFARParams,
+    DelayDopplerRoiParams,
     MTDParams,
     MTIParams,
     MusicParams,
@@ -46,6 +47,8 @@ class SystemParams:
     """CFAR 检测"""
     music: Optional[MusicParams] = None
     """MUSIC 谱估计"""
+    dd_spectrum_roi: Optional[DelayDopplerRoiParams] = None
+    """时延–多普勒谱 ROI（物理量）"""
 
     @staticmethod
     def _parse_section(
@@ -88,6 +91,9 @@ class SystemParams:
         windows = cls._parse_section(config_dict, "windows", WindowParams.from_dict)
         cfar = cls._parse_section(config_dict, "cfar", CFARParams.from_dict)
         music = cls._parse_section(config_dict, "music", MusicParams.from_dict)
+        dd_spectrum_roi = cls._parse_section(
+            config_dict, "dd_spectrum_roi", DelayDopplerRoiParams.from_dict
+        )
 
         params = cls(
             carrier_frequency=carrier_frequency,
@@ -102,6 +108,7 @@ class SystemParams:
             windows=windows,
             cfar=cfar,
             music=music,
+            dd_spectrum_roi=dd_spectrum_roi,
         )
         params._validate_channel_dependencies()
         return params

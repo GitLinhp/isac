@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset
 
 from isac.datasets import Dataset as IsacDataset
+from isac.sensing.dd_spectrum_roi import DelayDopplerRoi
 from isac.system import System
 from isac.utils import load_config
 from isac.utils.data_collection.channel_export import cfr_numpy_to_h_freq
@@ -30,13 +31,11 @@ class MonostaticSensingTorchDataset(Dataset):
         h5_path: str | Path,
         *,
         config_file: str | Path,
-        offset: int = 128,
         use_phase: bool = True,
         device: torch.device | str | None = None,
         indices: np.ndarray | list[int] | None = None,
     ) -> None:
         self.h5_path = Path(h5_path)
-        self.offset = offset
         self.use_phase = use_phase
         self.device = device
 
@@ -67,7 +66,12 @@ class MonostaticSensingTorchDataset(Dataset):
             )
         if comps.sensing_performance is None:
             raise ValueError("训练数据集要求已构建 sensing_performance 组件")
+        if comps.dd_spectrum_roi is None:
+            raise ValueError(
+                "训练数据集要求配置 [dd_spectrum_roi]（max_range_m / max_velocity_mps）"
+            )
 
+        self.dd_spectrum_roi: DelayDopplerRoi = comps.dd_spectrum_roi
         self.range_resolution = float(comps.sensing_performance.range_resolution)
         self.velocity_resolution = float(
             comps.sensing_performance.velocity_resolution
@@ -90,7 +94,8 @@ class MonostaticSensingTorchDataset(Dataset):
 
         features = dd_spectrum_to_features(
             h_dd,
-            offset=self.offset,
+            roi=self.dd_spectrum_roi,
+            sensing_performance=system.components.sensing_performance,
             use_phase=self.use_phase,
         )
         range_m, vel_mps = monostatic_labels_from_kinematics(

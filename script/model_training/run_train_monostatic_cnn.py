@@ -49,7 +49,6 @@ def argument_parser() -> argparse.Namespace:
         help="HDF5 数据集路径",
     )
     parser.add_argument("--val_ratio", type=float, default=0.2, help="验证集比例")
-    parser.add_argument("--offset", type=int, default=128, help="DD 谱 ROI 半宽 (bin)")
 
     parser.add_argument("--epochs", type=int, default=100, help="训练轮数")
     parser.add_argument("--batch_size", type=int, default=64, help="批大小")
@@ -113,7 +112,8 @@ def _checkpoint_payload(
         "dropout": model.dropout,
         "range_resolution": model.range_resolution,
         "velocity_resolution": model.velocity_resolution,
-        "offset": model.offset,
+        "max_range_m": model.dd_spectrum_roi.max_range_m,
+        "max_velocity_mps": model.dd_spectrum_roi.max_velocity_mps,
         "use_phase": full_ds.use_phase,
         "dataset_h5": str(h5_path),
         "config_file": str(config_path),
@@ -216,7 +216,6 @@ def main() -> None:
     full_ds = MonostaticSensingTorchDataset(
         h5_path,
         config_file=config_path,
-        offset=args.offset,
         device=device,
     )
     n_val = max(1, int(len(full_ds) * args.val_ratio))
@@ -245,7 +244,7 @@ def main() -> None:
         in_channels=in_channels,
         range_resolution=full_ds.range_resolution,
         velocity_resolution=full_ds.velocity_resolution,
-        offset=args.offset,
+        dd_spectrum_roi=full_ds.dd_spectrum_roi,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = MonostaticSensingLoss()
@@ -261,10 +260,10 @@ def main() -> None:
     print(
         f"数据集: {h5_path} | 配置: {config_path}\n"
         f"训练 {n_train} / 验证 {n_val} | "
-        f"ROI offset={args.offset} | "
+        f"ROI max_range={model.roi_max_range_m:.1f} m, "
+        f"±max_velocity={model.roi_max_velocity_mps:.1f} m/s | "
         f"Δr={model.range_resolution:.3f} m, "
-        f"Δv={model.velocity_resolution:.3f} m/s | "
-        f"ROI span ~{model.roi_max_range_m:.1f} m, ±{model.roi_max_velocity_mps:.1f} m/s\n"
+        f"Δv={model.velocity_resolution:.3f} m/s\n"
         f"检查点目录: {ckpt_dir} | 曲线: {curve_path}"
     )
 

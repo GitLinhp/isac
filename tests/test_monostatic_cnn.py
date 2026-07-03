@@ -2,8 +2,14 @@
 
 import pytest
 import torch
+from types import SimpleNamespace
 
 from isac.models import MonostaticDelayDopplerCNN
+from isac.sensing.dd_spectrum_roi import DelayDopplerRoi
+
+
+def _test_roi() -> DelayDopplerRoi:
+    return DelayDopplerRoi(max_range_m=317.5, max_velocity_mps=64.0)
 
 
 def test_monostatic_cnn_forward_shape():
@@ -11,7 +17,7 @@ def test_monostatic_cnn_forward_shape():
         in_channels=2,
         range_resolution=2.5,
         velocity_resolution=0.5,
-        offset=128,
+        dd_spectrum_roi=_test_roi(),
     )
     model.eval()
     x = torch.randn(4, 2, 256, 128)
@@ -26,10 +32,12 @@ def test_monostatic_cnn_forward_shape():
 def test_dd_feature_and_crop():
     from isac.models import crop_dd_roi, dd_spectrum_to_features
 
+    sp = SimpleNamespace(range_resolution=2.5, velocity_resolution=0.4)
+    roi = DelayDopplerRoi(max_range_m=157.5, max_velocity_mps=25.6)
     h_dd = torch.randn(512, 2048, dtype=torch.complex64)
-    roi = crop_dd_roi(h_dd, offset=64)
-    assert roi.shape == (128, 64)
-    feat = dd_spectrum_to_features(h_dd, offset=64)
+    cropped = crop_dd_roi(h_dd, roi=roi, sensing_performance=sp)
+    assert cropped.shape == (128, 64)
+    feat = dd_spectrum_to_features(h_dd, roi=roi, sensing_performance=sp)
     assert feat.shape == (2, 128, 64)
 
 
@@ -45,12 +53,11 @@ def test_monostatic_labels():
 
 
 def test_roi_sensing_limits():
-    from types import SimpleNamespace
-
     from isac.models import roi_sensing_limits
 
     sp = SimpleNamespace(range_resolution=2.5, velocity_resolution=0.4)
-    max_range_m, max_velocity_mps = roi_sensing_limits(sp, offset=64)
+    roi = DelayDopplerRoi(max_range_m=157.5, max_velocity_mps=25.6)
+    max_range_m, max_velocity_mps = roi_sensing_limits(sp, roi)
     assert max_range_m == pytest.approx(63 * 2.5)
     assert max_velocity_mps == pytest.approx(64 * 0.4)
 

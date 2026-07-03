@@ -118,3 +118,8 @@ detector = "linear" # 检测器: linear | squarelaw
 [music]
 threshold = 0.1
 near_range_guard_m = 1.0
+
+# 时延–多普勒谱 ROI（物理量裁剪）
+[dd_spectrum_roi]
+max_range_m = 310.0
+max_velocity_mps = 150.0

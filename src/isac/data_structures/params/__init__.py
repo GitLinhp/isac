@@ -12,13 +12,21 @@ from .channel_params import (
     TargetParams,
     TransceiverParams,
 )
-from .sensing_params import CFARParams, MTDParams, MTIParams, MusicParams, WindowParams
+from .sensing_params import (
+    CFARParams,
+    DelayDopplerRoiParams,
+    MTDParams,
+    MTIParams,
+    MusicParams,
+    WindowParams,
+)
 from .system_params import SystemParams
 
 __all__ = [
     "AntennaArrayParams",
     "CameraParams",
     "CFARParams",
+    "DelayDopplerRoiParams",
     "ChannelParams",
     "MTDParams",
     "MTIParams",

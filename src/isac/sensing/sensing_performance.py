@@ -6,7 +6,7 @@
 
 import math
 
-from scipy.constants import c
+from scipy.constants import speed_of_light as c
 import numpy as np
 from tabulate import tabulate
 from typing import Any

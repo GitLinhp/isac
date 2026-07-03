@@ -27,6 +27,7 @@ from ..sensing.music_estimator import MUSICEstimator
 from ..sensing.delay_doppler_spectrum import DelayDopplerSpectrum
 from ..sensing.cfar import CFARDetector
 from ..sensing.clutter_suppression import MovingTargetIndication, MovingTargetDetection
+from ..sensing.dd_spectrum_roi import DelayDopplerRoi
 from ..zc_source import ZCSource
 
 
@@ -81,6 +82,8 @@ class SystemComponents:
     """CFAR检测器"""
     music_estimator: Optional[MUSICEstimator] = None
     """MUSIC估计器"""
+    dd_spectrum_roi: Optional[DelayDopplerRoi] = None
+    """时延–多普勒谱 ROI（物理量）"""
 
     @classmethod
     def build_from_params(
@@ -242,6 +245,7 @@ class SystemComponents:
         kwargs: dict = {}
         carrier_frequency = system_params.carrier_frequency
         sensing_performance: Optional[SensingPerformance] = None
+        dd_spectrum_roi: Optional[DelayDopplerRoi] = None
 
         if system_params.ofdm is not None and carrier_frequency is not None:
             sensing_performance = SensingPerformance(
@@ -249,6 +253,15 @@ class SystemComponents:
                 carrier_frequency=carrier_frequency,
             )
             kwargs["sensing_performance"] = sensing_performance
+
+        if (
+            sensing_performance is not None
+            and system_params.dd_spectrum_roi is not None
+        ):
+            dd_spectrum_roi = DelayDopplerRoi.from_params(
+                system_params.dd_spectrum_roi
+            )
+            kwargs["dd_spectrum_roi"] = dd_spectrum_roi
 
         if rg is not None:
             kwargs["ls_channel_estimator"] = LSChannelEstimator(rg)
@@ -274,6 +287,7 @@ class SystemComponents:
                     sensing_performance=sensing_performance,
                     delay_window=system_params.windows.delay_window,
                     doppler_window=system_params.windows.doppler_window,
+                    dd_spectrum_roi=dd_spectrum_roi,
                 )
 
             if system_params.cfar is not None:

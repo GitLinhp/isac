@@ -10,7 +10,7 @@
 #   - binary 源须在 [source] 中写 num_bits_per_symbol（见下方注释）
 #   - 通信解调：另需 [stream_management]
 #   - 信道： [channel] + [rt_simulator] 或 [rcs_scene]
-#   - 感知： [mti], [mtd], [windows], [cfar], [music]
+#   - 感知： [mti], [mtd], [windows], [cfar], [music], [dd_spectrum_roi]
 #
 # 若改用 channel.type = "rcs"：
 #   1. 将 [channel].type 改为 "rcs"
@@ -167,6 +167,11 @@ detector = "linear" # linear | squarelaw
 [music]
 threshold = 0.1          # MUSICEstimator.__call__ 默认门限
 near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
+
+# --- 时延–多普勒谱 ROI（SystemParams.dd_spectrum_roi）---
+[dd_spectrum_roi]
+max_range_m = 310.0       # 时延轴裁剪上界 (m)，从 0 起
+max_velocity_mps = 150.0  # 多普勒轴半幅 (m/s)，零多普勒中心 ±
 
 # =============================================================================
 # --- RCS 点目标信道（将 channel.type 改为 rcs 并注释 [rt_simulator] 后启用）---

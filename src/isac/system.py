@@ -224,7 +224,7 @@ class System:
         h_delay_doppler: torch.Tensor,
         *,
         file: Union[Path, str],
-        offset: int = 50,
+        offset: int | None = None,
         to_db: bool = False,
         metric_mode: MetricMode = "range_velocity",
         backend: str = "matplotlib",
@@ -238,8 +238,8 @@ class System:
             由 ``compute_sensing_spectrum`` 得到的 DD 谱
         - file : Path | str
             输出图像路径
-        - offset : int
-            显示窗口半宽（bin 数），裁剪谱图局部区域
+        - offset : int | None
+            可选 bin 半宽覆盖；默认使用 ``components.dd_spectrum_roi`` 物理 ROI
         - to_db : bool
             是否以 dB 显示幅度
         - metric_mode : MetricMode
@@ -252,12 +252,16 @@ class System:
         异常:
         ------
         ValueError
-            未构建 ``delay_doppler_spectrum`` 组件时抛出。
+            未构建 ``delay_doppler_spectrum`` 组件，或未配置 ROI 且未传 ``offset`` 时抛出。
         """
         comps = self.components
         if comps.delay_doppler_spectrum is None:
             raise ValueError(
                 "visualize_sensing_spectrum 要求已构建 delay_doppler_spectrum 组件"
+            )
+        if offset is None and comps.dd_spectrum_roi is None:
+            raise ValueError(
+                "visualize_sensing_spectrum 要求配置 [dd_spectrum_roi] 或显式传入 offset"
             )
         comps.delay_doppler_spectrum.h_delay_doppler = h_delay_doppler
         comps.delay_doppler_spectrum.visualize(

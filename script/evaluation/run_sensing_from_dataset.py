@@ -72,6 +72,7 @@ from isac.utils.data_collection.channel_export import (
 )
 from isac.utils.data_collection.episode import los_truth_from_kinematics
 
+
 # ---------------------------- 辅助函数 ----------------------------
 def _default_config_for_h5(h5_path: Path) -> Path:
     """与 HDF5 同目录的 ``data_collection.toml`` 副本。"""
@@ -87,6 +88,7 @@ def _estimate_with_model(
     model: MonostaticDelayDopplerCNN,
     *,
     use_phase: bool,
+    sensing_performance,
 ) -> MusicEstimate:
     """CNN 推理：h_dd → ROI 特征 → 距离/速度估计。
 
@@ -95,7 +97,8 @@ def _estimate_with_model(
     model_device = next(model.parameters()).device
     features = dd_spectrum_to_features(
         h_dd,
-        offset=model.offset,
+        roi=model.dd_spectrum_roi,
+        sensing_performance=sensing_performance,
         use_phase=use_phase,
     )
     pred = model(features.unsqueeze(0).to(model_device))
@@ -115,7 +118,10 @@ def _print_cnn_estimator_banner(
     epoch_line = f"epoch={meta.epoch}, " if meta.epoch is not None else ""
     print(
         f"估计器: CNN | 模型: {model_path}\n"
-        f"  {epoch_line}offset={meta.offset}, use_phase={use_phase}, "
+        f"  {epoch_line}"
+        f"ROI max_range={meta.max_range_m:.1f} m, "
+        f"±max_velocity={meta.max_velocity_mps:.1f} m/s, "
+        f"use_phase={use_phase}, "
         f"Δr={meta.range_resolution:.3f} m, "
         f"Δv={meta.velocity_resolution:.3f} m/s"
     )
@@ -243,12 +249,6 @@ def argument_parser() -> argparse.Namespace:
         help="CNN checkpoint 路径（--estimator model 时使用）",
     )
     parser.add_argument(
-        "--offset",
-        type=int,
-        default=None,
-        help="DD 谱 ROI 半宽 (bin)；未指定时从 checkpoint 读取",
-    )
-    parser.add_argument(
         "--no_phase",
         action="store_true",
         help="CNN 特征不含相位通道；未指定时从 checkpoint use_phase 读取",
@@ -272,9 +272,7 @@ def main() -> None:
         model_path = Path(args.model_path).resolve()
         if not model_path.is_file():
             raise FileNotFoundError(f"模型 checkpoint 不存在: {model_path}")
-        cnn_peek_meta = read_monostatic_cnn_checkpoint_meta(
-            model_path, offset=args.offset
-        )
+        cnn_peek_meta = read_monostatic_cnn_checkpoint_meta(model_path)
 
     # --- 配置文件解析（CNN 优先 checkpoint 训练配置）---
     if args.config_file is not None:
@@ -320,7 +318,6 @@ def main() -> None:
         cnn_model, cnn_meta = load_monostatic_cnn_checkpoint(
             model_path,
             system.device,
-            offset=args.offset,
         )
         use_phase = False if args.no_phase else cnn_meta.use_phase
         estimator_label = "CNN"
@@ -376,7 +373,12 @@ def main() -> None:
                 assert cnn_model is not None
                 # 与 MonostaticSensingTorchDataset 训练前序一致，不开 MTI
                 h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
-                estimate = _estimate_with_model(h_dd, cnn_model, use_phase=use_phase)
+                estimate = _estimate_with_model(
+                    h_dd,
+                    cnn_model,
+                    use_phase=use_phase,
+                    sensing_performance=system.components.sensing_performance,
+                )
 
             pos, vel = label
             if args.estimator == "model":

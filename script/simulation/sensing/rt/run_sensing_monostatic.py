@@ -93,6 +93,7 @@ def main() -> None:
     system.display_sensing_geometry()
 
     h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+
     system.visualize_sensing_spectrum(
         h_dd,
         file=script_out_dir / "sensing_monostatic_delay_doppler_spectrum.png",

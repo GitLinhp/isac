@@ -17,6 +17,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from isac.sensing.dd_spectrum_roi import DelayDopplerRoi
+
 from .dd_spectrum import bins_to_physical, physical_to_bins
 
 _SIDECAR_CHECKPOINT_NAMES = ("checkpoint_final.pt", "checkpoint_final.pth")
@@ -78,7 +80,7 @@ class MonostaticDelayDopplerCNN(nn.Module):
         dropout: float = 0.2,
         range_resolution: float = 2.5,
         velocity_resolution: float = 0.5,
-        offset: int = 128,
+        dd_spectrum_roi: DelayDopplerRoi,
     ) -> None:
         """参数:
         ----------
@@ -87,7 +89,7 @@ class MonostaticDelayDopplerCNN(nn.Module):
         - dropout : 回归头 MLP 的 Dropout 比例
         - range_resolution : 距离分辨率 (m/bin)
         - velocity_resolution : 速度分辨率 (m/s/bin)
-        - offset : DD 谱 ROI 半宽 (bin)，用于日志参考
+        - dd_spectrum_roi : DD 谱 ROI（物理量）
         """
         super().__init__()
         self.in_channels = in_channels
@@ -95,7 +97,7 @@ class MonostaticDelayDopplerCNN(nn.Module):
         self.dropout = dropout
         self.range_resolution = range_resolution
         self.velocity_resolution = velocity_resolution
-        self.offset = offset
+        self.dd_spectrum_roi = dd_spectrum_roi
         c = base_channels
 
         # --- 编码器入口 ---
@@ -125,12 +127,12 @@ class MonostaticDelayDopplerCNN(nn.Module):
     @property
     def roi_max_range_m(self) -> float:
         """ROI 时延轴最大距离 (m)，供日志参考。"""
-        return (self.offset - 1) * self.range_resolution
+        return self.dd_spectrum_roi.max_range_m
 
     @property
     def roi_max_velocity_mps(self) -> float:
         """ROI 多普勒半幅速度 (m/s)，供日志参考。"""
-        return self.offset * self.velocity_resolution
+        return self.dd_spectrum_roi.max_velocity_mps
 
     def _forward_features(self, x: torch.Tensor) -> torch.Tensor:
         """编码器前向：返回末级特征图，不含回归头。"""
@@ -177,13 +179,21 @@ class MonostaticDelayDopplerCNN(nn.Module):
 class MonostaticCnnCheckpointMeta:
     """``run_train_monostatic_cnn.py`` checkpoint 中的训练/推理元数据。"""
 
-    offset: int
+    max_range_m: float
+    max_velocity_mps: float
     use_phase: bool
     range_resolution: float
     velocity_resolution: float
     dataset_h5: Path | None = None
     config_file: Path | None = None
     epoch: int | None = None
+
+    @property
+    def dd_spectrum_roi(self) -> DelayDopplerRoi:
+        return DelayDopplerRoi(
+            max_range_m=self.max_range_m,
+            max_velocity_mps=self.max_velocity_mps,
+        )
 
 
 def _optional_path(value: object) -> Path | None:
@@ -192,9 +202,21 @@ def _optional_path(value: object) -> Path | None:
     return Path(str(value)).resolve()
 
 
+def _roi_from_checkpoint(ckpt: dict) -> DelayDopplerRoi:
+    if "max_range_m" not in ckpt or "max_velocity_mps" not in ckpt:
+        raise KeyError(
+            "checkpoint 须含 max_range_m 与 max_velocity_mps；"
+            "旧版含 offset 的权重请重新训练或手动补全 ROI 字段"
+        )
+    return DelayDopplerRoi(
+        max_range_m=float(ckpt["max_range_m"]),
+        max_velocity_mps=float(ckpt["max_velocity_mps"]),
+    )
+
+
 def _merge_checkpoint_dicts(primary: dict, sidecar: dict) -> dict:
     merged = dict(primary)
-    for key in ("dataset_h5", "config_file", "epoch"):
+    for key in ("dataset_h5", "config_file", "epoch", "max_range_m", "max_velocity_mps"):
         if merged.get(key) is None and sidecar.get(key) is not None:
             merged[key] = sidecar[key]
     return merged
@@ -214,16 +236,13 @@ def _load_checkpoint_dict(path: Path) -> dict:
     return ckpt
 
 
-def _meta_from_checkpoint_dict(
-    ckpt: dict,
-    *,
-    offset: int | None = None,
-) -> MonostaticCnnCheckpointMeta:
+def _meta_from_checkpoint_dict(ckpt: dict) -> MonostaticCnnCheckpointMeta:
+    roi = _roi_from_checkpoint(ckpt)
     use_phase = bool(ckpt.get("use_phase", True))
-    model_offset = offset if offset is not None else int(ckpt.get("offset", 128))
     epoch_raw = ckpt.get("epoch")
     return MonostaticCnnCheckpointMeta(
-        offset=model_offset,
+        max_range_m=roi.max_range_m,
+        max_velocity_mps=roi.max_velocity_mps,
         use_phase=use_phase,
         range_resolution=float(ckpt["range_resolution"]),
         velocity_resolution=float(ckpt["velocity_resolution"]),
@@ -235,21 +254,17 @@ def _meta_from_checkpoint_dict(
 
 def read_monostatic_cnn_checkpoint_meta(
     path: str | Path,
-    *,
-    offset: int | None = None,
 ) -> MonostaticCnnCheckpointMeta:
     """仅读取 checkpoint 元数据（不加载权重）。"""
     ckpt_path = Path(path)
     if not ckpt_path.is_file():
         raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
-    return _meta_from_checkpoint_dict(_load_checkpoint_dict(ckpt_path), offset=offset)
+    return _meta_from_checkpoint_dict(_load_checkpoint_dict(ckpt_path))
 
 
 def load_monostatic_cnn_checkpoint(
     path: str | Path,
     device: torch.device | str,
-    *,
-    offset: int | None = None,
 ) -> tuple[MonostaticDelayDopplerCNN, MonostaticCnnCheckpointMeta]:
     """加载 ``run_train_monostatic_cnn.py`` 保存的 checkpoint。
 
@@ -260,7 +275,7 @@ def load_monostatic_cnn_checkpoint(
         raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
 
     ckpt = _load_checkpoint_dict(ckpt_path)
-    meta = _meta_from_checkpoint_dict(ckpt, offset=offset)
+    meta = _meta_from_checkpoint_dict(ckpt)
     in_channels = int(ckpt.get("in_channels", 2 if meta.use_phase else 1))
 
     model = MonostaticDelayDopplerCNN(
@@ -269,7 +284,7 @@ def load_monostatic_cnn_checkpoint(
         dropout=float(ckpt.get("dropout", 0.2)),
         range_resolution=meta.range_resolution,
         velocity_resolution=meta.velocity_resolution,
-        offset=meta.offset,
+        dd_spectrum_roi=meta.dd_spectrum_roi,
     )
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device)

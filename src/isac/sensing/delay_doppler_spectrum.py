@@ -9,9 +9,11 @@ from typing import Any, Dict, Optional, Tuple, Union
 import plotly.graph_objs as go
 
 from .sensing_performance import SensingPerformance
+from .dd_spectrum_roi import DelayDopplerRoi
 from ..utils import convert
 from ..utils.numerical import linear_to_db
 from ..utils.windows import apply_window
+
 
 class DelayDopplerSpectrum:
     """时延多普勒谱处理类
@@ -22,15 +24,19 @@ class DelayDopplerSpectrum:
     def __init__(
         self,
         sensing_performance: SensingPerformance,
-        device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        device: torch.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        ),
         delay_window: Optional[Union[str, tuple[Any, ...], Dict[str, Any]]] = None,
         doppler_window: Optional[Union[str, tuple[Any, ...], Dict[str, Any]]] = None,
+        dd_spectrum_roi: Optional[DelayDopplerRoi] = None,
     ):
         self.sensing_performance = sensing_performance  # 感知性能
         self.device = device  # 设备
         self.h_delay_doppler: Optional[torch.Tensor] = None  # 时延多普勒谱
         self.delay_window = delay_window  # 时延窗函数
         self.doppler_window = doppler_window  # 多普勒窗函数
+        self.dd_spectrum_roi = dd_spectrum_roi
 
     def __call__(self, h_freq: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """计算时延多普勒谱（使用 Torch 实现）
@@ -54,9 +60,7 @@ class DelayDopplerSpectrum:
                 f"h_freq 须为 2D (S,F) 或 3D (rx_num,S,F)，收到 ndim={h.ndim}"
             )
         if h.shape[-2:] != (s, f):
-            raise ValueError(
-                f"h_freq 末两维须为 ({s}, {f})，收到 {tuple(h.shape)}"
-            )
+            raise ValueError(f"h_freq 末两维须为 ({s}, {f})，收到 {tuple(h.shape)}")
 
         h = torch.fft.fftshift(h, dim=-1)
         h = apply_window(h, dim=-1, window=self.delay_window)
@@ -65,7 +69,9 @@ class DelayDopplerSpectrum:
         h_delay_doppler = torch.fft.fft(h_delay, dim=-2, norm="ortho")
         h_delay_doppler = torch.fft.fftshift(h_delay_doppler, dim=-2)
 
-        self.h_delay_doppler = h_delay_doppler.to(device=self.device, dtype=torch.complex64)
+        self.h_delay_doppler = h_delay_doppler.to(
+            device=self.device, dtype=torch.complex64
+        )
 
         return self.h_delay_doppler
 
@@ -113,6 +119,7 @@ class DelayDopplerSpectrum:
         *,
         mode: str,
         offset: Optional[int],
+        roi_slices: Optional[Tuple[int, int, int, int]] = None,
         to_db: bool,
         eps: float,
     ) -> Dict[str, Any]:
@@ -125,14 +132,21 @@ class DelayDopplerSpectrum:
         z_title_plotly = ""
         plotly_cfar_opacity = 0.7
 
+        if roi_slices is not None:
+            dop_start, dop_end, delay_start, delay_end = roi_slices
+        elif offset is not None:
+            delay_start, delay_end = 0, min(n_delay_bins, offset)
+            dop_start = int(n_doppler_bins / 2) - offset
+            dop_end = int(n_doppler_bins / 2) + offset
+        else:
+            dop_start = delay_start = 0
+            dop_end, delay_end = n_doppler_bins, n_delay_bins
+
         if mode == "delay_doppler":
             sp = self.sensing_performance
             x, y = np.meshgrid(sp.delay_bins, sp.doppler_bins, indexing="xy")
 
-            if offset is not None:
-                delay_start, delay_end = 0, offset
-                dop_start = int(n_doppler_bins / 2) - offset
-                dop_end = int(n_doppler_bins / 2) + offset
+            if roi_slices is not None or offset is not None:
                 x_grid = x[dop_start:dop_end, delay_start:delay_end]
                 y_grid = y[dop_start:dop_end, delay_start:delay_end]
                 h_sl = h_abs_2d[dop_start:dop_end, delay_start:delay_end]
@@ -157,7 +171,9 @@ class DelayDopplerSpectrum:
 
             x_label = "Delay (ns)"
             y_label = "Doppler (Hz)"
-            title_mpl = "Delay-Doppler Spectrum (dB)" if to_db else "Delay-Doppler Spectrum"
+            title_mpl = (
+                "Delay-Doppler Spectrum (dB)" if to_db else "Delay-Doppler Spectrum"
+            )
             title_plotly = "Delay-Doppler Map with CFAR Threshold"
             plotly_cfar_opacity = 0.35
 
@@ -166,10 +182,7 @@ class DelayDopplerSpectrum:
             range_bins = sp.range_bins
             velocity_bins = sp.velocity_bins
 
-            if offset is not None:
-                delay_start, delay_end = 0, offset
-                dop_start = int(n_doppler_bins / 2) - offset
-                dop_end = int(n_doppler_bins / 2) + offset
+            if roi_slices is not None or offset is not None:
                 range_axis = range_bins[delay_start:delay_end]
                 velocity_axis = velocity_bins[dop_start:dop_end]
                 h_sl = h_abs_2d[dop_start:dop_end, delay_start:delay_end]
@@ -266,38 +279,35 @@ class DelayDopplerSpectrum:
         eps: float = 1e-12,
         mode: str = "delay_doppler",
         metric_mode: Optional[str] = None,
-        backend: Optional[str] = "matplotlib",
+        backend: str = "matplotlib",
         panel_labels: Optional[list[str]] = None,
         announce_save: bool = True,
     ) -> None:
         """可视化谱图（时延-多普勒 / 距离-速度），可选叠加 CFAR 阈值。
 
-        Parameters
+        参数
         ----------
-        cfar : np.ndarray | torch.Tensor | None
+        - cfar : np.ndarray | torch.Tensor | None
             当 `cfar` 不为 `None` 时，会在两种模式下叠加 CFAR（以 `abs(h)` 的同一单位体系）。
-
             两种 mode 在两种 backend 下都支持透明 CFAR 曲面叠加。
-        offset : int | None
+        - offset : int | None
             裁剪显示局部区域（offset 按 bin 数理解）。末两维为 (多普勒, 时延)：
             - 时延/距离轴：`[0, offset)`
             - 多普勒轴：以中心为基准宽度 `2*offset`
             3D 输入 ``(rx_num, S, F)`` 时对第一维各切片分别绘图；``panel_labels`` 为各子图标题。
-        file_name : Path | str | None
+        - file_name : Path | str | None
             保存图像路径；为 None 时直接显示。
-        to_db : bool
+        - to_db : bool
             若为 True，将幅度转换为 dB（`20*log10(|.|)`）显示；否则显示线性幅度。
-        eps : float
+        - eps : float
             用于保护 `log10`，避免出现 `-inf`。
-        mode : str
+        - mode : str
             - `"delay_doppler"`：显示时延-多普勒谱（matplotlib 3D）
             - `"range_velocity"`：距离轴用 ``range_bins`` (m)、速度轴用 ``velocity_bins`` (m/s)，
               与 ``delay_doppler`` 的时延/多普勒 (ns/Hz) 坐标分开；谱网格与 ``h`` 的 bin 对齐不变。
-        backend : str | None
-            - `None`：保持向后兼容，`delay_doppler->matplotlib`，`range_velocity->plotly`
-            - `"matplotlib"`：使用 matplotlib 3D
-            - `"plotly"`：使用 plotly 3D
-        announce_save : bool
+        - backend : str
+            渲染后端：``"matplotlib"``（3D 曲面）或 ``"plotly"``（交互 3D）。
+        - announce_save : bool
             保存到 ``file_name`` 时是否打印保存路径，默认 ``True``。
         """
 
@@ -310,12 +320,11 @@ class DelayDopplerSpectrum:
         # ----------------------
         # 1) 准备区：先根据 mode 准备好 x/y/z/cfar（避免 mode×backend 四象限）
         # ----------------------
-        if backend is None:
-            backend_to_use = "matplotlib" if mode == "delay_doppler" else "plotly"
-        else:
-            backend_to_use = backend.lower()
+        backend_to_use = backend.lower()
         if backend_to_use not in {"matplotlib", "plotly"}:
-            raise ValueError(f"Unknown backend: {backend}. Expected 'matplotlib' or 'plotly'.")
+            raise ValueError(
+                f"Unknown backend: {backend!r}. Expected 'matplotlib' or 'plotly'."
+            )
 
         if mode not in {"delay_doppler", "range_velocity"}:
             raise ValueError(
@@ -325,7 +334,9 @@ class DelayDopplerSpectrum:
         h_abs_np = torch.abs(self.h_delay_doppler).detach().cpu().numpy()
         cfar_np = None
         if cfar is not None:
-            cfar_np = cfar.detach().cpu().numpy() if isinstance(cfar, torch.Tensor) else cfar
+            cfar_np = (
+                cfar.detach().cpu().numpy() if isinstance(cfar, torch.Tensor) else cfar
+            )
             if cfar_np.ndim != h_abs_np.ndim:
                 raise ValueError(
                     f"cfar 与 h_delay_doppler 秩须一致，"
@@ -338,8 +349,16 @@ class DelayDopplerSpectrum:
             )
 
         if h_abs_np.ndim == 3 and backend_to_use == "plotly":
-            print("3D 谱 (rx_num, S, F) 暂不支持 plotly 多 RX 子图，已回退为 matplotlib")
+            print(
+                "3D 谱 (rx_num, S, F) 暂不支持 plotly 多 RX 子图，已回退为 matplotlib"
+            )
             backend_to_use = "matplotlib"
+
+        roi_slices: Optional[Tuple[int, int, int, int]] = None
+        if offset is None and self.dd_spectrum_roi is not None:
+            roi_slices = self.dd_spectrum_roi.bin_slices(
+                self.h_delay_doppler, self.sensing_performance
+            )
 
         # ----------------------
         # 2) 渲染区
@@ -361,6 +380,7 @@ class DelayDopplerSpectrum:
                         cfar_r,
                         mode=mode,
                         offset=offset,
+                        roi_slices=roi_slices,
                         to_db=to_db,
                         eps=eps,
                     )
@@ -376,6 +396,7 @@ class DelayDopplerSpectrum:
                     cfar_np,
                     mode=mode,
                     offset=offset,
+                    roi_slices=roi_slices,
                     to_db=to_db,
                     eps=eps,
                 )
@@ -395,12 +416,15 @@ class DelayDopplerSpectrum:
 
         if backend_to_use == "plotly":
             if h_abs_np.ndim == 3:
-                raise ValueError("plotly 仅支持 2D 谱；多 RX 请使用 backend='matplotlib'")
+                raise ValueError(
+                    "plotly 仅支持 2D 谱；多 RX 请使用 backend='matplotlib'"
+                )
             grids = self._prepare_surface_grids(
                 h_abs_np,
                 cfar_np,
                 mode=mode,
                 offset=offset,
+                roi_slices=roi_slices,
                 to_db=to_db,
                 eps=eps,
             )
