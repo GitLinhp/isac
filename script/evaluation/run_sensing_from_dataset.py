@@ -42,7 +42,6 @@ CNN（默认 ``model.pth``）::
 from __future__ import annotations
 
 import argparse
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +75,7 @@ DEFAULT_DATASET_H5 = (
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "out" / "monostatic_cnn" / "model.pth"
 
 
+# ---------------------------- 辅助函数 ----------------------------
 def _default_config_for_h5(h5_path: Path) -> Path:
     """与 HDF5 同目录的 ``data_collection.toml`` 副本。"""
     sibling = h5_path.parent / "data_collection.toml"
@@ -106,20 +106,6 @@ def _estimate_with_model(
         est_ranges=pred[0, 0].reshape(-1).to(dtype=torch.float64),
         est_velocities=pred[0, 1].reshape(-1).to(dtype=torch.float64),
     )
-
-
-def _warn_checkpoint_path_mismatch(
-    *,
-    label: str,
-    expected: Path,
-    actual: Path,
-) -> None:
-    """checkpoint 记录的路径与当前 CLI 不一致时发出警告（不阻断运行）。"""
-    if expected.resolve() != actual.resolve():
-        warnings.warn(
-            f"CNN checkpoint {label} ({expected}) 与当前 CLI ({actual}) 不一致",
-            stacklevel=2,
-        )
 
 
 def _print_cnn_estimator_banner(
@@ -192,6 +178,7 @@ def _print_rmse_stats_tables(
     )
 
 
+# ---------------------------- CLI ----------------------------
 def argument_parser() -> argparse.Namespace:
     """构造回放脚本的全部 CLI 参数。"""
     parser = argparse.ArgumentParser(
@@ -273,6 +260,7 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# ---------------------------- 主函数 ----------------------------
 def main() -> None:
     """HDF5 CFR 回放入口：感知估计 + 逐 episode RMSE + 汇总统计表。"""
     args = argument_parser()
@@ -340,18 +328,6 @@ def main() -> None:
         use_phase = False if args.no_phase else cnn_meta.use_phase
         estimator_label = "CNN"
         _print_cnn_estimator_banner(model_path, cnn_meta, use_phase=use_phase)
-        if cnn_meta.dataset_h5 is not None:
-            _warn_checkpoint_path_mismatch(
-                label="dataset_h5",
-                expected=cnn_meta.dataset_h5,
-                actual=h5_path,
-            )
-        if cnn_meta.config_file is not None:
-            _warn_checkpoint_path_mismatch(
-                label="config_file",
-                expected=cnn_meta.config_file,
-                actual=config_path,
-            )
     else:
         print(f"估计器: MUSIC | metric_mode={args.metric_mode}")
 
