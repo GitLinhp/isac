@@ -25,35 +25,11 @@ def test_monostatic_cnn_forward_shape():
     assert torch.allclose(y, model(x))
 
 
-def test_dd_feature_and_crop():
-    from isac.models import crop_dd_roi, dd_spectrum_to_features
+def test_dd_features_from_cropped_spectrum():
+    from isac.models import dd_spectrum_to_features
 
-    sp = SimpleNamespace(
-        range_resolution=2.5,
-        velocity_resolution=0.4,
-        rg=SimpleNamespace(num_ofdm_symbols=512, fft_size=2048),
-    )
-    max_range_m, max_velocity_mps = 157.5, 25.6
-    h_full = torch.randn(512, 2048, dtype=torch.complex64)
-    h_cropped = crop_dd_roi(
-        h_full,
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-        sensing_performance=sp,
-    )
-    assert h_cropped.shape == (128, 64)
-    assert crop_dd_roi(
-        h_cropped,
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-        sensing_performance=sp,
-    ) is h_cropped
-    feat = dd_spectrum_to_features(
-        h_cropped,
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-        sensing_performance=sp,
-    )
+    h_dd = torch.randn(128, 64, dtype=torch.complex64)
+    feat = dd_spectrum_to_features(h_dd)
     assert feat.shape == (2, 128, 64)
 
 

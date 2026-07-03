@@ -5,6 +5,32 @@ from typing import Any, Dict, Optional, Union
 
 
 @dataclass
+class DelayDopplerRoiParams:
+    """时延–多普勒谱 ROI（物理量语义）。"""
+
+    max_range_m: float
+    max_velocity_mps: float
+
+    def __post_init__(self) -> None:
+        if self.max_range_m <= 0:
+            raise ValueError(
+                f"dd_spectrum_roi.max_range_m 须为正，收到 {self.max_range_m}"
+            )
+        if self.max_velocity_mps <= 0:
+            raise ValueError(
+                "dd_spectrum_roi.max_velocity_mps 须为正，"
+                f"收到 {self.max_velocity_mps}"
+            )
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "DelayDopplerRoiParams":
+        return cls(
+            max_range_m=float(config_dict.get("max_range_m", 50.0)),
+            max_velocity_mps=float(config_dict.get("max_velocity_mps", 10.0)),
+        )
+
+
+@dataclass
 class MTIParams:
     """动目标显示（MTI）配置"""
 
@@ -99,32 +125,4 @@ class MusicParams:
         return cls(
             threshold=float(config_dict.get("threshold", 0.1)),
             near_range_guard_m=float(config_dict.get("near_range_guard_m", 1.0)),
-        )
-
-
-@dataclass
-class DelayDopplerRoiParams:
-    """时延–多普勒谱 ROI（物理量语义）。"""
-
-    max_range_m: float
-    max_velocity_mps: float
-
-    def __post_init__(self) -> None:
-        if self.max_range_m <= 0:
-            raise ValueError(f"dd_spectrum_roi.max_range_m 须为正，收到 {self.max_range_m}")
-        if self.max_velocity_mps <= 0:
-            raise ValueError(
-                "dd_spectrum_roi.max_velocity_mps 须为正，"
-                f"收到 {self.max_velocity_mps}"
-            )
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "DelayDopplerRoiParams":
-        if "max_range_m" not in config_dict:
-            raise KeyError("dd_spectrum_roi 须配置 max_range_m")
-        if "max_velocity_mps" not in config_dict:
-            raise KeyError("dd_spectrum_roi 须配置 max_velocity_mps")
-        return cls(
-            max_range_m=float(config_dict["max_range_m"]),
-            max_velocity_mps=float(config_dict["max_velocity_mps"]),
         )

@@ -21,6 +21,7 @@ from isac.datasets import (
     DEFAULT_COLLECTION_OUT_DIR,
     EpisodeBuffers,
     Hdf5CollectionWriter,
+    SensingMetadata,
     collection_h5_path,
     save_collection_artifacts,
 )
@@ -162,6 +163,8 @@ def main() -> None:
         batch_size=args.batch_size,
         device=args.device,
     )
+    system.components.sensing_performance()
+    sensing_meta = SensingMetadata.from_system(system)
     # 获取 RT 模拟器与目标
     rt_simulator = system.components.rt_simulator
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
@@ -227,7 +230,11 @@ def main() -> None:
         acceptance_rate = accepted / attempts if attempts else 0.0
         print(f"接受率: {acceptance_rate:.1%} ({accepted}/{attempts})")
 
-        h5_writer.finalize(collection_meta=collection_meta, scene_slug=scene_slug)
+        h5_writer.finalize(
+            collection_meta=collection_meta,
+            scene_slug=scene_slug,
+            sensing_meta=sensing_meta,
+        )
 
     # 写出其余采集产物（TOML / CSV / 场景 PNG）
     save_collection_artifacts(
@@ -237,6 +244,7 @@ def main() -> None:
         bs_pos=bs_pos,
         args=args,
         rt_simulator=rt_simulator,
+        sensing_meta=sensing_meta,
         out_dir=DEFAULT_COLLECTION_OUT_DIR,
         h5_already_written=True,
     )

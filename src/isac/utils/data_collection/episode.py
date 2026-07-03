@@ -10,9 +10,21 @@ from isac.datasets import EpisodeBuffers, Hdf5CollectionWriter
 from isac.system import System
 
 from ..misc import csv_float2_scalar, csv_vec3
-from .channel_export import paths_cfr_numpy
+from .channel_export import cfr_numpy_to_h_freq, paths_cfr_numpy
 
 
+def episode_h_dd_numpy(system: System, cfr: np.ndarray) -> np.ndarray:
+    """RT CFR → 感知链 → ROI 裁剪 h_dd（numpy complex64）。"""
+    _, x_rg, _ = system.transmit()
+    channel = system.components.channel
+    channel.cfr = cfr_numpy_to_h_freq(cfr, device=x_rg.device)
+    y_rg = channel(
+        x_rg,
+        domain="frequency",
+        snr_db=system.params.channel.snr_db,
+    )
+    h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+    return h_dd.detach().cpu().numpy().astype(np.complex64)
 
 
 def los_truth_from_kinematics(
@@ -77,7 +89,7 @@ def process_episode(
     buffers: EpisodeBuffers,
     h5_writer: Hdf5CollectionWriter | None = None,
 ) -> None:
-    """单条 episode：几何真值 / CFR / CSV 缓冲写入。"""
+    """单条 episode：几何真值 / h_dd / CSV 缓冲写入。"""
     pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
     vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
 
@@ -88,7 +100,8 @@ def process_episode(
 
     buffers.csv_rows.append(row)
     cfr = paths_cfr_numpy(system.components.rg, rt_simulator)
+    h_dd = episode_h_dd_numpy(system, cfr)
     if h5_writer is not None:
-        h5_writer.append_episode(cfr, pos_row, vel_row)
+        h5_writer.append_episode(h_dd, pos_row, vel_row)
     else:
-        buffers.h_freq_list.append(cfr)
+        buffers.h_dd_list.append(h_dd)

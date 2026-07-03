@@ -38,9 +38,11 @@ class DelayDopplerSpectrum:
         self.h_delay_doppler: Optional[torch.Tensor] = None  # 时延多普勒谱
         self.delay_window = delay_window  # 时延窗函数
         self.doppler_window = doppler_window  # 多普勒窗函数
-        self.max_range_m = max_range_m
-        self.max_velocity_mps = max_velocity_mps
-        self._roi_slices: Optional[Tuple[int, int, int, int]] = None
+        self.max_range_m = max_range_m  # 最大探测距离
+        self.max_velocity_mps = max_velocity_mps  # 最大探测速度
+        self._roi_slices: Optional[Tuple[int, int, int, int]] = (
+            None  # 时延多普勒谱 ROI 切片索引
+        )
 
     @property
     def has_roi(self) -> bool:
@@ -55,17 +57,17 @@ class DelayDopplerSpectrum:
         if self.max_range_m <= 0:
             raise ValueError(f"max_range_m 须为正，收到 {self.max_range_m}")
         if self.max_velocity_mps <= 0:
-            raise ValueError(
-                f"max_velocity_mps 须为正，收到 {self.max_velocity_mps}"
-            )
+            raise ValueError(f"max_velocity_mps 须为正，收到 {self.max_velocity_mps}")
 
     def roi_delay_bins(self) -> int:
-        dr = self.sensing_performance.range_resolution
+        """返回时延多普勒谱 ROI 的时延 bin 数。"""
+        dr = self.sensing_performance.range_resolution  # 距离分辨率
         assert self.max_range_m is not None
         return max(1, int(self.max_range_m / dr) + 1)
 
     def roi_doppler_half_bins(self) -> int:
-        dv = self.sensing_performance.velocity_resolution
+        """返回时延多普勒谱 ROI 的多普勒 bin 数。"""
+        dv = self.sensing_performance.velocity_resolution  # 速度分辨率
         assert self.max_velocity_mps is not None
         return max(1, int(round(self.max_velocity_mps / dv)))
 
@@ -79,27 +81,6 @@ class DelayDopplerSpectrum:
         dop_start = max(0, dop_center - dop_half)
         dop_end = min(n_doppler, dop_center + dop_half)
         return dop_start, dop_end, 0, delay_bins
-
-    def crop(self, h_dd: torch.Tensor) -> torch.Tensor:
-        """裁剪 DD 谱 ROI；末两维为 ``(多普勒, 时延)``。"""
-        dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_dd)
-        return h_dd[..., dop_start:dop_end, delay_start:delay_end]
-
-    def feature_shape(self, h_dd: torch.Tensor) -> tuple[int, int]:
-        """裁剪后 ``(多普勒, 时延)`` 尺寸。"""
-        dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_dd)
-        return dop_end - dop_start, delay_end - delay_start
-
-    def roi_limits(self, h_dd: torch.Tensor) -> tuple[float, float]:
-        """实际裁剪对应的 ``(max_range_m, max_velocity_mps)``。"""
-        _, _, _, delay_end = self.bin_slices(h_dd)
-        dop_start, dop_end, _, _ = self.bin_slices(h_dd)
-        dr = self.sensing_performance.range_resolution
-        dv = self.sensing_performance.velocity_resolution
-        eff_max_range_m = (delay_end - 1) * dr
-        dop_half = (dop_end - dop_start) // 2
-        eff_max_velocity_mps = dop_half * dv
-        return eff_max_range_m, eff_max_velocity_mps
 
     def __call__(self, h_freq: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """计算时延多普勒谱（使用 Torch 实现）
@@ -135,9 +116,7 @@ class DelayDopplerSpectrum:
         self._validate_roi()
         dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_delay_doppler)
         self._roi_slices = (dop_start, dop_end, delay_start, delay_end)
-        h_delay_doppler = h_delay_doppler[
-            ..., dop_start:dop_end, delay_start:delay_end
-        ]
+        h_delay_doppler = h_delay_doppler[..., dop_start:dop_end, delay_start:delay_end]
 
         self.h_delay_doppler = h_delay_doppler.to(
             device=self.device, dtype=torch.complex64
@@ -193,7 +172,9 @@ class DelayDopplerSpectrum:
     ) -> Dict[str, Any]:
         """为单路 2D 谱 ``(多普勒, 时延)`` 准备 matplotlib/plotly 曲面数据。"""
         if self._roi_slices is None:
-            raise ValueError("_prepare_surface_grids 要求已通过 __call__ 设置 _roi_slices")
+            raise ValueError(
+                "_prepare_surface_grids 要求已通过 __call__ 设置 _roi_slices"
+            )
         dop_start, dop_end, delay_start, delay_end = self._roi_slices
 
         x_label = y_label = z_label = ""

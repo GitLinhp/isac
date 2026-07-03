@@ -1,21 +1,18 @@
-"""训练单基地时延–多普勒 CNN：HDF5 CFR → h_dd 特征 → 距离/速度回归。
+"""训练单基地时延–多普勒 CNN：HDF5 h_dd → 特征 → 距离/速度回归。
 
-须在 **ISAC conda 环境**中运行（Sionna RT 与 OFDM 感知链依赖完整 CUDA/Sionna 栈）::
+须在 **ISAC conda 环境**中运行::
 
-    /opt/miniconda3/envs/ISAC/bin/python script/model_training/run_train_monostatic_cnn.py
-    # 或
-    conda run -n ISAC python script/model_training/run_train_monostatic_cnn.py
+    python script/model_training/run_train_monostatic_cnn.py
 
-数据流与 ``run_sensing_from_dataset.py`` 一致：存储 CFR → transmit → channel →
-``compute_sensing_spectrum`` → ``dd_spectrum_to_features`` → CNN。
+数据流：``RTDataset.load`` 读取采集期落盘的 h_dd → ``dd_spectrum_to_features`` → CNN。
 
 流程概要
 --------
-1. 解析路径/CLI，构建 ``MonostaticSensingTorchDataset``（在线 h_dd 特征）
-2. ``random_split`` 划分 train/val，``DataLoader``（``num_workers=0``）
+1. 解析路径/CLI，``RTDataset.load`` 加载 h_dd 数据集
+2. ``random_split`` 划分 train/val，``DataLoader``
 3. ``MonostaticDelayDopplerCNN`` + ``MonostaticSensingLoss`` + Adam 训练
-4. 每 ``--save_every`` epoch 保存 ``checkpoints/checkpoint_XXX.pth`` 并更新 ``training_curve.png``
-5. ``val_loss`` 最小时保存 ``best_model.pth``；训练结束保存 ``checkpoint_final.pth`` 与最终曲线
+4. 每 ``--save_every`` epoch 保存检查点并更新训练曲线
+5. ``val_loss`` 最小时保存 ``best_model.pth``
 """
 
 from __future__ import annotations
@@ -30,10 +27,10 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 from isac import DEFAULT_DATASET_H5, DEFAULT_MONOSTATIC_CNN_MODEL
+from isac.datasets import RTDataset
 from isac.models import (
     MonostaticDelayDopplerCNN,
     MonostaticSensingLoss,
-    MonostaticSensingTorchDataset,
 )
 
 
@@ -98,7 +95,7 @@ def _checkpoint_payload(
     *,
     epoch: int,
     in_channels: int,
-    full_ds: MonostaticSensingTorchDataset,
+    full_ds: RTDataset,
     h5_path: Path,
     config_path: Path,
     args: argparse.Namespace,
@@ -212,12 +209,8 @@ def main() -> None:
     torch.manual_seed(args.seed)
     device = args.device
 
-    # --- 数据集与 DataLoader（num_workers=0：Sionna/System 不宜多进程）---
-    full_ds = MonostaticSensingTorchDataset(
-        h5_path,
-        config_file=config_path,
-        device=device,
-    )
+    # --- 数据集与 DataLoader ---
+    full_ds = RTDataset.load(h5_path)
     n_val = max(1, int(len(full_ds) * args.val_ratio))
     n_train = len(full_ds) - n_val
     if n_train < 1:

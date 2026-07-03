@@ -5,63 +5,6 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from isac.sensing.delay_doppler_spectrum import DelayDopplerSpectrum
-from isac.sensing.sensing_performance import SensingPerformance
-
-
-def crop_dd_roi(
-    h_dd: torch.Tensor,
-    *,
-    max_range_m: float,
-    max_velocity_mps: float,
-    sensing_performance: SensingPerformance,
-) -> torch.Tensor:
-    """按物理 ROI 裁剪 DD 谱；``h_dd`` 末两维为 ``(多普勒, 时延)``。
-
-    若输入已在 ``DelayDopplerSpectrum.__call__`` 中裁剪，则原样返回。
-    """
-    dd = DelayDopplerSpectrum(
-        sensing_performance,
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-    )
-    sp = sensing_performance
-    full_ref = torch.empty(
-        *h_dd.shape[:-2],
-        sp.rg.num_ofdm_symbols,
-        sp.rg.fft_size,
-        device=h_dd.device,
-        dtype=h_dd.dtype,
-    )
-    expected = dd.feature_shape(full_ref)
-    if h_dd.shape[-2:] == expected:
-        return h_dd
-    return dd.crop(h_dd)
-
-
-def roi_sensing_limits(
-    sensing_performance: SensingPerformance,
-    *,
-    max_range_m: float,
-    max_velocity_mps: float,
-    h_dd: torch.Tensor | None = None,
-) -> tuple[float, float]:
-    """裁切 ROI 对应的 ``(max_range_m, max_velocity_mps)``。"""
-    dd = DelayDopplerSpectrum(
-        sensing_performance,
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-    )
-    if h_dd is not None:
-        return dd.roi_limits(h_dd)
-    eff_max_range_m = (dd.roi_delay_bins() - 1) * (
-        sensing_performance.range_resolution
-    )
-    eff_max_velocity_mps = dd.roi_doppler_half_bins() * (
-        sensing_performance.velocity_resolution
-    )
-    return eff_max_range_m, eff_max_velocity_mps
-
 
 def physical_to_bins(
     range_m: torch.Tensor,
@@ -95,30 +38,23 @@ def bins_to_physical(
 def dd_spectrum_to_features(
     h_dd: torch.Tensor,
     *,
-    max_range_m: float,
-    max_velocity_mps: float,
-    sensing_performance: SensingPerformance,
     eps: float = 1e-12,
     use_phase: bool = True,
 ) -> torch.Tensor:
-    """将复数时延–多普勒谱转为 CNN 输入特征 ``(C, H, W)``。
+    """将已裁剪的复数时延–多普勒谱转为 CNN 输入特征 ``(C, H, W)``。
+
+    输入须由 ``DelayDopplerSpectrum.__call__`` 产出（已含 ROI 裁剪）。
 
     - 通道 0：幅度 dB（逐样本零均值、单位方差）
     - 通道 1（可选）：相位，映射到 ``[-1, 1]``
     """
-    cropped = crop_dd_roi(
-        h_dd,
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-        sensing_performance=sensing_performance,
-    )
-    mag = torch.abs(cropped).clamp_min(eps)
+    mag = torch.abs(h_dd).clamp_min(eps)
     mag_db = 20.0 * torch.log10(mag)
     mag_db = (mag_db - mag_db.mean()) / (mag_db.std() + eps)
 
     channels = [mag_db]
     if use_phase:
-        phase = torch.angle(cropped) / np.pi
+        phase = torch.angle(h_dd) / np.pi
         channels.append(phase)
 
     return torch.stack(channels, dim=0)

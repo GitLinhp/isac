@@ -1,42 +1,25 @@
 """从 HDF5 数据集回放单基地感知流程（MUSIC 或 CNN 估计 + RMSE 统计）。
 
-须在 **ISAC conda 环境**中运行（Sionna RT 与 OFDM 信道依赖完整 CUDA/Sionna 栈）::
+须在 **ISAC conda 环境**中运行::
 
-    /opt/miniconda3/envs/ISAC/bin/python script/data_loading/run_sensing_from_dataset.py
-    # 或
-    conda run -n ISAC python script/data_loading/run_sensing_from_dataset.py
+    python script/evaluation/run_sensing_from_dataset.py
 
 流程概要
 --------
-加载 ``Dataset`` → 构建 ``System`` → 逐 episode 读取 ``(cfr, label)`` →
-注入 ``RTChannel.cfr`` → ``transmit`` → ``channel`` → ``compute_sensing_spectrum``
-→ MUSIC 或 CNN 估计 → 与几何真值对齐的 RMSE；不重新跑 RT path_solver。
+加载 ``RTDataset``（采集期落盘的 h_dd）→ 构建 ``System`` → 逐 episode 读取 h_dd →
+MUSIC 或 CNN 估计 → 与几何真值对齐的 RMSE。
+
+注意：存盘 h_dd 采集时未施加 MTI；MUSIC 评估亦直接使用 h_dd（无法对已存谱补做 MTI）。
 
 估计器分支（``--estimator``）
 ----------------------------
-- ``music``（默认）：``apply_mti=True`` + ``estimate_sensing_music``
-- ``model``：无 MTI + ``MonostaticDelayDopplerCNN``，默认权重
-  ``models/monostatic_cnn/best_model.pth``（由 ``run_train_monostatic_cnn.py`` 产出）
+- ``music``（默认）：``estimate_sensing_music``
+- ``model``：``MonostaticDelayDopplerCNN``
 
 真值来源
 --------
 - MUSIC：``los_truth_from_kinematics``（RT 默认 Rx–Target–Tx 三元组几何）
-- CNN：``monostatic_labels_from_kinematics``（与 ``MonostaticSensingTorchDataset`` 训练标签一致）
-
-RMSE 含义
----------
-逐 episode 经匈牙利匹配后的单点距离/速度误差（非多峰 batch RMSE）。
-脚本末尾各输出一张统计表：均值、最小值、最大值、总体方差。
-
-CLI 示例
---------
-MUSIC（默认）::
-
-    python script/data_loading/run_sensing_from_dataset.py
-
-CNN（默认 ``best_model.pth``）::
-
-    python script/data_loading/run_sensing_from_dataset.py --estimator model
+- CNN：``monostatic_labels_from_kinematics``（与训练标签一致）
 """
 
 from __future__ import annotations
@@ -44,7 +27,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import numpy as np
 import torch
 from tabulate import tabulate
 from tqdm import tqdm
@@ -55,7 +37,7 @@ from isac import (
     OUT_DIR,
     PROJECT_ROOT,
 )
-from isac.datasets import Dataset
+from isac.datasets import RTDataset
 from isac.models import (
     MonostaticCnnCheckpointMeta,
     MonostaticDelayDopplerCNN,
@@ -66,10 +48,7 @@ from isac.models import (
 )
 from isac.system import MusicEstimate, System
 from isac.utils import load_config, set_random_seed
-from isac.utils.data_collection.channel_export import (
-    cfr_numpy_to_h_freq,
-    scene_slug_from_rt_simulator,
-)
+from isac.utils.data_collection.channel_export import scene_slug_from_rt_simulator
 from isac.utils.data_collection.episode import los_truth_from_kinematics
 
 
@@ -97,9 +76,6 @@ def _estimate_with_model(
     model_device = next(model.parameters()).device
     features = dd_spectrum_to_features(
         h_dd,
-        max_range_m=model.max_range_m,
-        max_velocity_mps=model.max_velocity_mps,
-        sensing_performance=sensing_performance,
         use_phase=use_phase,
     )
     pred = model(features.unsqueeze(0).to(model_device))
@@ -217,13 +193,6 @@ def argument_parser() -> argparse.Namespace:
         help="随机种子",
     )
     parser.add_argument(
-        "--domain",
-        type=str,
-        default="frequency",
-        choices=["frequency", "time"],
-        help="信道施加域；存储 CFR 回放仅支持 frequency",
-    )
-    parser.add_argument(
         "--max_episodes",
         type=int,
         default=None,
@@ -260,7 +229,7 @@ def argument_parser() -> argparse.Namespace:
 
 # ---------------------------- 主函数 ----------------------------
 def main() -> None:
-    """HDF5 CFR 回放入口：感知估计 + 逐 episode RMSE + 汇总统计表。"""
+    """HDF5 h_dd 回放入口：感知估计 + 逐 episode RMSE + 汇总统计表。"""
     args = argument_parser()
 
     # --- 路径校验与 CNN 元数据预读 ---
@@ -292,8 +261,8 @@ def main() -> None:
 
     # --- 数据集 / System 构建 ---
     set_random_seed(args.seed)
-    dataset = Dataset.load(h5_path)
-    print(f"已加载数据集: {dataset} (CFR shape={dataset.cfr.shape})")
+    dataset = RTDataset.load(h5_path)
+    print(f"已加载数据集: {dataset}")
 
     config = load_config(config_path)
     system = System(
@@ -340,31 +309,17 @@ def main() -> None:
     if args.max_episodes is not None:
         n_episodes = min(n_episodes, args.max_episodes)
 
-    domain = args.domain
-    if domain != "frequency":
-        raise ValueError(
-            "存储 CFR 回放仅支持 --domain frequency；"
-            "时域需 live RT 信道，与本脚本用途不符。"
-        )
-    snr_db = system.params.channel.snr_db
-    channel = system.components.channel
-
     range_rmses: list[torch.Tensor] = []
     velocity_rmses: list[torch.Tensor] = []
     range_sum = 0.0
     vel_sum = 0.0
 
-    # --- 逐 episode 回放：CFR 注入 → 感知 → RMSE ---
+    # --- 逐 episode：读取 h_dd → 感知估计 → RMSE ---
     with tqdm(range(n_episodes), desc="性能评估", unit="ep") as pbar:
         for i in pbar:
-            cfr, label = dataset[i]
-            _, x_rg, _ = system.transmit()
-            channel.cfr = cfr_numpy_to_h_freq(cfr, device=x_rg.device)
-            y_rg = channel(x_rg, domain=domain, snr_db=snr_db)
+            h_dd = dataset.spectrum_tensor(i, device=system.device)
 
             if args.estimator == "music":
-                # 与 run_sensing_monostatic 一致：MTI 抑制零多普勒直达径
-                h_dd = system.compute_sensing_spectrum(x_rg, y_rg, apply_mti=True)
                 estimate = system.estimate_sensing_music(
                     h_dd,
                     metric_mode=args.metric_mode,
@@ -372,8 +327,6 @@ def main() -> None:
                 )
             else:
                 assert cnn_model is not None
-                # 与 MonostaticSensingTorchDataset 训练前序一致，不开 MTI
-                h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
                 estimate = _estimate_with_model(
                     h_dd,
                     cnn_model,
@@ -381,10 +334,11 @@ def main() -> None:
                     sensing_performance=system.components.sensing_performance,
                 )
 
-            pos, vel = label
+            pos = dataset.target_position[i]
+            vel = dataset.target_velocity[i]
             if args.estimator == "model":
                 range_m, vel_mps = monostatic_labels_from_kinematics(
-                    np.array(pos), np.array(vel), dataset.bs_pos
+                    pos, vel, dataset.bs_pos
                 )
                 true_range = torch.tensor(
                     range_m, dtype=torch.float64, device=system.device
@@ -394,7 +348,7 @@ def main() -> None:
                 )
             else:
                 true_range, true_velocity = los_truth_from_kinematics(
-                    np.array(pos), np.array(vel), rt_simulator, system.device
+                    pos, vel, rt_simulator, system.device
                 )
             rmse = system.evaluate_sensing_rmse(
                 estimate,
