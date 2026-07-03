@@ -4,7 +4,7 @@
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
 2. 构建 ``System``，循环更新 RT 目标位姿并采集 CFR / 几何真值。
-3. 写出 ``out/dataset_collection/`` 下的 TOML、CSV 与 HDF5。
+3. 写出 ``data/`` 下的 TOML、CSV 与 HDF5。
 """
 
 from __future__ import annotations

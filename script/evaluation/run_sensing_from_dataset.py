@@ -16,7 +16,7 @@
 ----------------------------
 - ``music``（默认）：``apply_mti=True`` + ``estimate_sensing_music``
 - ``model``：无 MTI + ``MonostaticDelayDopplerCNN``，默认权重
-  ``out/monostatic_cnn/model.pth``（由 ``run_train_monostatic_cnn.py`` 产出）
+  ``models/monostatic_cnn/best_model.pth``（由 ``run_train_monostatic_cnn.py`` 产出）
 
 真值来源
 --------
@@ -34,7 +34,7 @@ MUSIC（默认）::
 
     python script/data_loading/run_sensing_from_dataset.py
 
-CNN（默认 ``model.pth``）::
+CNN（默认 ``best_model.pth``）::
 
     python script/data_loading/run_sensing_from_dataset.py --estimator model
 """
@@ -49,7 +49,12 @@ import torch
 from tabulate import tabulate
 from tqdm import tqdm
 
-from isac import PROJECT_ROOT
+from isac import (
+    DEFAULT_DATASET_H5,
+    DEFAULT_MONOSTATIC_CNN_MODEL,
+    OUT_DIR,
+    PROJECT_ROOT,
+)
 from isac.datasets import Dataset
 from isac.models import (
     MonostaticCnnCheckpointMeta,
@@ -66,14 +71,6 @@ from isac.utils.data_collection.channel_export import (
     scene_slug_from_rt_simulator,
 )
 from isac.utils.data_collection.episode import los_truth_from_kinematics
-
-# ``run_data_collection.py`` 默认 HDF5 产物
-DEFAULT_DATASET_H5 = (
-    PROJECT_ROOT / "out" / "dataset_collection" / "empty_room_mc_sionna_dataset.h5"
-)
-# ``run_train_monostatic_cnn.py`` val_loss 最优 checkpoint
-DEFAULT_MODEL_PATH = PROJECT_ROOT / "out" / "monostatic_cnn" / "model.pth"
-
 
 # ---------------------------- 辅助函数 ----------------------------
 def _default_config_for_h5(h5_path: Path) -> Path:
@@ -242,7 +239,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--model_path",
         type=Path,
-        default=DEFAULT_MODEL_PATH,
+        default=DEFAULT_MONOSTATIC_CNN_MODEL,
         help="CNN checkpoint 路径（--estimator model 时使用）",
     )
     parser.add_argument(
@@ -331,7 +328,7 @@ def main() -> None:
     else:
         print(f"估计器: MUSIC | metric_mode={args.metric_mode}")
 
-    script_out_dir = PROJECT_ROOT / "out" / "data_loading"
+    script_out_dir = OUT_DIR / "data_loading"
     script_out_dir.mkdir(parents=True, exist_ok=True)
 
     rt_simulator.render_to_file(

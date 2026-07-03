@@ -14,8 +14,8 @@
 1. 解析路径/CLI，构建 ``MonostaticSensingTorchDataset``（在线 h_dd 特征）
 2. ``random_split`` 划分 train/val，``DataLoader``（``num_workers=0``）
 3. ``MonostaticDelayDopplerCNN`` + ``MonostaticSensingLoss`` + Adam 训练
-4. 每 ``--save_every`` epoch 保存 ``checkpoints/epoch_XXX.pth`` 并更新 ``training_curve.png``
-5. ``val_loss`` 最小时保存 ``model.pth``；训练结束保存 ``checkpoint_final.pth`` 与最终曲线
+4. 每 ``--save_every`` epoch 保存 ``checkpoints/checkpoint_XXX.pth`` 并更新 ``training_curve.png``
+5. ``val_loss`` 最小时保存 ``best_model.pth``；训练结束保存 ``checkpoint_final.pth`` 与最终曲线
 """
 
 from __future__ import annotations
@@ -29,17 +29,12 @@ import torch
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-from isac import PROJECT_ROOT
+from isac import DEFAULT_DATASET_H5, DEFAULT_MONOSTATIC_CNN_MODEL
 from isac.models import (
     MonostaticDelayDopplerCNN,
     MonostaticSensingLoss,
     MonostaticSensingTorchDataset,
 )
-
-DEFAULT_DATASET_H5 = (
-    PROJECT_ROOT / "out" / "dataset_collection" / "empty_room_mc_sionna_dataset.h5"
-)
-"""默认 HDF5 数据集路径（``run_data_collection.py`` 采集产物）。"""
 
 
 def argument_parser() -> argparse.Namespace:
@@ -71,7 +66,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=PROJECT_ROOT / "out" / "monostatic_cnn" / "model.pth",
+        default=DEFAULT_MONOSTATIC_CNN_MODEL,
         help="val_loss 最优模型保存路径",
     )
     parser.add_argument(
@@ -343,7 +338,7 @@ def main() -> None:
         is_periodic = epoch % args.save_every == 0
         is_final = epoch == args.epochs
         if is_periodic:
-            torch.save(payload, ckpt_dir / f"epoch_{epoch:03d}.pth")
+            torch.save(payload, ckpt_dir / f"checkpoint_{epoch:03d}.pth")
         if is_periodic or is_final:
             _plot_training_history(history, curve_path)
 

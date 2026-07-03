@@ -11,7 +11,6 @@ build-backend = "setuptools.build_meta"
 name = "isac"
 version = "0.1.0"
 description = "通感一体化（ISAC）仿真平台：核心包 isac（OFDM 通信与感知链路）及部署辅助包 isac_imp"
-license = { file = "LICENSE" }
 requires-python = ">=3.11"
 # pip install -e . 时的基础运行时依赖；Sionna / CUDA 等完整环境见 requirements.txt
 dependencies = [

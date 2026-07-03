@@ -4,12 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from isac import PROJECT_ROOT
+from isac import DEFAULT_DATASET_H5
 from isac.datasets import Dataset
 
-_H5_PATH = (
-    PROJECT_ROOT / "out" / "dataset_collection" / "empty_room_mc_sionna_dataset.h5"
-)
+_H5_PATH = DEFAULT_DATASET_H5
 
 
 @pytest.fixture

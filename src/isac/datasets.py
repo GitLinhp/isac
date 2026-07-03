@@ -20,7 +20,7 @@ HDF5 文件布局
   （``seed``, ``roi``, ``position_sampling_mode``, ``speed_range``,
   ``speed_sampling_mode``）
 
-采集落盘产物（``out/dataset_collection/``）:
+采集落盘产物（``data/``）:
 
 - TOML：采集配置副本（保留原文件名）
 - ``{scene_slug}_mc_dataset_episodes.csv``
@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Any, cast
 import h5py
 import numpy as np
 
-from isac import PROJECT_ROOT
+from isac import DEFAULT_COLLECTION_OUT_DIR
 from isac.utils.config_loader import resolve_config_path
 
 if TYPE_CHECKING:
@@ -51,9 +51,6 @@ DatasetLabel = list[tuple[float, float, float]]
 DatasetSample = tuple[np.ndarray, DatasetLabel]
 
 # --- 路径与键名常量 ---
-
-DEFAULT_COLLECTION_OUT_DIR = PROJECT_ROOT / "out" / "dataset_collection"
-"""``run_data_collection.py`` 默认输出目录。"""
 
 _EPISODE_CSV_SUFFIX = "_mc_dataset_episodes.csv"
 _H5_SUFFIX = "_mc_sionna_dataset.h5"

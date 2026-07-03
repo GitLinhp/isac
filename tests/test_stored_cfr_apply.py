@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from isac import PROJECT_ROOT
+from isac import DEFAULT_DATASET_H5, PROJECT_ROOT
 from isac.datasets import Dataset
 from isac.system import System
 from isac.utils import load_config, set_random_seed
@@ -14,9 +14,7 @@ from isac.utils.data_collection.channel_export import (
     cfr_numpy_to_h_freq,
 )
 
-_H5_PATH = (
-    PROJECT_ROOT / "out" / "dataset_collection" / "empty_room_mc_sionna_dataset.h5"
-)
+_H5_PATH = DEFAULT_DATASET_H5
 _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
 
 
