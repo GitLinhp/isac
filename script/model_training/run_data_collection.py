@@ -13,6 +13,7 @@ import argparse
 import warnings
 
 import numpy as np
+import torch
 from tabulate import tabulate
 from tqdm import tqdm
 
@@ -20,22 +21,22 @@ from isac.datasets import (
     CollectionMetadata,
     DEFAULT_COLLECTION_OUT_DIR,
     EpisodeBuffers,
-    Hdf5CollectionWriter,
+    RTDataset,
     SensingMetadata,
     collection_h5_path,
     save_collection_artifacts,
 )
 from isac.system import System
+from isac.channel.rt.rt_channel import RTChannel
 from isac.utils import load_config, set_random_seed
 from isac.utils.data_collection.channel_export import (
+    los_truth_from_kinematics,
     paths_intersect_target,
     scene_slug_from_rt_simulator,
 )
 from isac.utils.data_collection.episode_filter import accept_episode_kinematics
-from isac.utils.data_collection.episode import (
-    process_episode,
-)
 from isac.utils.data_collection.roi_sampling import RoiKinematicsSampler
+from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 warnings.filterwarnings(
     "ignore",
@@ -118,18 +119,17 @@ def argument_parser() -> argparse.Namespace:
         type=str,
         default="lzf",
         choices=["lzf", "gzip", "none"],
-        help="HDF5 CFR 压缩算法（流式写入，默认 lzf）",
+        help="HDF5 h_dd 压缩算法（流式写入，默认 lzf）",
     )
 
     return parser.parse_args()
 
 
-def _print_sampling_config(args: argparse.Namespace, *, pool_size: int) -> None:
+def _print_sampling_config(args: argparse.Namespace) -> None:
     """以 tabulate 打印采样配置参数。"""
     x_lo, x_hi, y_lo, y_hi = args.roi
     config_rows = [
         ["num_samples", args.num_samples],
-        ["sampler_pool_size", pool_size],
         ["sampler_pool_factor", args.sampler_pool_factor],
         ["roi", f"x=[{x_lo}, {x_hi}], y=[{y_lo}, {y_hi}], z=0"],
         ["position_sampling_mode", args.position_sampling_mode],
@@ -155,7 +155,7 @@ def main() -> None:
         speed_sampling_mode=args.speed_sampling_mode,
         num_samples=pool_size,
     )
-    _print_sampling_config(args, pool_size=pool_size)
+    _print_sampling_config(args)
 
     # 加载配置，构建 System
     config = load_config(args.config_file)
@@ -163,25 +163,26 @@ def main() -> None:
         config=config,
         device=args.device,
     )
-    system.components.sensing_performance()
+    system.components.sensing_performance
     sensing_meta = SensingMetadata.from_system(system)
+
     # 获取 RT 模拟器与目标
     rt_simulator = system.components.rt_simulator
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = scene_slug_from_rt_simulator(rt_simulator)
     print(f"目标: {target_name}, 场景: {scene_slug}")
 
-    # 初始化缓冲区与流式 HDF5 写入器
+    # 初始化 CSV 缓冲与流式 HDF5 写入
     buffers = EpisodeBuffers()
     bs_pos = np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64)
     h5_path = collection_h5_path(scene_slug, DEFAULT_COLLECTION_OUT_DIR)
     collection_meta = CollectionMetadata.from_collection_args(args)
 
-    with Hdf5CollectionWriter(
+    with RTDataset.open_for_collection(
         h5_path,
         bs_pos,
         compression=args.h5_compression,
-    ) as h5_writer:
+    ) as dataset:
         # 采集 episode
         accepted = 0
         attempts = 0
@@ -194,6 +195,7 @@ def main() -> None:
                 )
             pos, vel, ori = sampler.pop()
             attempts += 1
+
             # 过滤不符合条件的 episode
             if not accept_episode_kinematics(
                 pos=pos,
@@ -213,24 +215,42 @@ def main() -> None:
             if not paths_intersect_target(rt_simulator, target):
                 continue
 
-            # 采集 episode
-            process_episode(
-                system=system,
-                rt_simulator=rt_simulator,
-                episode_idx=accepted,
-                pos=pos,
-                vel=vel,
-                buffers=buffers,
-                h5_writer=h5_writer,
+            true_range, true_velocity = los_truth_from_kinematics(
+                pos, vel, rt_simulator, system.device
             )
+            buffers.csv_rows.append(
+                {
+                    "sample_idx": accepted,
+                    "position": csv_vec3(pos),
+                    "velocity": csv_vec3(vel),
+                    "true_range_m": csv_float2_scalar(true_range),
+                    "true_radial_velocity_mps": csv_float2_scalar(true_velocity),
+                }
+            )
+
+            # 信号传输
+            _, x_rg, _ = system.transmit()
+            y_rg = system.components.channel(x_rg, domain="frequency")
+            h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+
+            # 写入数据集
+            dataset.append_episode(
+                h_dd.detach().cpu().numpy().astype(np.complex64),
+                pos,
+                vel,
+            )
+
+            # 更新计数器
             accepted += 1
             pbar.update(1)
         pbar.close()
 
+        # 计算接受率
         acceptance_rate = accepted / attempts if attempts else 0.0
         print(f"接受率: {acceptance_rate:.1%} ({accepted}/{attempts})")
 
-        h5_writer.finalize(
+        # 写出数据集
+        dataset.finalize(
             collection_meta=collection_meta,
             scene_slug=scene_slug,
             sensing_meta=sensing_meta,
@@ -241,10 +261,7 @@ def main() -> None:
         scene_slug=scene_slug,
         config_file=args.config_file,
         buffers=buffers,
-        bs_pos=bs_pos,
-        args=args,
         rt_simulator=rt_simulator,
-        sensing_meta=sensing_meta,
         out_dir=DEFAULT_COLLECTION_OUT_DIR,
     )
 
