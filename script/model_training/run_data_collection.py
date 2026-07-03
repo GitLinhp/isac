@@ -49,7 +49,6 @@ def argument_parser() -> argparse.Namespace:
     """构造数据集采集脚本的全部 CLI 参数（蒙特卡洛、导出格式）。"""
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 数据集采集主流程")
 
-    parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
         "--config_file",
         type=str,
@@ -70,6 +69,8 @@ def argument_parser() -> argparse.Namespace:
         default=42,
         help="随机种子（蒙特卡洛位置/速度采样）",
     )
+
+    # 采集参数
     parser.add_argument(
         "--num_samples",
         type=int,
@@ -81,7 +82,7 @@ def argument_parser() -> argparse.Namespace:
         nargs=4,
         type=float,
         metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
-        default=[-2.8, 2.8, -4.8, 4.8],
+        default=[-2.5, 2.5, -4.5, 4.5],
         help="平面 ROI 四元组",
     )
     parser.add_argument(
@@ -160,7 +161,6 @@ def main() -> None:
     config = load_config(args.config_file)
     system = System(
         config=config,
-        batch_size=args.batch_size,
         device=args.device,
     )
     system.components.sensing_performance()
@@ -246,7 +246,6 @@ def main() -> None:
         rt_simulator=rt_simulator,
         sensing_meta=sensing_meta,
         out_dir=DEFAULT_COLLECTION_OUT_DIR,
-        h5_already_written=True,
     )
 
 

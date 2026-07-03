@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-import sionna
+from sionna.phy import config as sn_config
 import torch
 
 from .data_structures import SystemComponents, SystemParams
@@ -52,7 +52,7 @@ class System:
     def __init__(
         self,
         config: dict,
-        batch_size: int = 1,
+        *,
         device: str = "cuda:0",
     ) -> None:
         """初始化系统。
@@ -61,16 +61,13 @@ class System:
         -------
         - config : dict
             已解析的配置字典（通常由 ``load_config`` 在外部加载）
-        - batch_size : int
-            批处理大小，供 ``transmit()`` 使用
         - device : str
             Sionna / Torch 计算设备
         """
-        self.batch_size = batch_size
         self.device = device
         self.config: dict = config
 
-        sionna.phy.config.device = self.device
+        sn_config.device = self.device
         self.params = SystemParams.from_dict(self.config)
         self.components = SystemComponents.build_from_params(
             self.params, device=self.device
@@ -95,24 +92,23 @@ class System:
             时域 OFDM 波形
         """
         src_type = self.params.source.type
-        batch_size = self.batch_size
         comps = self.components
         rg = comps.rg
 
         if src_type == "binary":
             b = comps.binary_source(
                 [
-                    batch_size,
                     1,
                     1,
-                    rg.num_data_symbols * self.params.source.num_bits_per_symbol,
+                    1,
+                    rg.num_data_symbols * int(self.params.source.num_bits_per_symbol),
                 ]
             )
             x = comps.mapper(b)
 
         elif src_type == "zc":
             b = None
-            x = comps.zc_source([batch_size, 1, 1, rg.num_data_symbols])
+            x = comps.zc_source([1, 1, 1, rg.num_data_symbols])
 
         else:
             raise ValueError(f"unsupported source.type: {src_type!r}")
@@ -240,9 +236,7 @@ class System:
                 "visualize_sensing_spectrum 要求已构建 delay_doppler_spectrum 组件"
             )
         if not dd.has_roi:
-            raise ValueError(
-                "visualize_sensing_spectrum 要求配置 [dd_spectrum_roi]"
-            )
+            raise ValueError("visualize_sensing_spectrum 要求配置 [dd_spectrum_roi]")
         dd.h_delay_doppler = h_delay_doppler
         dd.visualize(
             file_name=file,

@@ -1,6 +1,7 @@
 """RTDataset 序列索引协议测试。"""
 
 import pytest
+import torch
 
 from isac import DEFAULT_DATASET_H5
 from isac.datasets import RTDataset
@@ -28,8 +29,8 @@ def test_getitem_returns_training_dict(loaded_dataset: RTDataset) -> None:
     sample = loaded_dataset[0]
     assert set(sample.keys()) == {"features", "range_m", "velocity_mps", "slot"}
     assert sample["features"].ndim == 3
-    assert sample["range_m"].dtype.name == "float32"
-    assert sample["velocity_mps"].dtype.name == "float32"
+    assert sample["range_m"].dtype == torch.float32
+    assert sample["velocity_mps"].dtype == torch.float32
 
 
 def test_getitem_label_matches_kinematics(loaded_dataset: RTDataset) -> None:
@@ -49,7 +50,7 @@ def test_getitem_label_matches_kinematics(loaded_dataset: RTDataset) -> None:
 def test_spectrum_tensor_shape(loaded_dataset: RTDataset) -> None:
     t = loaded_dataset.spectrum_tensor(0)
     assert t.shape == loaded_dataset.h_dd[0].shape
-    assert t.dtype == loaded_dataset.h_dd[0].dtype
+    assert t.dtype == torch.complex64
 
 
 def test_getitem_out_of_range_raises(loaded_dataset: RTDataset) -> None:

@@ -135,7 +135,6 @@ class blk(gr.basic_block):
             self._config_file,
             device=self._device,
             seed=self._seed,
-            batch_size=1,
             ofdm_overrides=self._ofdm_overrides(),
         )
         _, self._x_rg, x_time = self._system.transmit()

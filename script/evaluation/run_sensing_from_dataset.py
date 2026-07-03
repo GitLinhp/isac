@@ -177,7 +177,6 @@ def argument_parser() -> argparse.Namespace:
         default=None,
         help="TOML 配置；CNN 模式默认优先 checkpoint 内训练配置",
     )
-    parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
         "--device",
         "-d",
@@ -267,7 +266,6 @@ def main() -> None:
     config = load_config(config_path)
     system = System(
         config=config,
-        batch_size=args.batch_size,
         device=args.device,
     )
 

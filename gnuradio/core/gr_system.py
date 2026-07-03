@@ -60,7 +60,6 @@ class GrSystemContext:
         raw = load_config(effective.config_path)
         system = System(
             config=raw,
-            batch_size=1,
             device=effective.device,
         )
         system.params = effective.system_params

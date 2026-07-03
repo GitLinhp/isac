@@ -182,7 +182,7 @@ def test_rt_simulator_init_with_default_target_scaling() -> None:
     from isac.utils import load_config
 
     config = load_config("simulation/sensing/sensing_monostatic.toml")
-    system = System(config=config, batch_size=1, device="cpu")
+    system = System(config=config, device="cpu")
     target = system.components.rt_simulator.rt_targets["car"]
     assert target.scaling is not None
 
@@ -217,7 +217,7 @@ def test_bistatic_config_rx_tx_states() -> None:
     from isac.utils import load_config
 
     config = load_config("simulation/sensing/sensing_bistatic.toml")
-    system = System(config=config, batch_size=1, device="cpu")
+    system = System(config=config, device="cpu")
     rt = system.components.rt_simulator
 
     assert "bs1_rx" in rt.rx_states

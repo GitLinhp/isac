@@ -8,7 +8,6 @@ from isac.utils import load_config, set_random_seed
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 感知基线")
 
-    parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
         "--config_file",
         type=str,
@@ -46,7 +45,6 @@ def main() -> None:
     config = load_config(args.config_file)
     system = System(
         config=config,
-        batch_size=args.batch_size,
         device=args.device,
     )
 

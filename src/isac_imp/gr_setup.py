@@ -134,7 +134,6 @@ def _build_system(
     *,
     device: str,
     seed: int,
-    batch_size: int,
     ofdm_overrides: _OfdmOverrides,
 ) -> System:
     """加载配置并构建 ``System``。
@@ -161,7 +160,6 @@ def _build_system(
 
     system = System(
         config=raw,
-        batch_size=int(batch_size),
         device=str(device),
     )
     return system
@@ -172,7 +170,6 @@ def create_system(
     *,
     device: str = "cpu",
     seed: int = 42,
-    batch_size: int = 1,
     ofdm_overrides: _OfdmOverrides = None,
     use_cache: bool = True,
 ) -> System:
@@ -185,7 +182,6 @@ def create_system(
         - config_file: TOML 相对路径（经 ``load_config`` 解析）
         - device: Sionna/Torch 计算设备
         - seed: 随机种子
-        - batch_size: 批大小，传入 ``System.batch_size``
         - ofdm_overrides: GRC OFDM 四参数覆盖；None 表示不覆盖 TOML [ofdm]
         - use_cache: True 时命中 registry 直接返回已有实例
 
@@ -203,7 +199,6 @@ def create_system(
         config_file,
         device=device,
         seed=seed,
-        batch_size=batch_size,
         ofdm_overrides=ofdm_overrides,
     )
 

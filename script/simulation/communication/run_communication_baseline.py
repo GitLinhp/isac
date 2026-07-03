@@ -9,7 +9,6 @@ from sionna.phy.utils import compute_ber
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 通信基线")
 
-    parser.add_argument("--batch_size", type=int, default=1, help="批处理大小")
     parser.add_argument(
         "--config_file",
         type=str,
@@ -40,7 +39,6 @@ def main() -> None:
     config = load_config(args.config_file)
     system = System(  # 创建系统实例
         config=config,
-        batch_size=args.batch_size,
         device=args.device,
     )
 

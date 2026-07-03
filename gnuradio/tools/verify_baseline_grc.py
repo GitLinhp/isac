@@ -46,7 +46,6 @@ def _run_baseline_script() -> tuple[np.ndarray, tuple[int, int]]:
     config = load_config(CONFIG)
     system = System(
         config=config,
-        batch_size=1,
         device=DEVICE,
     )
     system.components.rt_simulator.get("reflector").velocity = [0, 0, -20]

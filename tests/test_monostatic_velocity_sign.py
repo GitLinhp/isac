@@ -101,7 +101,6 @@ def test_static_target_sensing_velocity_stays_positive():
     config = load_config("simulation/sensing/static_target_simulation.toml")
     system = System(
         config=config,
-        batch_size=1,
         device="cpu",
     )
     comps = system.components
