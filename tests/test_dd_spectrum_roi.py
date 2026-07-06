@@ -4,7 +4,7 @@ import pytest
 import torch
 from types import SimpleNamespace
 
-from isac.sensing.delay_doppler_spectrum import DelayDopplerSpectrum
+from isac.sensing.spectrum import DelayDopplerSpectrum
 
 
 def _sp() -> SimpleNamespace:

@@ -69,9 +69,9 @@ def stack_state_field(
     idx = _STATE_FIELD_IDX[field]
     return torch.stack(
         [
-            torch.as_tensor(
-                states[n][idx], dtype=torch.float64, device=device
-            ).reshape(3)
+            torch.as_tensor(states[n][idx], dtype=torch.float64, device=device).reshape(
+                3
+            )
             for n in names
         ],
         dim=0,

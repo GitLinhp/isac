@@ -17,9 +17,9 @@ import torch
 from tabulate import tabulate
 from tqdm import tqdm
 
-from isac.datasets import (
+from isac import DEFAULT_COLLECTION_OUT_DIR
+from isac.collection import (
     CollectionMetadata,
-    DEFAULT_COLLECTION_OUT_DIR,
     EpisodeBuffers,
     RTDataset,
     SensingMetadata,
@@ -28,13 +28,13 @@ from isac.datasets import (
 )
 from isac.system import System
 from isac.utils import load_config, set_random_seed
-from isac.utils.data_collection.channel_export import (
+from isac.collection.channel_export import (
     los_truth_from_kinematics,
     paths_intersect_target,
     scene_slug_from_rt_simulator,
 )
-from isac.utils.data_collection.episode_filter import accept_episode_kinematics
-from isac.utils.data_collection.roi_sampling import RoiKinematicsSampler
+from isac.collection.episode_filter import accept_episode_kinematics
+from isac.collection.roi_sampling import RoiKinematicsSampler
 from isac.data_structures import CollectionSamplingParams
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 

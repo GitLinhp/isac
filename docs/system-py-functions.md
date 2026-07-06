@@ -37,11 +37,11 @@
 
 | 方法                  | 功能概要                                                                                                                          |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `save_dataset(...)` | 将 CFR、`cir_a`、`cir_tau`、位置/速度、基站位置及 OFDM 元数据封装为 **`Dataset`**（``isac.datasets``）并写入 HDF5（必含 CFR+CIR）。 |
+| `save_dataset(...)` | 将 CFR、`cir_a`、`cir_tau`、位置/速度、基站位置及 OFDM 元数据封装为 **`Dataset`**（``isac.collection``）并写入 HDF5（必含 CFR+CIR）。 |
 
 ### 蒙特卡洛数据集采集（[`run_data_collection.py`](../script/model_training/run_data_collection.py)）
 
-轨迹推进相关 API 已移除；批量 episode 由 [`RoiKinematicsSampler`](../src/isac/utils/data_collection/roi_sampling.py) 预采样，经 `accept_episode_kinematics` / `paths_intersect_target` 过滤后逐条仿真，由 [`RTDataset`](../src/isac/datasets.py) 流式写入 HDF5。详见 [run_data_collection.md](run_data_collection.md)。
+轨迹推进相关 API 已移除；批量 episode 由 [`RoiKinematicsSampler`](../src/isac/collection/roi_sampling.py) 预采样，经 `accept_episode_kinematics` / `paths_intersect_target` 过滤后逐条仿真，由 [`RTDataset`](../src/isac/datasets.py) 流式写入 HDF5。详见 [run_data_collection.md](run_data_collection.md)。
 
 ### 蒙特卡洛：仅数据 vs 采样+感知
 
@@ -54,7 +54,7 @@
 
 | 方法                                       | 功能概要                                                                                                                                                                 |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `test_dataset_loading(dataset_filename)` | 从默认或给定路径 **`Dataset.load`**（``isac.datasets``），打印 CFR/CIR/位置/速度等 shape 与元数据（用于快速校验）。                                                             |
+| `test_dataset_loading(dataset_filename)` | 从默认或给定路径 **`Dataset.load`**（``isac.collection``），打印 CFR/CIR/位置/速度等 shape 与元数据（用于快速校验）。                                                             |
 | `generate_monte_carlo_points(...)`       | 在三维 ROI 内**uniform / gaussian** 采样，经 **`scene.is_position_valid`** 拒绝采样剔除障碍物与安全距内无效点，返回 `(num_samples, 3)`；采样不足则抛错。 |
 
 ---

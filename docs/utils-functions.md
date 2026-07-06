@@ -61,8 +61,8 @@
 | ---- | ------------ | ---- |
 | [`src/isac/system.py`](src/isac/system.py) | `load_config`、`cartesian_direction_to_yaw_pitch_roll`、`convert`（经 `csv_float2_scalar`） | 加载 TOML；按笛卡尔方向设目标姿态；CSV 标量格式化。 |
 | [`src/isac/channel/rt_channel.py`](src/isac/channel/rt_channel.py) | `paths_cfr_per_tx_torch` | 按发射机切片 RT CFR，供多 TX 频域信道接口。 |
-| [`src/isac/sensing/delay_doppler_spectrum.py`](src/isac/sensing/delay_doppler_spectrum.py) | `convert`、`linear_to_db`、`apply_window` | CFR 转 torch；时延/多普勒维加窗；谱图 dB 显示。 |
-| [`src/isac/sensing/music_estimator.py`](src/isac/sensing/music_estimator.py) | `linear_to_db` | 伪谱功率转 dB 日志。 |
+| [`src/isac/sensing/spectrum/delay_doppler_spectrum.py`](src/isac/sensing/spectrum/delay_doppler_spectrum.py) | `convert`、`linear_to_db`、`apply_window` | CFR 转 torch；时延/多普勒维加窗；谱图 dB 显示。 |
+| [`src/isac/sensing/detection/music_estimator.py`](src/isac/sensing/detection/music_estimator.py) | `linear_to_db` | 伪谱功率转 dB 日志。 |
 | [`src/isac/sensing/processing.py`](src/isac/sensing/processing.py) | `convert` | DOA/MUSIC 等处理中 numpy ↔ torch 与标量提取。 |
 | [`src/isac/learning/torch_dataset.py`](src/isac/learning/torch_dataset.py) | `load_config` | 数据集类按配置名加载 TOML。 |
 | [`src/isac/utils/metrics.py`](src/isac/utils/metrics.py) | `convert`（内部） | 匈牙利匹配前后统一张量类型与打印格式。 |

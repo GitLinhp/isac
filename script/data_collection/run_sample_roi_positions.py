@@ -24,7 +24,7 @@ import numpy as np
 from tabulate import tabulate
 
 from isac import PROJECT_ROOT
-from isac.utils.data_collection.roi_sampling import RoiKinematicsSampler
+from isac.collection.roi_sampling import RoiKinematicsSampler
 from isac.utils import csv_vec3, set_random_seed
 
 CSV_FIELDNAMES = ["idx", "position", "velocity", "orientation"]

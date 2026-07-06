@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from isac import DEFAULT_DATASET_H5
-from isac.datasets import RTDataset
+from isac.collection import RTDataset
 
 _H5_PATH = DEFAULT_DATASET_H5
 

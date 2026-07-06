@@ -249,9 +249,9 @@ python script/run_static_target_simulation.py --range_m 1110 --velocity_mps 88 -
 | 仿真脚本 | [`script/run_static_target_simulation.py`](script/run_static_target_simulation.py) |
 | 点目标信道 | [`src/isac/channel/st_channel.py`](src/isac/channel/st_channel.py) |
 | 系统编排 | [`src/isac/system.py`](src/isac/system.py) |
-| 时延–多普勒谱 | [`src/isac/sensing/delay_doppler_spectrum.py`](src/isac/sensing/delay_doppler_spectrum.py) |
-| MUSIC | [`src/isac/sensing/music_estimator.py`](src/isac/sensing/music_estimator.py) |
-| 速度符号约定 | [`src/isac/sensing/utils.py`](src/isac/sensing/utils.py)（`doppler_to_velocity`） |
+| 时延–多普勒谱 | [`src/isac/sensing/spectrum/delay_doppler_spectrum.py`](src/isac/sensing/spectrum/delay_doppler_spectrum.py) |
+| MUSIC | [`src/isac/sensing/detection/music_estimator.py`](src/isac/sensing/detection/music_estimator.py) |
+| 速度符号约定 | [`src/isac/sensing/geometry.py`](src/isac/sensing/geometry.py)（`doppler_to_velocity`） |
 | 回归测试 | [`tests/test_st_channel.py`](tests/test_st_channel.py) |
 | GNU Radio 对照 | [`gnuradio/verify_dd_axis.py`](gnuradio/verify_dd_axis.py) |
 

@@ -33,7 +33,25 @@ class AWGN(Block):
         x: torch.Tensor,
         snr: Union[float, torch.Tensor],
     ) -> torch.Tensor:
-        """对 ``x`` 叠加 AWGN；``snr`` 为接收端 SNR (dB)。"""
+        """对 ``x`` 叠加 AWGN；``snr`` 为接收端 SNR (dB)。
+
+        参数:
+        ----------
+        - x : torch.Tensor
+            - 输入信号
+        - snr : Union[float, torch.Tensor]
+            - 接收端 SNR (dB)
+
+        返回:
+        -------
+        - torch.Tensor
+            - 叠加噪声后的信号
+
+        异常:
+        -------
+        - ValueError
+            - 如果接收端信号功率为负，无法按 snr_db 定标噪声。
+        """
         sig_p = torch.mean(torch.abs(x) ** 2)
         if sig_p <= 0:
             raise ValueError("接收端信号功率须为正，无法按 snr_db 定标噪声。")

@@ -53,17 +53,17 @@ SystemParams
 | `source` (binary) | `binary_source`, `mapper`, `demapper` | Sionna `BinarySource` / `Mapper` / `Demapper` |
 | `source` (zc) | `zc_source` | [`ZCSource`](../src/isac/zc_source.py) |
 | `ofdm` | `rg`, `rg_mapper`, `rg_demapper`, `modulator`, `demodulator` | Sionna OFDM |
-| `[ofdm]`（`rg` 就绪后） | `ls_channel_estimator` | [`LSChannelEstimator`](../src/isac/sensing/ls_channel_estimator.py) |
+| `[ofdm]`（`rg` 就绪后） | `ls_channel_estimator` | [`LSChannelEstimator`](../src/isac/sensing/spectrum/ls_channel_estimator.py) |
 | `stream_management` | `rg_demapper` | Sionna `ResourceGridDemapper` |
 | `rt_simulator` | `rt_simulator` | [`RTSimulator`](../src/isac/channel/rt/rt_simulator.py) |
 | `rcs_scene` | `rcs_scene` | [`RCSScene`](../src/isac/channel/rcs/rcs_scene.py) |
 | `channel` + `rt_simulator` | `channel` | [`RTChannel`](../src/isac/channel/rt/rt_channel.py) |
 | `channel` + `rcs_scene` | `channel` | [`RCSChannel`](../src/isac/channel/rcs/rcs_channel.py) |
-| `mti` | `moving_target_indication` | [`MovingTargetIndication`](../src/isac/sensing/clutter_suppression.py) |
-| `mtd` | `moving_target_detection` | [`MovingTargetDetection`](../src/isac/sensing/clutter_suppression.py) |
-| `windows` | `delay_doppler_spectrum` | [`DelayDopplerSpectrum`](../src/isac/sensing/delay_doppler_spectrum.py) |
-| `cfar` | `cfar_detector` | [`CFARDetector`](../src/isac/sensing/cfar.py) |
-| `music` | `music_estimator` | [`MUSICEstimator`](../src/isac/sensing/music_estimator.py) |
+| `mti` | `moving_target_indication` | [`MovingTargetIndication`](../src/isac/sensing/clutter/moving_target_indication.py) |
+| `mtd` | `moving_target_detection` | [`MovingTargetDetection`](../src/isac/sensing/clutter/moving_target_detection.py) |
+| `windows` | `delay_doppler_spectrum` | [`DelayDopplerSpectrum`](../src/isac/sensing/spectrum/delay_doppler_spectrum.py) |
+| `cfar` | `cfar_detector` | [`CFARDetector`](../src/isac/sensing/detection/cfar.py) |
+| `music` | `music_estimator` | [`MUSICEstimator`](../src/isac/sensing/detection/music_estimator.py) |
 
 ---
 

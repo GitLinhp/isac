@@ -4,7 +4,7 @@ import pytest
 import torch
 from sionna.phy.ofdm import ResourceGrid
 
-from isac.sensing.ls_channel_estimator import LSChannelEstimator
+from isac.sensing.spectrum import LSChannelEstimator
 
 
 def _make_estimator(s: int = 4, f: int = 8) -> LSChannelEstimator:

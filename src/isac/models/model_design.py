@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .dd_spectrum import bins_to_physical, physical_to_bins
+from .utils import bins_to_physical, physical_to_bins
 
 _SIDECAR_CHECKPOINT_NAMES = ("checkpoint_final.pt", "checkpoint_final.pth")
 

@@ -1,6 +1,6 @@
 """深度学习感知模型。"""
 
-from .dd_spectrum import (
+from .utils import (
     bins_to_physical,
     dd_spectrum_to_features,
     monostatic_labels_from_kinematics,

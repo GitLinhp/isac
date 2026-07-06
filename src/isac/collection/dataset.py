@@ -47,7 +47,7 @@ import torch
 from torch.utils.data import Dataset
 
 from isac import DEFAULT_COLLECTION_OUT_DIR
-from isac.models.dd_spectrum import (
+from isac.models.utils import (
     dd_spectrum_to_features,
     monostatic_labels_from_kinematics,
 )

@@ -12,7 +12,7 @@ from bootstrap import setup_gnuradio_paths_from
 GNURADIO_ROOT, REPO_ROOT = setup_gnuradio_paths_from(__file__)
 
 from isac.data_structures import SystemParams
-from isac.sensing.sensing_performance import SensingPerformance
+from isac.sensing.spectrum import SensingPerformance
 from isac.utils import load_config, resolve_config_path
 
 

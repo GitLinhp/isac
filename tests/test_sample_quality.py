@@ -12,7 +12,7 @@ from isac.sensing.sample_quality import (
     check_los_path,
     evaluate_sample_quality,
 )
-from isac.sensing.sensing_performance import SensingPerformance
+from isac.sensing.spectrum import SensingPerformance
 
 
 @dataclass

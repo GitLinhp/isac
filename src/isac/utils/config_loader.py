@@ -9,10 +9,10 @@ CONFIG_DIR = PROJECT_ROOT / "config"
 def resolve_config_path(config_file: str | Path) -> Path:
     """解析 TOML 配置路径。
 
-  查找顺序：
-  1. 绝对路径且存在
-  2. ``config/`` 下相对路径（如 ``simulation/sensing/sensing_monostatic.toml``）
-  3. 仓库根相对路径（如 ``config/simulation/sensing/sensing_monostatic.toml``）
+    查找顺序：
+    1. 绝对路径且存在
+    2. ``config/`` 下相对路径（如 ``simulation/sensing/sensing_monostatic.toml``）
+    3. 仓库根相对路径（如 ``config/simulation/sensing/sensing_monostatic.toml``）
     """
     path = Path(config_file)
     candidates: list[Path] = []

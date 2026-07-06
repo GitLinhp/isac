@@ -33,9 +33,7 @@ class Channel(ABC):
         elif domain == "time":
             inputs = x_time
         else:
-            raise ValueError(
-                f"不支持的域: {domain}。支持的值: 'time', 'frequency'"
-            )
+            raise ValueError(f"不支持的域: {domain}。支持的值: 'time', 'frequency'")
         y_clean = self._apply_channel(inputs, domain)
         if snr_db is None:
             return y_clean

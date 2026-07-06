@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 from isac import DEFAULT_DATASET_H5, DEFAULT_MONOSTATIC_CNN_MODEL
-from isac.datasets import RTDataset
+from isac.collection import RTDataset
 from isac.models import (
     MonostaticDelayDopplerCNN,
     MonostaticSensingLoss,

@@ -37,7 +37,7 @@ from isac import (
     OUT_DIR,
     PROJECT_ROOT,
 )
-from isac.datasets import RTDataset
+from isac.collection import RTDataset
 from isac.models import (
     MonostaticCnnCheckpointMeta,
     MonostaticDelayDopplerCNN,
@@ -48,7 +48,7 @@ from isac.models import (
 )
 from isac.system import System
 from isac.utils import load_config, set_random_seed
-from isac.utils.data_collection.channel_export import (
+from isac.collection.channel_export import (
     los_truth_from_kinematics,
     scene_slug_from_rt_simulator,
 )

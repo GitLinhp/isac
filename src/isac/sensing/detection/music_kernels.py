@@ -1,6 +1,6 @@
 """2D-MUSIC 底层算子：子阵几何、协方差分解、候选检峰与批量伪谱评分。
 
-供 :class:`~isac.sensing.music_estimator.MUSICEstimator` 编排调用；不对外导出到
+供 :class:`~isac.sensing.detection.music_estimator.MUSICEstimator` 编排调用；不对外导出到
 ``isac.sensing.__init__``。
 """
 

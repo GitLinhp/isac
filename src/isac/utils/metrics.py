@@ -5,6 +5,20 @@ from scipy.optimize import linear_sum_assignment
 from .type_converter import convert
 
 
+def compute_rmse(estimate: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """计算均方根误差。"""
+    est = convert(estimate, "torch", dtype=torch.float64, device=estimate.device)
+    tgt = convert(target, "torch", dtype=torch.float64, device=target.device)
+    return torch.sqrt(torch.mean((est - tgt) ** 2))
+
+
+def compute_mse(estimate: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """计算均方误差。"""
+    est = convert(estimate, "torch", dtype=torch.float64, device=estimate.device)
+    tgt = convert(target, "torch", dtype=torch.float64, device=target.device)
+    return torch.mean((est - tgt) ** 2)
+
+
 def match_peaks_and_compute_radial_rmse(
     *,
     est_ranges: torch.Tensor,
@@ -89,17 +103,3 @@ def match_peaks_and_compute_radial_rmse(
             f"RMSE: {convert(rmse_velocity, 'float'):.2f} m/s"
         )
     return rmse_range, rmse_velocity, est_range_m, est_velocity_mps, music_peak_db
-
-
-def compute_rmse(estimate: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """计算均方根误差。"""
-    est = convert(estimate, "torch", dtype=torch.float64, device=estimate.device)
-    tgt = convert(target, "torch", dtype=torch.float64, device=target.device)
-    return torch.sqrt(torch.mean((est - tgt) ** 2))
-
-
-def compute_mse(estimate: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """计算均方误差。"""
-    est = convert(estimate, "torch", dtype=torch.float64, device=estimate.device)
-    tgt = convert(target, "torch", dtype=torch.float64, device=target.device)
-    return torch.mean((est - tgt) ** 2)

@@ -15,7 +15,7 @@
 - **metric_mode**（``delay_doppler`` / ``range_velocity`` 及别名）：日志表头与展示单位，
   **不改变** ``__call__`` 返回值。
 
-常数（定义于 :mod:`~isac.sensing.music_kernels`）
+常数（定义于 :mod:`~isac.sensing.detection.music_kernels`）
 -------------------------------------------------
 ``SUBARRAY_SIZE``、``NUM_SNAPSHOTS``、``MAX_CANDIDATES``、``MAX_PEAKS`` 等。
 """

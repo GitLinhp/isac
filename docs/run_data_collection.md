@@ -122,7 +122,7 @@ flowchart TD
 - `RoiKinematicsSampler` 在 xy 平面 ROI 内采样位置（z=0），速度模值在 `speed_range` 内采样，方向在 xy 平面均匀随机。
 - 预采样 `num_samples × sampler_pool_factor` 条，通过 `pop()` 逐条消费。
 
-详见 [`src/isac/utils/data_collection/roi_sampling.py`](../src/isac/utils/data_collection/roi_sampling.py)。
+详见 [`src/isac/collection/roi_sampling.py`](../src/isac/collection/roi_sampling.py)。
 
 ### Episode 采纳条件
 
@@ -244,7 +244,7 @@ sample_idx, position, velocity, true_range_m, true_radial_velocity_mps
 ### 6.1 加载数据集
 
 ```python
-from isac.datasets import RTDataset
+from isac.collection import RTDataset
 from isac import DEFAULT_DATASET_H5
 
 dataset = RTDataset.load(DEFAULT_DATASET_H5)
@@ -332,6 +332,6 @@ python script/evaluation/run_sensing_from_dataset.py \
 | [`script/data_collection/run_data_collection.py`](../script/data_collection/run_data_collection.py) | 采集入口 |
 | [`src/isac/data_structures/params/sampling_params.py`](../src/isac/data_structures/params/sampling_params.py) | `[monte_carlo_sampling]` 解析 |
 | [`src/isac/datasets.py`](../src/isac/datasets.py) | HDF5 读写、`RTDataset`、`save_collection_artifacts` |
-| [`src/isac/utils/data_collection/roi_sampling.py`](../src/isac/utils/data_collection/roi_sampling.py) | ROI 位置/速度采样 |
-| [`src/isac/utils/data_collection/episode_filter.py`](../src/isac/utils/data_collection/episode_filter.py) | episode 运动学过滤 |
-| [`src/isac/utils/data_collection/channel_export.py`](../src/isac/utils/data_collection/channel_export.py) | 路径交互检查、几何真值、场景 slug |
+| [`src/isac/collection/roi_sampling.py`](../src/isac/collection/roi_sampling.py) | ROI 位置/速度采样 |
+| [`src/isac/collection/episode_filter.py`](../src/isac/collection/episode_filter.py) | episode 运动学过滤 |
+| [`src/isac/collection/channel_export.py`](../src/isac/collection/channel_export.py) | 路径交互检查、几何真值、场景 slug |

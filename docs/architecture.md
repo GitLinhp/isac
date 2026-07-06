@@ -70,7 +70,7 @@ flowchart TB
 
 ## 公开 API
 
-各子包 `__init__.py` 通过 `__all__` 声明稳定导出面。旧路径（如 `isac.datasets`、`isac.sensing.utils`）保留兼容 re-export，新代码请使用上表推荐路径。
+各子包 `__init__.py` 通过 `__all__` 声明稳定导出面；新代码请使用上表推荐路径。
 
 ## 与 `script/` 的边界
 

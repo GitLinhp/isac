@@ -5,8 +5,8 @@ import math
 import pytest
 from sionna.phy.ofdm import ResourceGrid
 
-from isac.sensing.music_estimator import MUSICEstimator
-from isac.sensing.sensing_performance import SensingPerformance
+from isac.sensing.detection.music_estimator import MUSICEstimator
+from isac.sensing.spectrum import SensingPerformance
 
 
 def _sp(subcarrier_spacing: float) -> SensingPerformance:
