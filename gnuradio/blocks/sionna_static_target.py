@@ -121,7 +121,7 @@ class SionnaStaticTarget(gr.basic_block):
         )
         with ctx:
             tx_t = torch.from_numpy(tx).to(device=dev, dtype=torch.complex64)
-            rx_t = self._sim(tx_t)
+            rx_t = self._sim(tx_t, tx_t)
         return np.asarray(rx_t.detach().cpu().numpy(), dtype=np.complex64).reshape(-1)
 
     def _flush_input_packet(self) -> None:

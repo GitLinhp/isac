@@ -52,7 +52,7 @@ def _run_baseline_script() -> tuple[np.ndarray, tuple[int, int]]:
     system.components.rt_simulator.get("bs1_tx").velocity = [30, 0, 0]
 
     _, x_rg, x_time = system.transmit()
-    y_time = system.components.channel(x_time, domain="time", snr_db=None)
+    y_time = system.components.channel(x_rg, x_time, domain="time", snr_db=None)
     h_dd = system.compute_sensing_spectrum(
         x_rg, system.components.demodulator(y_time).squeeze()
     )

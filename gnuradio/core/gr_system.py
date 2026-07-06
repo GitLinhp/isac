@@ -180,7 +180,7 @@ class GrSystemContext:
         )
         with ctx:
             y_time = self.system.components.channel(
-                x_time, domain="time", snr_db=snr
+                self._x_rg, x_time, domain="time", snr_db=snr
             )
         self._rx_time_shape = tuple(y_time.shape)
         y_np = y_time.squeeze().detach().cpu().numpy().astype(np.complex64)

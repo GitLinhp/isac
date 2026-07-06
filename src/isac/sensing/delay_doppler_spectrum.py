@@ -16,6 +16,28 @@ from ..utils.numerical import linear_to_db
 from ..utils.windows import apply_window
 
 
+def compute_dd_roi_slices(
+    sensing_performance: SensingPerformance,
+    max_range_m: float,
+    max_velocity_mps: float,
+    n_doppler: int,
+    n_delay: int,
+) -> tuple[int, int, int, int]:
+    """由 ROI 物理量与全谱尺寸计算 ``(dop_start, dop_end, delay_start, delay_end)``。"""
+    if max_range_m <= 0:
+        raise ValueError(f"max_range_m 须为正，收到 {max_range_m}")
+    if max_velocity_mps <= 0:
+        raise ValueError(f"max_velocity_mps 须为正，收到 {max_velocity_mps}")
+    dr = sensing_performance.range_resolution
+    dv = sensing_performance.velocity_resolution
+    delay_bins = min(n_delay, max(1, int(max_range_m / dr) + 1))
+    dop_half = min(n_doppler // 2, max(1, int(round(max_velocity_mps / dv))))
+    dop_center = n_doppler // 2
+    dop_start = max(0, dop_center - dop_half)
+    dop_end = min(n_doppler, dop_center + dop_half)
+    return dop_start, dop_end, 0, delay_bins
+
+
 class DelayDopplerSpectrum:
     """时延多普勒谱处理类
 
@@ -35,7 +57,6 @@ class DelayDopplerSpectrum:
     ):
         self.sensing_performance = sensing_performance  # 感知性能
         self.device = device  # 设备
-        self.h_delay_doppler: Optional[torch.Tensor] = None  # 时延多普勒谱
         self.delay_window = delay_window  # 时延窗函数
         self.doppler_window = doppler_window  # 多普勒窗函数
         self.max_range_m = max_range_m  # 最大探测距离
@@ -74,20 +95,22 @@ class DelayDopplerSpectrum:
     def bin_slices(self, h_dd: torch.Tensor) -> tuple[int, int, int, int]:
         """返回 ``(dop_start, dop_end, delay_start, delay_end)`` 切片索引。"""
         self._validate_roi()
+        assert self.max_range_m is not None and self.max_velocity_mps is not None
         n_doppler, n_delay = h_dd.shape[-2], h_dd.shape[-1]
-        delay_bins = min(n_delay, self.roi_delay_bins())
-        dop_half = min(n_doppler // 2, self.roi_doppler_half_bins())
-        dop_center = n_doppler // 2
-        dop_start = max(0, dop_center - dop_half)
-        dop_end = min(n_doppler, dop_center + dop_half)
-        return dop_start, dop_end, 0, delay_bins
+        return compute_dd_roi_slices(
+            self.sensing_performance,
+            self.max_range_m,
+            self.max_velocity_mps,
+            n_doppler,
+            n_delay,
+        )
 
-    def __call__(self, h_freq: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+    def __call__(self, h_freq: torch.Tensor) -> torch.Tensor:
         """计算时延多普勒谱（使用 Torch 实现）
 
         参数:
         ----------
-        - h_freq : np.ndarray | torch.Tensor
+        - h_freq : torch.Tensor
             频域信道响应，形状为 ``(num_ofdm_symbols, fft_size)`` 或
             ``(rx_num, num_ofdm_symbols, fft_size)``。
 

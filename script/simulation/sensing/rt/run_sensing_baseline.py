@@ -65,13 +65,11 @@ def main() -> None:
 
     # --- 应用信道 ---
     snr_db = system.params.channel.snr_db
-    if domain == "frequency":
-        y_rg = system.components.channel(x_rg, domain=domain, snr_db=snr_db)
-    elif domain == "time":
-        y_time = system.components.channel(x_time, domain=domain, snr_db=snr_db)
-        y_rg = system.components.demodulator(y_time).squeeze()
+    y_out = system.components.channel(x_rg, x_time, domain=domain, snr_db=snr_db)
+    if domain == "time":
+        y_rg = system.components.demodulator(y_out).squeeze()
     else:
-        raise ValueError(f"不支持的域: {domain}")
+        y_rg = y_out
 
     h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
     system.components.sensing_performance()

@@ -50,12 +50,6 @@ def paths_intersect_object(paths: Paths, object_id: int) -> bool:
     return bool(np.any(np.asarray(paths.objects) == object_id))
 
 
-def count_paths_intersect_object(paths: Paths, object_id: int) -> int:
-    """与 ``object_id`` 有交互的路径条数（沿 depth 轴聚合）。"""
-    objs = np.asarray(paths.objects)
-    return int(np.sum(np.any(objs == object_id, axis=0)))
-
-
 def paths_intersect_target(rt_simulator: RTSimulator, target: RTTarget) -> bool:
     """目标位姿更新后，判断是否存在与该目标 mesh 相交的路径。"""
     return paths_intersect_object(rt_simulator.paths, int(target.object_id))

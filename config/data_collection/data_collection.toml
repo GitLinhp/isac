@@ -131,3 +131,10 @@ near_range_guard_m = 1.0
 [dd_spectrum_roi]
 max_range_m = 30.0
 max_velocity_mps = 5.0
+
+# 蒙特卡洛运动学采样（run_data_collection.py）
+[monte_carlo_sampling]
+roi = [-2.5, 2.5, -4.5, 4.5]   # xmin, xmax, ymin, ymax（m），z 固定为 0
+position_sampling_mode = "uniform"  # uniform | gaussian
+speed_range = [0.1, 3.0]          # 速度模值范围 (m/s)
+speed_sampling_mode = "uniform"   # uniform | gaussian

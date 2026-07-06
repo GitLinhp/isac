@@ -35,7 +35,6 @@ HDF5 文件布局
 
 from __future__ import annotations
 
-import argparse
 import csv
 import shutil
 from dataclasses import asdict, dataclass, field, fields
@@ -57,6 +56,7 @@ from isac.utils.config_loader import resolve_config_path
 if TYPE_CHECKING:
     from isac.channel.rt.rt_simulator import RTSimulator
     from isac.system import System
+    from isac.data_structures import CollectionSamplingParams
 
 # --- 路径与键名常量 ---
 
@@ -216,7 +216,7 @@ def _hdf5_deserialize_collection(name: str, val: Any) -> Any:
 class CollectionMetadata:
     """一次采集运行的可复现配置摘要，序列化到 HDF5 根属性 ``collection_<field>``。
 
-    对应 ``run_data_collection.py`` 蒙特卡洛平面 ROI 采集 CLI。
+    采样字段来自 TOML ``[monte_carlo_sampling]``；``seed`` 来自 CLI。
 
     字段
     ----
@@ -252,14 +252,18 @@ class CollectionMetadata:
         return cls(**kwargs)
 
     @classmethod
-    def from_collection_args(cls, args: argparse.Namespace) -> CollectionMetadata:
-        """从 ``run_data_collection`` CLI ``Namespace`` 构造。"""
+    def from_sampling_params(
+        cls,
+        seed: int,
+        params: CollectionSamplingParams,
+    ) -> CollectionMetadata:
+        """从 CLI ``seed`` 与 ``[monte_carlo_sampling]`` 解析结果构造。"""
         return cls(
-            seed=int(args.seed),
-            roi=tuple(map(float, args.roi)),
-            position_sampling_mode=str(args.position_sampling_mode),
-            speed_range=tuple(map(float, args.speed_range)),
-            speed_sampling_mode=str(args.speed_sampling_mode),
+            seed=int(seed),
+            roi=params.roi,
+            position_sampling_mode=str(params.position_sampling_mode),
+            speed_range=params.speed_range,
+            speed_sampling_mode=str(params.speed_sampling_mode),
         )
 
 

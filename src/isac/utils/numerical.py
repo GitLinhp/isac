@@ -13,28 +13,6 @@ import torch
 from .type_converter import convert
 
 
-def next_pow2(n: int) -> int:
-    """
-    计算大于等于n的最小2的幂次
-
-    该函数用于找到大于等于输入整数n的最小2的幂次方数。
-    常用于FFT计算、内存对齐等需要2的幂次方长度的场景。
-
-    参数:
-    ----------
-        n : int
-            输入整数，必须大于0
-
-    返回:
-    ----------
-        int
-            大于等于n的最小2的幂次方数
-            - 当n <= 1时，返回1
-            - 当n > 1时，返回2^k，其中k是满足2^k >= n的最小整数
-    """
-    return 1 << (int(np.log2(n - 1)) + 1) if n > 1 else 1
-
-
 # =============================================================================
 # 角度转换工具函数
 # =============================================================================
@@ -141,9 +119,7 @@ def cartesian_direction_to_yaw_pitch_roll(
                 f"direction 必须为形状 (3,) 或 (N, 3)，当前末维为 {arr.shape[-1]}"
             )
     else:
-        raise ValueError(
-            f"direction 必须为形状 (3,) 或 (N, 3)，当前维度为 {arr.ndim}"
-        )
+        raise ValueError(f"direction 必须为形状 (3,) 或 (N, 3)，当前维度为 {arr.ndim}")
 
     x, y, z = arr[:, 0], arr[:, 1], arr[:, 2]
     r = np.linalg.norm(arr, axis=1)

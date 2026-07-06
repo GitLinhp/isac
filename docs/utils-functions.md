@@ -8,7 +8,7 @@
 
 以下为仓库内**直接** `from isac.utils`（或 `from isac.utils import target_generation`）的入口脚本；库内间接调用见下一节。
 
-### [`script/model_training/run_data_collection.py`](script/model_training/run_data_collection.py)
+### [`script/data_collection/run_data_collection.py`](script/data_collection/run_data_collection.py)
 
 数据集采集主入口：平面 ROI 蒙特卡洛采样 → RT 目标位姿驱动 → 单 episode 仿真 → 流式写 HDF5，事后写 TOML / CSV / PNG。
 
@@ -73,6 +73,7 @@
 
 ```mermaid
 flowchart LR
+  run_data_collection --> data_structures
   run_data_collection --> roi_sampling
   run_data_collection --> episode_filter
   run_data_collection --> channel_export
@@ -142,10 +143,9 @@ flowchart LR
 
 | 函数 | 功能概要 |
 | ---- | -------- |
-| `convert` | numpy / torch / Python 标量 / list / tuple / bytes 互转；项目内广泛用于 `metrics`、`delay_doppler_spectrum`、`processing`、`misc`、`system` 等。 |
+| `convert` | numpy / torch / Python 标量 / list / tuple 互转；项目内广泛用于 `metrics`、`delay_doppler_spectrum`、`processing`、`misc`、`system` 等。 |
 | `str_to_bool` | 字符串 → 布尔。**当前无项目内外部调用。** |
 | `to_tuple` | 输入 → 元组。**当前无项目内外部调用。** |
-| `bytes_to_bits` / `bits_to_bytes` | 字节与比特序列互转。**当前无项目内外部调用。** |
 | `image_to_bits` / `bits_to_image` | 图像与比特互转。**当前无项目内外部调用。** |
 
 ### [`tensors.py`](src/isac/utils/tensors.py)

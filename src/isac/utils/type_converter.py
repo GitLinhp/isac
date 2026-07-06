@@ -5,19 +5,16 @@
 - 类型转换：将输入值转换为指定的目标类型
 - 字符串转换为布尔值：将字符串转换为布尔值
 - 转换为元组：将输入值转换为元组
-- 字节与比特序列的相互转换：将字节序列转换为比特序列，或将比特序列转换为字节序列
 - 图像与比特的相互转换：将图像转换为比特序列，或将比特序列转换为图像
 """
 
-from typing import Union
-import torch
+from typing import Literal, Union, overload
+
 import numpy as np
-import io
-from pathlib import Path
-from PIL import Image
-from torchvision import transforms
-import builtins
-import argparse
+import torch
+
+_ConvertValue = Union[float, int, bool, np.ndarray, torch.Tensor, list]
+_ConvertReturn = Union[float, int, list, tuple, np.ndarray, torch.Tensor]
 
 # 支持的转换类型映射
 TYPE_ALIASES = {
@@ -30,41 +27,100 @@ TYPE_ALIASES = {
     "int": "int",
     "list": "list",
     "tuple": "tuple",
-    "bytes": "bytes",
-    "bytearray": "bytearray",
-    "bytesarray": "bytearray",
-    "memoryview": "memoryview",
 }
 
 
 # ============================================================================
 # 类型转换
 # ============================================================================
+@overload
 def convert(
-    value: Union[
-        float,
-        int,
-        bool,
-        np.ndarray,
-        torch.Tensor,
-        builtins.bytes,
-        builtins.bytearray,
-        builtins.memoryview,
-    ],
+    value: _ConvertValue,
+    target_type: Literal["torch", "tensor", "pytorch"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> torch.Tensor: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
+    target_type: Literal["numpy", "np"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> np.ndarray: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
+    target_type: Literal["float"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> float: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
+    target_type: Literal["int"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> int: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
+    target_type: Literal["bool"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> bool: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
+    target_type: Literal["list"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> list: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
+    target_type: Literal["tuple"],
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> tuple: ...
+
+
+@overload
+def convert(
+    value: _ConvertValue,
     target_type: str,
     dtype: Union[torch.dtype, None] = None,
     device: torch.device = None,
-) -> Union[float, int, np.ndarray, torch.Tensor]:
+) -> _ConvertReturn: ...
+
+
+def convert(
+    value: _ConvertValue,
+    target_type: str,
+    dtype: Union[torch.dtype, None] = None,
+    device: torch.device = None,
+) -> _ConvertReturn:
     """将输入值转换为指定的目标类型
 
     参数:
     ----------
-        value : float | int | bool | np.ndarray | torch.Tensor | tf.Tensor | bytes | bytearray | memoryview
+        value : float | int | bool | np.ndarray | torch.Tensor | list
             输入值，支持以下类型：
             - Python原生类型：float, int, bool
             - NumPy数组：numpy.ndarray
             - PyTorch张量：torch.Tensor
-            - Python字节类型：bytes, bytearray, memoryview（按uint8字节序列处理）
+            - list: Python列表（数值列表）
         target_type : str
             目标类型，支持以下值：
             - "numpy" / "np": NumPy数组
@@ -72,7 +128,6 @@ def convert(
             - Python原生类型（需显式指定）:
               - "int" / "float" / "bool"
               - "list" / "tuple"
-              - "bytes" / "bytearray" / "memoryview"
         dtype : torch.dtype, 可选
             目标数据类型
             - 目标类型为 torch 时：用于指定输出 torch.Tensor 的 dtype
@@ -82,7 +137,7 @@ def convert(
 
     返回:
     ----------
-        Union[float, int, list, np.ndarray, torch.Tensor]
+        Union[float, int, list, tuple, np.ndarray, torch.Tensor]
             转换后的值，类型由target_type决定
 
     异常:
@@ -112,69 +167,17 @@ def convert(
         lst = [arr.item()] if (arr.ndim == 0 or arr.size == 1) else arr.tolist()
         return lst if target_type == "list" else tuple(lst)
 
-    elif target_type in {"bytes", "bytearray", "memoryview"}:
-        raw = _to_bytes(value)
-        if target_type == "bytes":
-            return builtins.bytes(raw)
-        if target_type == "bytearray":
-            return builtins.bytearray(raw)
-        return builtins.memoryview(raw)
-
-    elif target_type == "numpy":
+    elif target_type == "numpy" or target_type == "np":
         return _to_numpy(value)
-    elif target_type == "torch":
+    elif target_type == "torch" or target_type == "tensor" or target_type == "pytorch":
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         return _to_torch(value, dtype=dtype, device=device)
     else:
         raise ValueError(
             f"不支持的目标类型: {target_type}。"
-            f"支持的类型: numpy, torch, int, float, bool, list, tuple, bytes, bytearray, memoryview"
+            f"支持的类型: numpy, torch, int, float, bool, list, tuple"
         )
-
-
-def _to_bytes(
-    value: Union[
-        np.ndarray,
-        torch.Tensor,
-        list,
-        builtins.bytes,
-        builtins.bytearray,
-        builtins.memoryview,
-        int,
-        float,
-        bool,
-    ],
-) -> builtins.bytes:
-    """将输入转换为原始字节序列（bytes）.
-
-    - bytes/bytearray/memoryview: 直接返回 bytes(value)
-    - torch/np/tf: 期望为 1D 的 uint8 序列（或可无损转换到 uint8）
-    - list: 视为数值列表，转换到 uint8 后再转 bytes
-    - 标量: 转为单字节（uint8）后再转 bytes
-    """
-    if isinstance(value, (builtins.bytes, builtins.bytearray, builtins.memoryview)):
-        return builtins.bytes(value)
-
-    if isinstance(value, torch.Tensor):
-        t = value.detach().to("cpu")
-        if t.dtype != torch.uint8:
-            t = t.to(torch.uint8)
-        return t.flatten().numpy().tobytes()
-
-    if isinstance(value, np.ndarray):
-        arr = value
-        if arr.dtype != np.uint8:
-            arr = arr.astype(np.uint8, copy=False)
-        return np.ascontiguousarray(arr).flatten().tobytes()
-
-    if isinstance(value, list):
-        return np.asarray(value, dtype=np.uint8).tobytes()
-
-    if isinstance(value, (int, float, bool)):
-        return np.asarray([value], dtype=np.uint8).tobytes()
-
-        raise TypeError(f"不支持的输入类型: {type(value).__name__}")
 
 
 def _to_numpy(
@@ -185,9 +188,6 @@ def _to_numpy(
         np.ndarray,
         torch.Tensor,
         list,
-        builtins.bytes,
-        builtins.bytearray,
-        builtins.memoryview,
     ],
 ) -> np.ndarray:
     """转换为NumPy数组
@@ -208,10 +208,6 @@ def _to_numpy(
     """
     if isinstance(value, np.ndarray):
         return value
-
-    elif isinstance(value, (builtins.bytes, builtins.bytearray, builtins.memoryview)):
-        # bytes-like -> uint8 1D numpy array (zero-copy when possible)
-        return np.frombuffer(value, dtype=np.uint8)
 
     elif isinstance(value, torch.Tensor):
         if value.is_cuda:
@@ -236,9 +232,6 @@ def _to_torch(
         np.ndarray,
         torch.Tensor,
         list,
-        builtins.bytes,
-        builtins.bytearray,
-        builtins.memoryview,
     ],
     dtype: torch.dtype = None,
     device: torch.device = None,
@@ -268,30 +261,12 @@ def _to_torch(
             return value.to(device=device, dtype=dtype)
         return value
 
-    elif isinstance(value, (builtins.bytes, builtins.bytearray, builtins.memoryview)):
-        # bytes-like -> uint8 tensor
-        # np.frombuffer 得到的数组通常不可写，torch.from_numpy 会给出告警；这里 copy 一次避免该告警
-        np_arr = np.frombuffer(value, dtype=np.uint8).copy()
-        tensor = torch.from_numpy(np_arr)
-        if dtype is not None:
-            tensor = tensor.to(dtype)
-        if device is not None:
-            tensor = tensor.to(device)
-        return tensor
-
     elif isinstance(value, np.ndarray):
         tensor = torch.from_numpy(value)
         if dtype is not None:
             tensor = tensor.to(dtype)
         if device is not None:
             tensor = tensor.to(device)
-        return tensor
-
-    elif isinstance(value, np.ndarray):
-        tensor = torch.from_numpy(value)
-        if dtype is not None:
-            tensor = tensor.to(dtype)
-
         return tensor
 
     elif isinstance(value, (float, int, bool)):
@@ -308,6 +283,3 @@ def _to_torch(
 
     else:
         raise TypeError(f"不支持的输入类型: {type(value).__name__}")
-
-
-

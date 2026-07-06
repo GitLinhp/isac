@@ -21,17 +21,25 @@ class Channel(ABC):
 
     def __call__(
         self,
-        inputs: torch.Tensor,
+        x_rg: torch.Tensor,
+        x_time: torch.Tensor,
         domain: str = "frequency",
         *,
         snr_db: Optional[float] = None,
     ) -> torch.Tensor:
-        """经信道；``snr_db`` 为数值时加 AWGN，默认 ``None`` 不加噪。"""
+        """按 ``domain`` 选择 ``x_rg``（frequency）或 ``x_time``（time）经信道；``snr_db`` 为数值时加 AWGN。"""
+        if domain == "frequency":
+            inputs = x_rg
+        elif domain == "time":
+            inputs = x_time
+        else:
+            raise ValueError(
+                f"不支持的域: {domain}。支持的值: 'time', 'frequency'"
+            )
         y_clean = self._apply_channel(inputs, domain)
         if snr_db is None:
             return y_clean
-        else:
-            return self._awgn(y_clean, snr_db)
+        return self._awgn(y_clean, snr_db)
 
     @abstractmethod
     def _apply_channel(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:

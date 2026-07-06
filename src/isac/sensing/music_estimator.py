@@ -10,6 +10,7 @@ from typing import Literal, Optional, Tuple
 from tabulate import tabulate
 
 from ..utils import linear_to_db
+from .delay_doppler_spectrum import compute_dd_roi_slices
 from .sensing_performance import SensingPerformance
 from .utils import delay_to_range, doppler_to_velocity
 
@@ -141,6 +142,8 @@ class MUSICEstimator:
         device: torch.device,
         sensing_performance: Optional[SensingPerformance] = None,
         near_range_guard_m: float = 1.0,
+        max_range_m: Optional[float] = None,
+        max_velocity_mps: Optional[float] = None,
     ):
         """初始化 MUSIC 估计器
 
@@ -152,10 +155,28 @@ class MUSICEstimator:
             感知性能对象；用于 ``__call__`` 成功检出峰时打印表格中的物理量列。
         - near_range_guard_m : float
             默认近距保护物理距离 (m)；跳过 ``[0, guard)`` 对应时延 bin 以减轻直达波/泄漏。
+        - max_range_m, max_velocity_mps : float, 可选
+            ``[dd_spectrum_roi]`` 物理 ROI；二者均给定且已注入 ``sensing_performance`` 时，
+            预计算裁剪谱在全网格中的 ``bin_origin``。
         """
         self.device = device
         self.sensing_performance = sensing_performance
         self.near_range_guard_m = near_range_guard_m
+        self._bin_origin: Tuple[int, int] = (0, 0)
+        if (
+            sensing_performance is not None
+            and max_range_m is not None
+            and max_velocity_mps is not None
+        ):
+            rg = sensing_performance.rg
+            dop_start, _, delay_start, _ = compute_dd_roi_slices(
+                sensing_performance,
+                max_range_m,
+                max_velocity_mps,
+                rg.num_ofdm_symbols,
+                rg.fft_size,
+            )
+            self._bin_origin = (dop_start, delay_start)
 
     def __call__(
         self,
@@ -169,7 +190,7 @@ class MUSICEstimator:
         sens_mode: SensMode = "monostatic",
         near_range_guard_m: Optional[float] = None,
         log_peaks: bool = True,
-        bin_origin: Tuple[int, int] = (0, 0),
+        bin_origin: Optional[Tuple[int, int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """使用 Torch 实现的 2D-MUSIC 估计谱峰（``__call__``，可直接 ``estimator(...)``）。
 
@@ -197,8 +218,9 @@ class MUSICEstimator:
             单次调用覆盖近距保护距离 (m)；``None`` 时使用构造时的默认值。
         - log_peaks : bool
             是否在 stdout 打印谱峰表格，默认 ``True``。
-        - bin_origin : tuple[int, int]
-            裁剪谱在全网格中的 ``(doppler_start, delay_start)`` 偏移，用于 bin→物理量换算。
+        - bin_origin : tuple[int, int] | None
+            裁剪谱在全网格中的 ``(doppler_start, delay_start)`` 偏移；``None`` 时使用构造时
+            由 ``[dd_spectrum_roi]`` 预计算的 ``self._bin_origin``。
 
         返回:
         ----------
@@ -210,6 +232,7 @@ class MUSICEstimator:
                 "MUSICEstimator 须在构造时注入 sensing_performance，以将谱峰 bin 换为距离/速度物理量"
             )
 
+        origin = self._bin_origin if bin_origin is None else bin_origin
         metric_mode_canon = _canonical_music_mode(metric_mode)
         # --- 谱矩阵与搜索窗 ---
         spectrum_tensor = torch.squeeze(
@@ -289,7 +312,7 @@ class MUSICEstimator:
             peaks_delay,
             peaks_doppler,
             sens_mode=sens_mode,
-            bin_origin=bin_origin,
+            bin_origin=origin,
         )
 
         # --- 日志：按 metric_mode 仅影响表格列 ---

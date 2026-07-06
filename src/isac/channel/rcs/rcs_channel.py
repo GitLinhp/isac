@@ -23,7 +23,7 @@ _TWO_PI = 2.0 * math.pi
 class RCSChannel(Channel):
     """gr-radar static_target_simulator_cc 的 Torch 复现。
 
-    用法：``RCSChannel(rcs_scene, center_freq=..., samp_rate=...)(tx)``；``rcs_scene`` 为
+    用法：``RCSChannel(...)(x_rg, x_time, domain="time")``；``rcs_scene`` 为
     ``Callable[[], RCSScene]``，每次施加信道时读取当前场景与点目标状态（与 ``RTChannel.paths`` 同模式）。
     """
 
@@ -186,7 +186,8 @@ class RCSChannel(Channel):
 
     def __call__(
         self,
-        inputs: torch.Tensor,
+        x_rg: torch.Tensor,
+        x_time: torch.Tensor,
         domain: str = "time",
         *,
         snr_db: Optional[float] = None,
@@ -194,4 +195,4 @@ class RCSChannel(Channel):
     ) -> torch.Tensor:
         """模拟 gr-radar static_target_simulator_cc 接收 IQ（可选 AWGN）。"""
         self._generator = generator
-        return super().__call__(inputs, domain=domain, snr_db=snr_db)
+        return super().__call__(x_rg, x_time, domain=domain, snr_db=snr_db)

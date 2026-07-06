@@ -111,7 +111,7 @@ channel = RCSChannel(
 - 场景状态：`rcs_scene()` 返回 ``RCSScene``（含 ``target: RCSTarget``，可运行时 ``update``）
 - TOML 配置只读层：``SystemParams.rcs_scene``（``RCSSceneParams``）
 - 目标几何：`rcs_scene.target`（`RCSTargetParams`）
-- 加噪：`channel(tx, domain="time", snr_db=params.channel.snr_db)`
+- 加噪：`channel(x_rg, x_time, domain="time", snr_db=params.channel.snr_db)`
 
 ---
 
@@ -139,7 +139,7 @@ SensingPerformance(rg, carrier_frequency)
 | 方法 | 主要使用的组件 |
 |------|----------------|
 | `transmit()` | `zc_source` / `binary_source` + `mapper` + `rg_mapper` + `modulator` |
-| `components.channel(...)` | `RTChannel` 或 `RCSChannel` |
+| `components.channel(x_rg, x_time, domain, snr_db=...)` | `RTChannel` 或 `RCSChannel`；按 `domain` 选用频域或时域输入 |
 | `components.demodulator(...)` | `OFDMDemodulator` |
 | `sensing(...)` | `delay_doppler_spectrum`, `cfar_detector`, `music_estimator` |
 

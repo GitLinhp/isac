@@ -303,6 +303,8 @@ class SystemComponents:
                     device=device,
                     sensing_performance=sensing_performance,
                     near_range_guard_m=system_params.music.near_range_guard_m,
+                    max_range_m=max_range_m,
+                    max_velocity_mps=max_velocity_mps,
                 )
 
         return kwargs

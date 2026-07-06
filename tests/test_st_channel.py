@@ -192,7 +192,7 @@ def test_st_channel_end2end() -> None:
         rcs_scene=lambda: scene,
         center_freq=center_freq,
         samp_rate=_SAMP_RATE,
-    )(tx)
+    )(tx, tx)
     ref = _st_channel_loop_ref(
         tx, params, samp_rate=_SAMP_RATE, center_freq=center_freq
     )

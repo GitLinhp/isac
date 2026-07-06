@@ -60,5 +60,5 @@ def apply_grc_default_channel(
     else:
         tx_t = tx.to(device)
 
-    rx_t = sim(tx_t, generator=generator)
+    rx_t = sim(tx_t, tx_t, generator=generator)
     return np.asarray(rx_t.detach().cpu().numpy(), dtype=np.complex64)

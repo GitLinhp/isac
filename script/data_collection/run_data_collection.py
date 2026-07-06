@@ -35,6 +35,7 @@ from isac.utils.data_collection.channel_export import (
 )
 from isac.utils.data_collection.episode_filter import accept_episode_kinematics
 from isac.utils.data_collection.roi_sampling import RoiKinematicsSampler
+from isac.data_structures import CollectionSamplingParams
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 warnings.filterwarnings(
@@ -78,36 +79,6 @@ def argument_parser() -> argparse.Namespace:
         help="采样条数",
     )
     parser.add_argument(
-        "--roi",
-        nargs=4,
-        type=float,
-        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
-        default=[-2.5, 2.5, -4.5, 4.5],
-        help="平面 ROI 四元组",
-    )
-    parser.add_argument(
-        "--position_sampling_mode",
-        type=str,
-        default="uniform",
-        choices=["uniform", "gaussian"],
-        help="位置采样分布（均匀或高斯）",
-    )
-    parser.add_argument(
-        "--speed_range",
-        nargs=2,
-        type=float,
-        metavar=("MIN", "MAX"),
-        default=[0.1, 3.0],
-        help="速度模值范围 (m/s)",
-    )
-    parser.add_argument(
-        "--speed_sampling_mode",
-        type=str,
-        default="uniform",
-        choices=["uniform", "gaussian"],
-        help="速度模值采样分布（均匀或高斯）",
-    )
-    parser.add_argument(
         "--sampler_pool_factor",
         type=int,
         default=5,
@@ -124,17 +95,23 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _print_sampling_config(args: argparse.Namespace) -> None:
+def _print_sampling_config(
+    *,
+    sampling: CollectionSamplingParams,
+    num_samples: int,
+    sampler_pool_factor: int,
+    seed: int,
+) -> None:
     """以 tabulate 打印采样配置参数。"""
-    x_lo, x_hi, y_lo, y_hi = args.roi
+    x_lo, x_hi, y_lo, y_hi = sampling.roi
     config_rows = [
-        ["num_samples", args.num_samples],
-        ["sampler_pool_factor", args.sampler_pool_factor],
+        ["num_samples", num_samples],
+        ["sampler_pool_factor", sampler_pool_factor],
         ["roi", f"x=[{x_lo}, {x_hi}], y=[{y_lo}, {y_hi}], z=0"],
-        ["position_sampling_mode", args.position_sampling_mode],
-        ["speed_range", f"[{args.speed_range[0]}, {args.speed_range[1]}] m/s"],
-        ["speed_sampling_mode", args.speed_sampling_mode],
-        ["seed", args.seed],
+        ["position_sampling_mode", sampling.position_sampling_mode],
+        ["speed_range", f"[{sampling.speed_range[0]}, {sampling.speed_range[1]}] m/s"],
+        ["speed_sampling_mode", sampling.speed_sampling_mode],
+        ["seed", seed],
     ]
     print(tabulate(config_rows, headers=["参数", "值"], tablefmt="simple_grid"))
 
@@ -144,20 +121,28 @@ def main() -> None:
     args = argument_parser()
     if args.sampler_pool_factor < 1:
         raise ValueError("sampler_pool_factor 须 >= 1")
+
+    config = load_config(args.config_file)
+    sampling = CollectionSamplingParams.from_dict(config)
+
     set_random_seed(args.seed)
 
     pool_size = args.num_samples * args.sampler_pool_factor
     sampler = RoiKinematicsSampler(
-        roi=args.roi,
-        position_sampling_mode=args.position_sampling_mode,
-        speed_range=args.speed_range,
-        speed_sampling_mode=args.speed_sampling_mode,
+        roi=sampling.roi,
+        position_sampling_mode=sampling.position_sampling_mode,
+        speed_range=sampling.speed_range,
+        speed_sampling_mode=sampling.speed_sampling_mode,
         num_samples=pool_size,
     )
-    _print_sampling_config(args)
+    _print_sampling_config(
+        sampling=sampling,
+        num_samples=args.num_samples,
+        sampler_pool_factor=args.sampler_pool_factor,
+        seed=args.seed,
+    )
 
-    # 加载配置，构建 System
-    config = load_config(args.config_file)
+    # 构建 System
     system = System(
         config=config,
         device=args.device,
@@ -175,7 +160,7 @@ def main() -> None:
     buffers = EpisodeBuffers()
     bs_pos = np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64)
     h5_path = collection_h5_path(scene_slug, DEFAULT_COLLECTION_OUT_DIR)
-    collection_meta = CollectionMetadata.from_collection_args(args)
+    collection_meta = CollectionMetadata.from_sampling_params(args.seed, sampling)
 
     with RTDataset.open_for_collection(
         h5_path,
@@ -190,7 +175,7 @@ def main() -> None:
             if len(sampler) == 0:
                 raise RuntimeError(
                     f"采样池已耗尽：已采纳 {accepted}/{args.num_samples} 条。"
-                    "请增大 --sampler_pool_factor 或放宽过滤条件（scene_filter / 目标路径交互）。"
+                    "请增大 --sampler_pool_factor 或调整 [monte_carlo_sampling] / 过滤条件（scene_filter / 目标路径交互）。"
                 )
             pos, vel, ori = sampler.pop()
             attempts += 1
@@ -228,8 +213,8 @@ def main() -> None:
             )
 
             # 信号传输
-            _, x_rg, _ = system.transmit()
-            y_rg = system.components.channel(x_rg, domain="frequency")
+            _, x_rg, x_time = system.transmit()
+            y_rg = system.components.channel(x_rg, x_time, domain="frequency")
             h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
 
             # 写入数据集

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Literal, Optional
 
 import torch
 from sionna.phy.channel import (
@@ -105,39 +105,34 @@ class RTChannel(Channel):
 
     # ==================== 计算方法 ====================
     def get_cir(
-        self, num_time_steps: int, sampling_frequency: float
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """获取 CIR；已注入 ``cir`` 时直接返回注入值。"""
-        if self._cir is not None:
-            return self._cir
+        self,
+        num_time_steps: int,
+        sampling_frequency: float,
+        out_type: Literal["drjit", "jax", "numpy", "tf", "torch"] = "torch",
+    ) -> tuple[Any, Any] | tuple[torch.Tensor, torch.Tensor]:
+        """获取 CIR"""
         paths = self.paths()
         a, tau = paths.cir(
-            num_time_steps=num_time_steps,
             sampling_frequency=sampling_frequency,
+            num_time_steps=num_time_steps,
             normalize_delays=False,
-            out_type="torch",
+            out_type=out_type,
         )
-        a = torch.unsqueeze(a, dim=0)
-        tau = torch.unsqueeze(tau, dim=0)
         return a, tau
 
     def get_cfr(
-        self, num_time_steps: int, sampling_frequency: float, out_type: str = "torch"
-    ) -> Any:
-        """获取信道频率响应；已注入 ``cfr`` 时直接返回注入值（仅 ``out_type='torch'``）。
+        self,
+        num_time_steps: int,
+        sampling_frequency: float,
+        out_type: Literal["drjit", "jax", "numpy", "tf", "torch"] = "torch",
+    ) -> Any | torch.Tensor:
+        """获取信道频率响应（仅 ``out_type='torch'``）。
 
         ``out_type='torch'`` 时通常为 7D：
         ``[batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, num_frequencies]``；
         单天线合成阵列下也可能为 6D：
         ``[batch, num_rx, num_tx, num_rx_ant, num_time_steps, num_frequencies]``。
         """
-        if self._cfr is not None:
-            if out_type != "torch":
-                raise ValueError(
-                    "注入 cfr 仅支持 out_type='torch'，"
-                    f"收到 {out_type!r}；请先清除 channel.cfr 或改用 torch。"
-                )
-            return self._cfr
         paths = self.paths()
         return paths.cfr(
             frequencies=self.frequencies,
@@ -219,6 +214,8 @@ class RTChannel(Channel):
             num_time_steps=self.rg.num_time_samples + self.l_tot - 1,
             sampling_frequency=self.rg.bandwidth,
         )
+        a = torch.unsqueeze(a, dim=0)
+        tau = torch.unsqueeze(tau, dim=0)
         return cir_to_time_channel(
             self.rg.bandwidth,
             a,
@@ -230,12 +227,12 @@ class RTChannel(Channel):
 
     @property
     def h_freq(self) -> torch.Tensor:
-        if self._cfr is not None:
-            return self._cfr
         a, tau = self.get_cir(
             num_time_steps=self.rg.num_ofdm_symbols,
             sampling_frequency=1 / self.rg.ofdm_symbol_duration,
         )
+        a = torch.unsqueeze(a, dim=0)
+        tau = torch.unsqueeze(tau, dim=0)
         return cir_to_ofdm_channel(self.frequencies, a, tau, normalize=False)
 
     def _apply_channel(self, inputs: torch.Tensor, domain: str) -> torch.Tensor:

@@ -46,7 +46,7 @@ from isac.models import (
     monostatic_labels_from_kinematics,
     read_monostatic_cnn_checkpoint_meta,
 )
-from isac.system import MusicEstimate, System
+from isac.system import System
 from isac.utils import load_config, set_random_seed
 from isac.utils.data_collection.channel_export import (
     los_truth_from_kinematics,
@@ -70,10 +70,10 @@ def _estimate_with_model(
     *,
     use_phase: bool,
     sensing_performance,
-) -> MusicEstimate:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """CNN 推理：h_dd → ROI 特征 → 距离/速度估计。
 
-    返回 ``MusicEstimate`` 以便复用 ``System.evaluate_sensing_rmse`` 与 MUSIC 分支对齐。
+    返回 ``(est_ranges, est_velocities)`` 以便复用 ``System.evaluate_sensing_rmse`` 与 MUSIC 分支对齐。
     """
     model_device = next(model.parameters()).device
     features = dd_spectrum_to_features(
@@ -81,9 +81,9 @@ def _estimate_with_model(
         use_phase=use_phase,
     )
     pred = model(features.unsqueeze(0).to(model_device))
-    return MusicEstimate(
-        est_ranges=pred[0, 0].reshape(-1).to(dtype=torch.float64),
-        est_velocities=pred[0, 1].reshape(-1).to(dtype=torch.float64),
+    return (
+        pred[0, 0].reshape(-1).to(dtype=torch.float64),
+        pred[0, 1].reshape(-1).to(dtype=torch.float64),
     )
 
 
@@ -351,17 +351,17 @@ def main() -> None:
                 true_range, true_velocity = los_truth_from_kinematics(
                     pos, vel, rt_simulator, system.device
                 )
-            rmse = system.evaluate_sensing_rmse(
-                estimate,
+            rmse_range_m, rmse_velocity_mps = system.evaluate_sensing_rmse(
+                *estimate,
                 true_ranges=true_range,
                 true_velocities=true_velocity,
                 label=f"性能评估 ep={i}",
                 verbose=False,
             )
-            range_rmses.append(rmse.rmse_range_m)
-            velocity_rmses.append(rmse.rmse_velocity_mps)
-            range_sum += rmse.rmse_range_m.item()
-            vel_sum += rmse.rmse_velocity_mps.item()
+            range_rmses.append(rmse_range_m)
+            velocity_rmses.append(rmse_velocity_mps)
+            range_sum += rmse_range_m.item()
+            vel_sum += rmse_velocity_mps.item()
             n_ok = len(range_rmses)
             # 运行均值：仅统计已完成 episode
             pbar.set_postfix(

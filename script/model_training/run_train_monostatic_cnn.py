@@ -47,7 +47,7 @@ def argument_parser() -> argparse.Namespace:
     )
     parser.add_argument("--val_ratio", type=float, default=0.2, help="验证集比例")
 
-    parser.add_argument("--epochs", type=int, default=100, help="训练轮数")
+    parser.add_argument("--epochs", type=int, default=200, help="训练轮数")
     parser.add_argument("--batch_size", type=int, default=64, help="批大小")
     parser.add_argument("--lr", type=float, default=1e-3, help="Adam 学习率")
     parser.add_argument(

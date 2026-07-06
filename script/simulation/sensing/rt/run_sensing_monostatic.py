@@ -4,7 +4,9 @@ import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
+
+SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "sensing_monostatic"
 
 
 def argument_parser() -> argparse.Namespace:
@@ -49,22 +51,21 @@ def argument_parser() -> argparse.Namespace:
 
 
 def main() -> None:
+    # --- 参数解析 ---
     args = argument_parser()
     set_random_seed(args.seed)
+
+    # --- 加载配置 ---
     config = load_config(args.config_file)
     system = System(
         config=config,
         device=args.device,
     )
+    comps = system.components
 
-    rt_simulator = system.components.rt_simulator
-    if rt_simulator is None:
-        raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
-
-    script_out_dir = PROJECT_ROOT / "out" / "sensing_monostatic"
-
-    rt_simulator.render_to_file(
-        filename=str(script_out_dir / "sensing_monostatic_scene.png")
+    # --- 渲染场景 ---
+    comps.rt_simulator.render_to_file(
+        filename=str(SCRIPT_OUT_DIR / "sensing_monostatic_scene.png")
     )
 
     # --- 发射 ---
@@ -74,31 +75,37 @@ def main() -> None:
     domain = args.domain  # 信道施加域
     snr_db = system.params.channel.snr_db  # 信噪比
 
-    if domain == "frequency":
-        y_rg = system.components.channel(
-            x_rg, domain=domain, snr_db=snr_db
-        )  # 频域接收信号
-    elif domain == "time":
-        y_time = system.components.channel(
-            x_time, domain=domain, snr_db=snr_db
-        )  # 时域接收信号
-        y_rg = system.components.demodulator(y_time).squeeze()
+    y_out = comps.channel(x_rg, x_time, domain=domain, snr_db=snr_db)
+    if domain == "time":
+        y_rg = comps.demodulator(y_out)
     else:
-        raise ValueError(f"不支持的域: {domain}")
+        y_rg = y_out
 
     # --- 感知 ---
-    system.components.sensing_performance()
-    system.display_sensing_geometry()
+    comps.sensing_performance()
 
-    h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
+    h_freq = comps.ls_channel_estimator(x_rg, y_rg)
+    # h = comps.moving_target_indication(h, axis=-2)
+    h_dd = comps.delay_doppler_spectrum(h_freq)
 
-    system.visualize_sensing_spectrum(
-        h_dd,
-        file=script_out_dir / "sensing_monostatic_delay_doppler_spectrum.png",
+    comps.delay_doppler_spectrum.visualize(
+        file_name=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
         metric_mode=args.metric_mode,
+        to_db=False,
     )
-    music = system.estimate_sensing_music(h_dd, metric_mode=args.metric_mode)
-    system.evaluate_sensing_rmse(music, label="单基地感知")
+    est_ranges, est_velocities, _ = comps.music_estimator(
+        spectrum_tensor=h_dd,
+        metric_mode=args.metric_mode,
+        sens_mode="monostatic",
+    )
+    geom = comps.rt_simulator.rx_target_tx_geometric
+    match_peaks_and_compute_radial_rmse(
+        est_ranges=est_ranges,
+        est_velocities=est_velocities,
+        true_ranges=geom.range_tensor,
+        true_velocities=geom.vel_tensor,
+        label="单基地感知",
+    )
 
 
 if __name__ == "__main__":

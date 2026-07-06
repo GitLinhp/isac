@@ -80,7 +80,7 @@ def main() -> None:
 
     # --- 应用信道（RCS 点目标仅时域）---
     snr_db = system.params.channel.snr_db
-    y_time = system.components.channel(x_time, domain="time", snr_db=snr_db)
+    y_time = system.components.channel(x_rg, x_time, domain="time", snr_db=snr_db)
     y_rg = system.components.demodulator(y_time).squeeze()
 
     # --- 感知 ---
@@ -97,7 +97,7 @@ def main() -> None:
     )
     music = system.estimate_sensing_music(h_dd, metric_mode=args.metric_mode)
     system.evaluate_sensing_rmse(
-        music,
+        *music,
         true_ranges=true_ranges,
         true_velocities=true_velocities,
         label="静态目标仿真",
