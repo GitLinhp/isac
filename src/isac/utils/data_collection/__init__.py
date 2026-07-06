@@ -1,1 +1,1 @@
-"""数据采集：ROI 采样、episode 处理。"""
+"""兼容层：请改用 ``isac.collection``。"""

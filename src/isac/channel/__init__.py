@@ -5,10 +5,6 @@ from .rcs.rcs_channel import RCSChannel
 from .rcs.rcs_scene import RCSScene
 from .rcs.rcs_target import RCSTarget
 from .rt import RTSimulator, RTTarget, RTTransceiver, Paths, RxTargetTxGeometric
-from ..data_structures.params.channel_params.rcs_scene_params import (
-    RCSSceneParams,
-    RCSTargetParams,
-)
 
 __all__ = [
     "AWGN",
@@ -22,6 +18,4 @@ __all__ = [
     "RTTransceiver",
     "Paths",
     "RxTargetTxGeometric",
-    "RCSSceneParams",
-    "RCSTargetParams",
 ]

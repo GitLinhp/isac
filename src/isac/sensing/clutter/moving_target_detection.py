@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from ..sensing_performance import SensingPerformance
+from ..spectrum.sensing_performance import SensingPerformance
 from ...utils.windows import apply_window
 
 

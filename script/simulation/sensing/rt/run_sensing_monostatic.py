@@ -43,7 +43,7 @@ def argument_parser() -> argparse.Namespace:
         "--metric_mode",
         type=str,
         default="range_velocity",
-        choices=["delay_doppler", "range_velocity"],
+        choices=["delay_doppler", "range_velocity", "dd", "rv"],
         help="谱图与 MUSIC 日志 metric",
     )
 

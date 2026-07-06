@@ -5,7 +5,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .utils import MONOSTATIC_TX_RX_EPS_M
+from .geometry import MONOSTATIC_TX_RX_EPS_M
 
 
 def ground_circle_radius_sq(

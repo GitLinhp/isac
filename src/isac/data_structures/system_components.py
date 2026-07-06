@@ -1,7 +1,6 @@
 """
-系统组件数据结构和配置类
+运行时组件装配：将 ``SystemParams`` 实例化为可调用的 Sionna / ISAC 对象。
 
-将 ``SystemParams``（TOML 解析结果）实例化为可调用的 Sionna / ISAC 运行时对象。
 构建入口：``SystemComponents.build_from_params``。
 """
 
@@ -20,13 +19,19 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
-from ..channel import Channel, RCSChannel, RCSScene, RTChannel, RTSimulator
-from ..sensing.sensing_performance import SensingPerformance
-from ..sensing.ls_channel_estimator import LSChannelEstimator
-from ..sensing.music_estimator import MUSICEstimator
-from ..sensing.delay_doppler_spectrum import DelayDopplerSpectrum
-from ..sensing.cfar import CFARDetector
-from ..sensing.clutter_suppression import MovingTargetIndication, MovingTargetDetection
+from ..channel.channel import Channel
+from ..channel.rcs.rcs_channel import RCSChannel
+from ..channel.rcs.rcs_scene import RCSScene
+from ..channel.rt.rt_channel import RTChannel
+from ..channel.rt.rt_simulator import RTSimulator
+from ..sensing.spectrum import (
+    DelayDopplerSpectrum,
+    LSChannelEstimator,
+    SensingPerformance,
+)
+from ..sensing.detection import CFARDetector
+from ..sensing.detection.music_estimator import MUSICEstimator
+from ..sensing.clutter import MovingTargetIndication, MovingTargetDetection
 from ..zc_source import ZCSource
 
 

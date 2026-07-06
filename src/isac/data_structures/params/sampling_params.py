@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from isac.utils.data_collection.roi_sampling import (
+from isac.collection.roi_sampling import (
     SamplingMode,
     parse_roi_xy,
     parse_speed_range,

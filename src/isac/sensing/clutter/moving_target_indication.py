@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ..sensing_performance import SensingPerformance
+from ..spectrum.sensing_performance import SensingPerformance
 
 
 class MovingTargetIndication:

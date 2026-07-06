@@ -3,7 +3,8 @@
 from sionna.phy import config as sn_config
 import torch
 
-from .data_structures import SystemComponents, SystemParams
+from .data_structures import SystemParams
+from .data_structures.system_components import SystemComponents
 
 
 class System:
