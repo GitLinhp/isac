@@ -111,12 +111,13 @@ def _print_cnn_estimator_banner(
 
 
 def _rmse_stats_rows(values: torch.Tensor, *, unit: str, var_unit: str) -> list[list]:
-    """构造均值/最小/最大/方差四行表格数据。
+    """构造均值/中位数/最小/最大/方差五行表格数据。
 
     方差为总体方差（``torch.var(unbiased=False)``）。
     """
     return [
         ["均值", float(values.mean().item()), unit],
+        ["中位数", float(values.median().item()), unit],
         ["最小值", float(values.min().item()), unit],
         ["最大值", float(values.max().item()), unit],
         ["方差", float(values.var(unbiased=False).item()), var_unit],
@@ -209,7 +210,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--estimator",
         type=str,
-        default="music",
+        default="model",
         choices=["music", "model"],
         help="距离/速度估计器：music（2D-MUSIC）或 model（MonostaticDelayDopplerCNN）",
     )

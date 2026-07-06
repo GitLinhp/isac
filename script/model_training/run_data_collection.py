@@ -27,7 +27,6 @@ from isac.datasets import (
     save_collection_artifacts,
 )
 from isac.system import System
-from isac.channel.rt.rt_channel import RTChannel
 from isac.utils import load_config, set_random_seed
 from isac.utils.data_collection.channel_export import (
     los_truth_from_kinematics,
@@ -75,7 +74,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--num_samples",
         type=int,
-        default=5000,
+        default=20000,
         help="采样条数",
     )
     parser.add_argument(

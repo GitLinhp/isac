@@ -149,14 +149,14 @@ python gnuradio/flowgraphs/run_simulator_ofdm.py
 
 | 脚本 | 配置 | 输出 |
 |------|------|------|
-| [`script/model_training/run_dataset_collection.py`](script/model_training/run_dataset_collection.py) | [`config/data_collection/data_collection.toml`](config/data_collection/data_collection.toml)、[`dataset_collection_cnn.toml`](config/data_collection/dataset_collection_cnn.toml) | `out/dataset_collection/` |
+| [`script/model_training/run_data_collection.py`](script/model_training/run_data_collection.py) | [`config/data_collection/data_collection.toml`](config/data_collection/data_collection.toml) | `data/` |
 
-蒙特卡洛 ROI 采样 → RT 目标位姿 → CFR / CIR → 写出 CSV / HDF5。几何真值由 [`RxTargetTxGeometric`](src/isac/channel/rt/rx_target_tx_geometric.py) 提供；逐步感知与质量过滤已从此脚本移除，感知评估见 [`script/simulation/sensing/rt/`](script/simulation/sensing/rt/)。
+平面 ROI 蒙特卡洛采样 → RT 目标位姿 → 时延–多普勒谱 `h_dd` → 写出 HDF5 / CSV / TOML / PNG。几何真值由 [`RxTargetTxGeometric`](src/isac/channel/rt/rx_target_tx_geometric.py) 提供；感知评估见 [`script/evaluation/run_sensing_from_dataset.py`](script/evaluation/run_sensing_from_dataset.py)。
 
-运行逻辑详见 [docs/run_dataset_collection.md](docs/run_dataset_collection.md)。
+运行逻辑详见 [docs/run_data_collection.md](docs/run_data_collection.md)。
 
 ```bash
-python script/model_training/run_dataset_collection.py
+python script/model_training/run_data_collection.py
 ```
 
 ### 测试
@@ -202,7 +202,7 @@ USRP 对接参考：[docs/GNU_Radio_USRP_Source_Sink_总结.md](docs/GNU_Radio_U
 
 | 文档 | 内容 |
 |------|------|
-| [docs/run_dataset_collection.md](docs/run_dataset_collection.md) | 蒙特卡洛数据集采集脚本流程、CLI 与输出约定 |
+| [docs/run_data_collection.md](docs/run_data_collection.md) | 蒙特卡洛数据集采集脚本流程、CLI 与输出约定 |
 | [docs/system-py-functions.md](docs/system-py-functions.md) | `System` 类 API、蒙特卡洛数据集、组件说明 |
 | [docs/utils-functions.md](docs/utils-functions.md) | `isac.utils` 各函数及在脚本中的用法 |
 | [docs/STATIC_TARGET_SIMULATION.md](docs/STATIC_TARGET_SIMULATION.md) | 静态点目标仿真端到端流程 |

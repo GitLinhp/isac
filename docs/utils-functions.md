@@ -8,23 +8,20 @@
 
 以下为仓库内**直接** `from isac.utils`（或 `from isac.utils import target_generation`）的入口脚本；库内间接调用见下一节。
 
-### [`script/model_training/run_dataset_collection.py`](script/model_training/run_dataset_collection.py)
+### [`script/model_training/run_data_collection.py`](script/model_training/run_data_collection.py)
 
-数据集采集主入口：蒙特卡洛 ROI 采样生成 episode，可选逐步感知，写出 CSV / HDF5 / GIF。
+数据集采集主入口：平面 ROI 蒙特卡洛采样 → RT 目标位姿驱动 → 单 episode 仿真 → 流式写 HDF5，事后写 TOML / CSV / PNG。
 
 | 函数 / 模块 | 在流水线中的角色 |
 | ----------- | ---------------- |
 | `set_random_seed` | CLI 解析后固定 NumPy / PyTorch / Sionna 随机性，保证可复现采集。 |
-| `scene_slug_from_rt_simulator` | 从 RT 仿真器文件名生成输出文件 slug（HDF5、CSV、GIF 前缀）。 |
-| `target_generation.generate_targets_monte_carlo` | 批量生成全部 episode 的 `(位置, 速度)` 数组。 |
-| `target_generation.generate_monte_carlo_points` | 质量过滤循环中单样本 ROI 位置采样（与 `scene.is_position_valid` 配合）。 |
-| `target_generation.sample_monte_carlo_velocities` | 质量过滤循环中单样本速度采样。 |
-| `paths_cfr_numpy` | 每步从 RT `paths.cfr` 取 OFDM 网格上的 CFR，写入 HDF5 缓冲。 |
-| `paths_cir_numpy` | `--save-cir` 时取 CIR（`cir_a` 末维 `[Re, Im]`，`tau` 为秒）。 |
-| `stack_ragged_cir_samples` | 各样本路径条数不一致时零填充堆叠为 `(N, …)` 再落盘 HDF5。 |
-| `match_peaks_and_compute_radial_rmse` | `--run_sensing` 时匈牙利匹配 MUSIC 峰与几何真值，打印聚合径向 RMSE。 |
-| `compute_rmse` | 逐步感知 CSV 中「本 episode 估计 vs 真值」的 RMSE（与匈牙利打印的跨峰 RMSE 不同）。 |
-| `images_to_gif` | 将 RT 场景帧序列合成为预览 GIF。 |
+| `load_config` | 加载 TOML 配置，构建 `System`。 |
+| `RoiKinematicsSampler` | 批量预采样 `(位置, 速度, 姿态)`，循环中 `pop()` 消费。 |
+| `accept_episode_kinematics` | 过滤障碍物内无效位置（`scene_filter`）。 |
+| `scene_slug_from_rt_simulator` | 从 RT 场景文件名生成输出文件 slug（HDF5、CSV、PNG 前缀）。 |
+| `paths_intersect_target` | 判断 RT 路径是否与目标 mesh 有交互。 |
+| `los_truth_from_kinematics` | 计算几何真值（距离、径向速度），写入 CSV。 |
+| `csv_vec3` / `csv_float2_scalar` | CSV 中位置/速度与标量真值的格式化。 |
 
 ### 感知仿真脚本（[`run_sensing_monostatic.py`](script/simulation/run_sensing_monostatic.py)、[`run_sensing_bistatic.py`](script/simulation/run_sensing_bistatic.py)、[`run_sensing_cooperative.py`](script/simulation/run_sensing_cooperative.py)）
 
@@ -76,10 +73,11 @@
 
 ```mermaid
 flowchart LR
-  run_dataset_collection --> channel_paths
-  run_dataset_collection --> target_generation
-  run_dataset_collection --> metrics
-  run_dataset_collection --> render
+  run_data_collection --> roi_sampling
+  run_data_collection --> episode_filter
+  run_data_collection --> channel_export
+  run_data_collection --> config_loader
+  run_data_collection --> misc
   run_sensing_scripts --> metrics
   run_sensing_scripts --> misc
   system_py --> config_loader

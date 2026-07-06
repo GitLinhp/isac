@@ -84,6 +84,7 @@ material = "cube_material"
 position = [0, 0, 0]
 velocity = [0, 0, 0]
 orientation = [0, 0, 0]
+scaling = [0.6, 0.6, 0.6]
 
 # 路径解析器参数
 [rt_simulator.path_solver]

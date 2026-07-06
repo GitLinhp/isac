@@ -39,9 +39,9 @@
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `save_dataset(...)` | 将 CFR、`cir_a`、`cir_tau`、位置/速度、基站位置及 OFDM 元数据封装为 **`Dataset`**（``isac.datasets``）并写入 HDF5（必含 CFR+CIR）。 |
 
-### 蒙特卡洛数据集采集（已迁至 `run_dataset_collection.py`）
+### 蒙特卡洛数据集采集（[`run_data_collection.py`](../script/model_training/run_data_collection.py)）
 
-轨迹推进相关 API 已移除；批量 episode 由 `target_generation.generate_targets_monte_carlo` 与 [`script/model_training/run_dataset_collection.py`](script/model_training/run_dataset_collection.py) 完成。
+轨迹推进相关 API 已移除；批量 episode 由 [`RoiKinematicsSampler`](../src/isac/utils/data_collection/roi_sampling.py) 预采样，经 `accept_episode_kinematics` / `paths_intersect_target` 过滤后逐条仿真，由 [`RTDataset`](../src/isac/datasets.py) 流式写入 HDF5。详见 [run_data_collection.md](run_data_collection.md)。
 
 ### 蒙特卡洛：仅数据 vs 采样+感知
 
