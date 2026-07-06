@@ -1,4 +1,4 @@
-"""射线信道路径交互、几何真值与采集输出文件名 slug。"""
+"""采集辅助工具：路径交互检查、几何真值与输出文件名 slug。"""
 
 from __future__ import annotations
 

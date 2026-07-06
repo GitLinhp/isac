@@ -1,4 +1,4 @@
-"""蒙特卡洛运动学采样配置：TOML ``[monte_carlo_sampling]``（不纳入 SystemParams）。"""
+"""蒙特卡洛运动学采样配置：TOML ``[monte_carlo_sampling]``（``SystemParams.monte_carlo_sampling`` 可选字段）。"""
 
 from __future__ import annotations
 
@@ -33,31 +33,24 @@ class CollectionSamplingParams:
     speed_sampling_mode: SamplingMode
 
     @classmethod
-    def from_dict(cls, config: dict[str, Any]) -> CollectionSamplingParams:
-        """从 ``load_config`` 返回的 dict 解析 ``[monte_carlo_sampling]``。"""
-        raw = config.get("monte_carlo_sampling")
-        if raw is None:
-            raise ValueError("配置缺少 [monte_carlo_sampling]")
-        if not isinstance(raw, dict):
-            raise TypeError(
-                f"monte_carlo_sampling 须为表(dict)，收到 {type(raw)!r}"
-            )
-        if not raw:
+    def from_dict(cls, section: dict[str, Any]) -> CollectionSamplingParams:
+        """从 ``[monte_carlo_sampling]`` 段内 dict 解析。"""
+        if not section:
             raise ValueError("[monte_carlo_sampling] 不能为空")
 
-        if "roi" not in raw:
+        if "roi" not in section:
             raise ValueError("monte_carlo_sampling.roi 为必填项")
-        if "speed_range" not in raw:
+        if "speed_range" not in section:
             raise ValueError("monte_carlo_sampling.speed_range 为必填项")
 
-        roi = parse_roi_xy(raw["roi"])
-        speed_range = parse_speed_range(raw["speed_range"])
+        roi = parse_roi_xy(section["roi"])
+        speed_range = parse_speed_range(section["speed_range"])
         position_sampling_mode = _parse_sampling_mode(
-            raw.get("position_sampling_mode", "uniform"),
+            section.get("position_sampling_mode", "uniform"),
             field="position_sampling_mode",
         )
         speed_sampling_mode = _parse_sampling_mode(
-            raw.get("speed_sampling_mode", "uniform"),
+            section.get("speed_sampling_mode", "uniform"),
             field="speed_sampling_mode",
         )
 

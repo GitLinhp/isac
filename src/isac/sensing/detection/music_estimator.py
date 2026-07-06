@@ -455,7 +455,7 @@ class MUSICEstimator:
         max_doppler_offset = num_doppler_bins - geometry.doppler_size
         max_delay_offset = num_delay_bins - geometry.delay_size
 
-        if max_doppler_offset <= 0 or max_delay_offset <= 0:
+        if max_doppler_offset < 0 or max_delay_offset < 0:
             raise ValueError("搜索区域太小，无法构建子阵")
 
         doppler_indices = torch.randint(

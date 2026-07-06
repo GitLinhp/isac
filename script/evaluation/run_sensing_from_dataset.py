@@ -47,8 +47,8 @@ from isac.models import (
     read_monostatic_cnn_checkpoint_meta,
 )
 from isac.system import System
-from isac.utils import load_config, set_random_seed
-from isac.collection.channel_export import (
+from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.collection.utils import (
     los_truth_from_kinematics,
     scene_slug_from_rt_simulator,
 )
@@ -69,11 +69,10 @@ def _estimate_with_model(
     model: MonostaticDelayDopplerCNN,
     *,
     use_phase: bool,
-    sensing_performance,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """CNN 推理：h_dd → ROI 特征 → 距离/速度估计。
 
-    返回 ``(est_ranges, est_velocities)`` 以便复用 ``System.evaluate_sensing_rmse`` 与 MUSIC 分支对齐。
+    返回 ``(est_ranges, est_velocities)`` 以便复用 ``match_peaks_and_compute_radial_rmse`` 与 MUSIC 分支对齐。
     """
     model_device = next(model.parameters()).device
     features = dd_spectrum_to_features(
@@ -271,8 +270,9 @@ def main() -> None:
         config=config,
         device=args.device,
     )
+    comps = system.components
 
-    rt_simulator = system.components.rt_simulator
+    rt_simulator = comps.rt_simulator
     if rt_simulator is None:
         raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
 
@@ -304,7 +304,7 @@ def main() -> None:
         output_dir=script_out_dir,
     )
 
-    system.components.sensing_performance()
+    comps.sensing_performance()
 
     n_episodes = len(dataset)
     if args.max_episodes is not None:
@@ -321,18 +321,19 @@ def main() -> None:
             h_dd = dataset.spectrum_tensor(i, device=system.device)
 
             if args.estimator == "music":
-                estimate = system.estimate_sensing_music(
-                    h_dd,
+                est_ranges, est_velocities, _ = comps.music_estimator(
+                    spectrum_tensor=h_dd,
                     metric_mode=args.metric_mode,
+                    sens_mode="monostatic",
+                    near_range_guard_m=0.0,
                     log_peaks=False,
                 )
             else:
                 assert cnn_model is not None
-                estimate = _estimate_with_model(
+                est_ranges, est_velocities = _estimate_with_model(
                     h_dd,
                     cnn_model,
                     use_phase=use_phase,
-                    sensing_performance=system.components.sensing_performance,
                 )
 
             pos = dataset.target_position[i]
@@ -351,12 +352,15 @@ def main() -> None:
                 true_range, true_velocity = los_truth_from_kinematics(
                     pos, vel, rt_simulator, system.device
                 )
-            rmse_range_m, rmse_velocity_mps = system.evaluate_sensing_rmse(
-                *estimate,
-                true_ranges=true_range,
-                true_velocities=true_velocity,
-                label=f"性能评估 ep={i}",
-                verbose=False,
+            rmse_range_m, rmse_velocity_mps, _, _, _ = (
+                match_peaks_and_compute_radial_rmse(
+                    est_ranges=est_ranges,
+                    est_velocities=est_velocities,
+                    true_ranges=true_range.reshape(-1),
+                    true_velocities=true_velocity.reshape(-1),
+                    label=f"episode {i}",
+                    verbose=False,
+                )
             )
             range_rmses.append(rmse_range_m)
             velocity_rmses.append(rmse_velocity_mps)

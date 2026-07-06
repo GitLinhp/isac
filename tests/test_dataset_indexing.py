@@ -21,8 +21,8 @@ def loaded_dataset() -> RTDataset:
         raise
 
 
-def test_len_matches_num_slots(loaded_dataset: RTDataset) -> None:
-    assert len(loaded_dataset) == loaded_dataset.num_slots
+def test_len_matches_h_dd_shape(loaded_dataset: RTDataset) -> None:
+    assert len(loaded_dataset) == loaded_dataset.h_dd.shape[0]
 
 
 def test_getitem_returns_training_dict(loaded_dataset: RTDataset) -> None:
@@ -55,6 +55,6 @@ def test_spectrum_tensor_shape(loaded_dataset: RTDataset) -> None:
 
 def test_getitem_out_of_range_raises(loaded_dataset: RTDataset) -> None:
     with pytest.raises(IndexError):
-        _ = loaded_dataset[loaded_dataset.num_slots]
+        _ = loaded_dataset[len(loaded_dataset)]
     with pytest.raises(IndexError):
         _ = loaded_dataset[-1]

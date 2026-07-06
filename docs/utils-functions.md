@@ -75,8 +75,7 @@
 flowchart LR
   run_data_collection --> data_structures
   run_data_collection --> roi_sampling
-  run_data_collection --> episode_filter
-  run_data_collection --> channel_export
+  run_data_collection --> collection_utils
   run_data_collection --> config_loader
   run_data_collection --> misc
   run_sensing_scripts --> metrics

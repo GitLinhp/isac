@@ -19,6 +19,8 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
+from .params.sampling_params import CollectionSamplingParams
+from ..collection.roi_sampling import RoiKinematicsSampler
 from ..channel.channel import Channel
 from ..channel.rcs.rcs_channel import RCSChannel
 from ..channel.rcs.rcs_scene import RCSScene
@@ -108,6 +110,23 @@ class SystemComponents:
             kwargs.update(cls._build_channel(system_params, rg, device))
         kwargs.update(cls._build_sensing(system_params, rg, device))
         return cls(**kwargs)
+
+    @staticmethod
+    def build_roi_kinematics_sampler(
+        sampling: CollectionSamplingParams,
+        *,
+        pool_size: int,
+    ) -> RoiKinematicsSampler:
+        """由 ``SystemParams.monte_carlo_sampling`` 与 CLI 池大小构建 ROI 运动学采样器。"""
+        if pool_size < 1:
+            raise ValueError("pool_size 须 >= 1")
+        return RoiKinematicsSampler(
+            roi=sampling.roi,
+            position_sampling_mode=sampling.position_sampling_mode,
+            speed_range=sampling.speed_range,
+            speed_sampling_mode=sampling.speed_sampling_mode,
+            num_samples=pool_size,
+        )
 
     @staticmethod
     def _build_basic(

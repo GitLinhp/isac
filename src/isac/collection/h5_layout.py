@@ -22,10 +22,7 @@ DATASET_KEY_TARGET_POSITION = "target_position"
 DATASET_KEY_TARGET_VELOCITY = "target_velocity"
 DATASET_KEY_BS_POS = "bs_pos"
 
-META_KEY_NUM_SLOTS = "num_slots"
 META_KEY_DESCRIPTION = "description"
-META_PREFIX_COLLECTION = "collection_"
-META_PREFIX_SENSING = "sensing_"
 
 COLLECTION_TUPLE_FIELDS = frozenset({"roi", "speed_range"})
 

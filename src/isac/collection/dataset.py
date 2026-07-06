@@ -21,9 +21,10 @@ HDF5 文件布局
 
 根 attrs:
 
-- ``num_slots``, ``description``
-- ``collection_*``：由 ``CollectionMetadata`` 写入
-- ``sensing_*``：由 ``SensingMetadata`` 写入（ROI、分辨率等）
+- ``description``
+- ``seed``, ``roi``, ``position_sampling_mode``, ``speed_range``, ``speed_sampling_mode``：由 ``CollectionMetadata`` 写入
+
+感知 ROI 与分辨率见同目录 TOML 副本（``[dd_spectrum_roi]``、``[ofdm]``），不写入 HDF5。
 
 采集落盘产物（``data/``）:
 
@@ -37,7 +38,7 @@ from __future__ import annotations
 
 import csv
 import shutil
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -69,13 +70,8 @@ from .h5_layout import (
     EPISODE_CSV_SUFFIX,
     LEGACY_DATASET_KEY_CFR,
     META_KEY_DESCRIPTION,
-    META_KEY_NUM_SLOTS,
-    META_PREFIX_COLLECTION,
-    META_PREFIX_SENSING,
     SCENE_PNG_SUFFIX,
     collection_dataset_description,
-    collection_h5_path,
-    collection_scene_png_path,
 )
 
 
@@ -87,11 +83,6 @@ def _resolve_out_dir(output_root: Path | None) -> Path:
 
 
 # --- HDF5 读写辅助 ---
-
-
-def _meta_attr_key(prefix: str, name: str) -> str:
-    """HDF5 根属性键名：``{prefix}{field}``（如 ``collection_seed``）。"""
-    return f"{prefix}{name}"
 
 
 def _require_dataset(f: h5py.File, key: str) -> h5py.Dataset:
@@ -117,21 +108,17 @@ def _read_array_datasets(f: h5py.File) -> dict[str, np.ndarray]:
 def _write_hdf5_root_metadata(
     f: h5py.File,
     *,
-    num_slots: int,
+    n_episodes: int,
     collection_meta: CollectionMetadata | None,
-    sensing_meta: SensingMetadata | None,
     scene_slug: str | None = None,
 ) -> None:
-    """写入 ``num_slots``、``description``、``collection_*`` 与 ``sensing_*`` 根属性。"""
-    f.attrs[META_KEY_NUM_SLOTS] = num_slots
+    """写入 ``description`` 与采集元数据根属性。"""
     if collection_meta is not None:
         if scene_slug is not None:
             f.attrs[META_KEY_DESCRIPTION] = collection_dataset_description(
-                scene_slug, num_slots
+                scene_slug, n_episodes
             )
         collection_meta.write_hdf5_attrs(f)
-    if sensing_meta is not None:
-        sensing_meta.write_hdf5_attrs(f)
 
 
 def _create_vec3_dataset(f: h5py.File, key: str) -> h5py.Dataset:
@@ -148,29 +135,13 @@ def _create_vec3_dataset(f: h5py.File, key: str) -> h5py.Dataset:
 # --- 数据类 ---
 
 
-@dataclass
-class EpisodeBuffers:
-    """主循环共享的 episode 级 CSV 缓冲。
-
-    ``run_data_collection`` 采集循环逐条追加 kinematics 行；循环结束后由
-    ``save_collection_artifacts`` 写出 CSV。h_dd 由 ``RTDataset.open_for_collection``
-    流式写入 HDF5。
-
-    每行 dict 的键与 ``EPISODE_CSV_COLUMNS`` 一致：
-    ``sample_idx``, ``position``, ``velocity``, ``true_range_m``,
-    ``true_radial_velocity_mps``。
-    """
-
-    csv_rows: list[dict[str, str | int]] = field(default_factory=list)
-
-
 def _hdf5_serialize(val: Any) -> Any:
     """将 tuple 转为 list，供 h5py 根属性写入。"""
     return list(val) if isinstance(val, tuple) else val
 
 
 def _hdf5_deserialize_collection(name: str, val: Any) -> Any:
-    """读 ``collection_*`` attrs 时，将 list 还原为 tuple（见 ``COLLECTION_TUPLE_FIELDS``）。"""
+    """读采集元数据 attrs 时，将 list 还原为 tuple（见 ``COLLECTION_TUPLE_FIELDS``）。"""
     if name in COLLECTION_TUPLE_FIELDS:
         return tuple(float(x) for x in val)
     return val
@@ -178,7 +149,7 @@ def _hdf5_deserialize_collection(name: str, val: Any) -> Any:
 
 @dataclass(frozen=True)
 class CollectionMetadata:
-    """一次采集运行的可复现配置摘要，序列化到 HDF5 根属性 ``collection_<field>``。
+    """一次采集运行的可复现配置摘要，序列化到 HDF5 根属性。
 
     采样字段来自 TOML ``[monte_carlo_sampling]``；``seed`` 来自 CLI。
 
@@ -198,21 +169,20 @@ class CollectionMetadata:
     speed_sampling_mode: str = "uniform"
 
     def write_hdf5_attrs(self, f: h5py.File) -> None:
-        """写入 ``collection_<field>`` 根属性。"""
+        """写入采集元数据根属性（``seed``、``roi`` 等）。"""
         for key, val in asdict(self).items():
-            f.attrs[_meta_attr_key(META_PREFIX_COLLECTION, key)] = _hdf5_serialize(val)
+            f.attrs[key] = _hdf5_serialize(val)
 
     @classmethod
     def read_hdf5_attrs(cls, f: h5py.File) -> CollectionMetadata | None:
-        """从根属性读取；缺少 ``collection_seed`` 时返回 ``None``。"""
-        if _meta_attr_key(META_PREFIX_COLLECTION, "seed") not in f.attrs:
+        """从根属性读取；缺少 ``seed`` 时返回 ``None``。"""
+        if "seed" not in f.attrs:
             return None
         kwargs: dict[str, Any] = {}
         for fld in fields(cls):
-            attr_key = _meta_attr_key(META_PREFIX_COLLECTION, fld.name)
-            if attr_key not in f.attrs:
+            if fld.name not in f.attrs:
                 continue
-            kwargs[fld.name] = _hdf5_deserialize_collection(fld.name, f.attrs[attr_key])
+            kwargs[fld.name] = _hdf5_deserialize_collection(fld.name, f.attrs[fld.name])
         return cls(**kwargs)
 
     @classmethod
@@ -231,66 +201,28 @@ class CollectionMetadata:
         )
 
 
-@dataclass(frozen=True)
-class SensingMetadata:
-    """感知链配置摘要，序列化到 HDF5 根属性 ``sensing_<field>``。
-
-    由 ``from_system`` 在采集启动时从 ``System`` 组件提取。
-
-    字段
-    ----
-    - ``max_range_m``：DD 谱 ROI 最大距离（m）
-    - ``max_velocity_mps``：DD 谱 ROI 最大多普勒速度（m/s）
-    - ``range_resolution``：距离分辨率（m）
-    - ``velocity_resolution``：速度分辨率（m/s）
-    """
-
-    max_range_m: float
-    max_velocity_mps: float
-    range_resolution: float
-    velocity_resolution: float
-
-    def write_hdf5_attrs(self, f: h5py.File) -> None:
-        """写入 ``sensing_<field>`` 根属性。"""
-        for key, val in asdict(self).items():
-            f.attrs[_meta_attr_key(META_PREFIX_SENSING, key)] = float(val)
-
-    @classmethod
-    def read_hdf5_attrs(cls, f: h5py.File) -> SensingMetadata | None:
-        """从根属性读取；缺少 ``sensing_max_range_m`` 时返回 ``None``。"""
-        if _meta_attr_key(META_PREFIX_SENSING, "max_range_m") not in f.attrs:
-            return None
-        kwargs: dict[str, Any] = {}
-        for fld in fields(cls):
-            attr_key = _meta_attr_key(META_PREFIX_SENSING, fld.name)
-            if attr_key not in f.attrs:
-                continue
-            kwargs[fld.name] = float(f.attrs[attr_key])
-        return cls(**kwargs)
-
-    @classmethod
-    def from_system(cls, system: System) -> SensingMetadata:
-        """从已构建 ``System`` 提取 ROI 与分辨率（需 ``[dd_spectrum_roi]``）。"""
-        sp = system.components.sensing_performance
-        if sp is None:
-            raise ValueError("采集要求已构建 sensing_performance 组件")
-        dd = system.components.delay_doppler_spectrum
-        if dd is None or not dd.has_roi:
-            raise ValueError(
-                "采集要求配置 [dd_spectrum_roi]（max_range_m / max_velocity_mps）"
-            )
-        return cls(
-            max_range_m=float(dd.max_range_m),
-            max_velocity_mps=float(dd.max_velocity_mps),
-            range_resolution=float(sp.range_resolution),
-            velocity_resolution=float(sp.velocity_resolution),
+def sensing_attrs_from_system(system: "System") -> dict[str, float]:
+    """从已构建 ``System`` 提取 ROI 与分辨率（需 ``[dd_spectrum_roi]``）。"""
+    sp = system.components.sensing_performance
+    if sp is None:
+        raise ValueError("采集要求已构建 sensing_performance 组件")
+    dd = system.components.delay_doppler_spectrum
+    if dd is None or not dd.has_roi:
+        raise ValueError(
+            "采集要求配置 [dd_spectrum_roi]（max_range_m / max_velocity_mps）"
         )
+    return {
+        "max_range_m": float(dd.max_range_m),
+        "max_velocity_mps": float(dd.max_velocity_mps),
+        "range_resolution": float(sp.range_resolution),
+        "velocity_resolution": float(sp.velocity_resolution),
+    }
 
 
 class RTDataset(Dataset):
     """ISAC HDF5 数据集：采集流式写入与内存读取。
 
-    典型形状：``h_dd`` 为 ``(num_slots, H, W)`` 复数；运动学为 ``(num_slots, 3)``。
+    典型形状：``h_dd`` 为 ``(N, H, W)`` 复数；运动学为 ``(N, 3)``。
 
     采集写入
     --------
@@ -300,7 +232,7 @@ class RTDataset(Dataset):
     读取 / 训练
     -----------
     - ``RTDataset.load(path)``
-    - ``len(dataset)`` → ``num_slots``
+    - ``len(dataset)`` → episode 条数
     - ``dataset[i]`` → ``dict`` 含 ``features``、``range_m``、``velocity_mps``、``slot``
     - ``spectrum_tensor(i)`` → 单条复数 h_dd（评估用）
     """
@@ -313,7 +245,6 @@ class RTDataset(Dataset):
         target_velocity: np.ndarray,
         h_dd: np.ndarray,
         collection_meta: CollectionMetadata | None = None,
-        sensing_meta: SensingMetadata | None = None,
         use_phase: bool = True,
     ) -> None:
         """构造数据集实例（读取模式或 ``open_for_collection`` 占位）。
@@ -333,7 +264,6 @@ class RTDataset(Dataset):
         self.target_velocity = target_velocity
         self.h_dd = h_dd
         self.collection_meta = collection_meta
-        self.sensing_meta = sensing_meta
         self.use_phase = use_phase
         self._path: Path | None = None
         self._compression: str | None = None
@@ -344,23 +274,6 @@ class RTDataset(Dataset):
         self._writer_count = 0
         self._finalized = False
 
-    @property
-    def num_slots(self) -> int:
-        """episode 条数：写入模式为 ``count``，读取模式为 ``h_dd.shape[0]``。"""
-        if self._path is not None:
-            return self._writer_count
-        return int(self.h_dd.shape[0])
-
-    @property
-    def count(self) -> int:
-        """采集写入模式下已追加的 episode 数。"""
-        return self._writer_count
-
-    @property
-    def path(self) -> Path | None:
-        """采集写入模式下的 HDF5 输出路径。"""
-        return self._path
-
     def _ensure_readable(self) -> None:
         """写入模式且未 ``finalize`` 时禁止 ``__getitem__`` / ``spectrum_tensor``。"""
         if self._path is not None and not self._finalized:
@@ -368,38 +281,15 @@ class RTDataset(Dataset):
                 "RTDataset 处于采集写入模式，请先 finalize 再 load 或索引"
             )
 
-    def _require_sensing_meta(self) -> SensingMetadata:
-        """返回 ``sensing_meta``；缺失时 ``ValueError``。"""
-        if self.sensing_meta is None:
-            raise ValueError("RTDataset 缺少 sensing_meta")
-        return self.sensing_meta
-
-    @property
-    def range_resolution(self) -> float:
-        """距离分辨率 (m)，来自 ``sensing_meta``。"""
-        return self._require_sensing_meta().range_resolution
-
-    @property
-    def velocity_resolution(self) -> float:
-        """速度分辨率 (m/s)，来自 ``sensing_meta``。"""
-        return self._require_sensing_meta().velocity_resolution
-
-    @property
-    def max_range_m(self) -> float:
-        """DD 谱 ROI 最大距离 (m)，来自 ``sensing_meta``。"""
-        return self._require_sensing_meta().max_range_m
-
-    @property
-    def max_velocity_mps(self) -> float:
-        """DD 谱 ROI 最大多普勒速度 (m/s)，来自 ``sensing_meta``。"""
-        return self._require_sensing_meta().max_velocity_mps
-
     def _validate_slot_index(self, idx: int) -> None:
-        if idx < 0 or idx >= self.num_slots:
-            raise IndexError(f"index {idx} out of range for {self.num_slots} slots")
+        n = len(self)
+        if idx < 0 or idx >= n:
+            raise IndexError(f"index {idx} out of range for {n} slots")
 
     def __len__(self) -> int:
-        return self.num_slots
+        if self._path is not None:
+            return self._writer_count
+        return int(self.h_dd.shape[0])
 
     def spectrum_tensor(
         self, idx: int, *, device: torch.device | str | None = None
@@ -440,7 +330,7 @@ class RTDataset(Dataset):
     def __repr__(self) -> str:
         if self._path is not None:
             return f"RTDataset(writer, count={self._writer_count}, path={self._path})"
-        return f"RTDataset(num_slots={self.num_slots}, h_dd_shape={self.h_dd.shape})"
+        return f"RTDataset(n={len(self)}, h_dd_shape={self.h_dd.shape})"
 
     @classmethod
     def open_for_collection(
@@ -539,7 +429,6 @@ class RTDataset(Dataset):
         *,
         collection_meta: CollectionMetadata,
         scene_slug: str,
-        sensing_meta: SensingMetadata,
     ) -> None:
         """写入根属性并关闭 HDF5 文件；无 episode 时 ``ValueError``。"""
         if self._file is None:
@@ -548,9 +437,8 @@ class RTDataset(Dataset):
             return
         _write_hdf5_root_metadata(
             self._file,
-            num_slots=self._writer_count,
+            n_episodes=self._writer_count,
             collection_meta=collection_meta,
-            sensing_meta=sensing_meta,
             scene_slug=scene_slug,
         )
         self._file.close()
@@ -572,7 +460,6 @@ class RTDataset(Dataset):
                 target_velocity=arrays["target_velocity"],
                 h_dd=arrays["h_dd"],
                 collection_meta=CollectionMetadata.read_hdf5_attrs(f),
-                sensing_meta=SensingMetadata.read_hdf5_attrs(f),
                 use_phase=use_phase,
             )
 
@@ -624,7 +511,7 @@ def save_collection_artifacts(
     *,
     scene_slug: str,
     config_file: str | Path,
-    buffers: EpisodeBuffers,
+    csv_rows: list[dict[str, str | int]],
     rt_simulator: RTSimulator,
     out_dir: Path | None = None,
 ) -> None:
@@ -633,7 +520,7 @@ def save_collection_artifacts(
     _save_collection_config(config_file=config_file, output_root=target_dir)
     _save_episodes_csv(
         scene_slug=scene_slug,
-        rows=buffers.csv_rows,
+        rows=csv_rows,
         output_root=target_dir,
     )
     _save_scene_render(rt_simulator, scene_slug, target_dir)

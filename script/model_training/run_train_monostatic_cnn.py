@@ -27,11 +27,13 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 from isac import DEFAULT_DATASET_H5, DEFAULT_MONOSTATIC_CNN_MODEL
-from isac.collection import RTDataset
+from isac.collection import RTDataset, sensing_attrs_from_system
 from isac.models import (
     MonostaticDelayDopplerCNN,
     MonostaticSensingLoss,
 )
+from isac.system import System
+from isac.utils import load_config
 
 
 def argument_parser() -> argparse.Namespace:
@@ -232,13 +234,13 @@ def main() -> None:
     val_loader = DataLoader(val_ds, shuffle=False, **loader_kwargs)
 
     # --- 模型、损失与优化器 ---
+    config = load_config(config_path)
+    system = System(config=config, device=device)
+    sensing = sensing_attrs_from_system(system)
     in_channels = 2 if full_ds.use_phase else 1
     model = MonostaticDelayDopplerCNN(
         in_channels=in_channels,
-        range_resolution=full_ds.range_resolution,
-        velocity_resolution=full_ds.velocity_resolution,
-        max_range_m=full_ds.max_range_m,
-        max_velocity_mps=full_ds.max_velocity_mps,
+        **sensing,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = MonostaticSensingLoss()
