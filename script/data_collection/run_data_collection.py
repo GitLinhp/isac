@@ -29,7 +29,6 @@ from isac.collection.utils import (
     paths_intersect_target,
     scene_slug_from_rt_simulator,
 )
-from isac.data_structures.system_components import SystemComponents
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 # 忽略 Sionna 警告
@@ -62,18 +61,6 @@ def argument_parser() -> argparse.Namespace:
 
     # 采集参数
     parser.add_argument(
-        "--num_samples",
-        type=int,
-        default=20000,
-        help="采样条数",
-    )
-    parser.add_argument(
-        "--sampler_pool_factor",
-        type=int,
-        default=5,
-        help="采样池倍数：预采样 num_samples * factor 条，循环中过滤至 num_samples",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -103,11 +90,11 @@ def main() -> None:
         device=args.device,
     )
     sampling = system.params.monte_carlo_sampling
-
-    pool_size = args.num_samples * args.sampler_pool_factor
-    sampler = SystemComponents.build_roi_kinematics_sampler(
-        sampling, pool_size=pool_size
-    )
+    if sampling is None:
+        raise ValueError("采集要求配置 [monte_carlo_sampling]")
+    sampler = system.components.roi_kinematics_sampler
+    if sampler is None:
+        raise RuntimeError("未构建 roi_kinematics_sampler")
 
     comps = system.components
 
@@ -131,12 +118,12 @@ def main() -> None:
         # 采集 episode
         accepted = 0
         attempts = 0
-        pbar = tqdm(total=args.num_samples, desc="数据采集", unit="ep")
-        while accepted < args.num_samples:
+        pbar = tqdm(total=sampling.num_samples, desc="数据采集", unit="ep")
+        while accepted < sampling.num_samples:
             if len(sampler) == 0:
                 raise RuntimeError(
-                    f"采样池已耗尽：已采纳 {accepted}/{args.num_samples} 条。"
-                    "请增大 --sampler_pool_factor 或调整 [monte_carlo_sampling] / 过滤条件（scene_filter / 目标路径交互）。"
+                    f"采样池已耗尽：已采纳 {accepted}/{sampling.num_samples} 条。"
+                    "请增大 [monte_carlo_sampling].sampler_pool_factor 或调整过滤条件（scene_filter / 目标路径交互）。"
                 )
             pos, vel, ori = sampler.pop()
             attempts += 1

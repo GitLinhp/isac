@@ -65,7 +65,7 @@ src/isac/data_structures/params/
 
 公共导出：`from isac.data_structures import SystemParams, RCSSceneParams, ...`
 
-**采集专用段**：`config/data_collection/data_collection.toml` 中的 `[monte_carlo_sampling]` 解析为可选字段 `SystemParams.monte_carlo_sampling`（类型 [`CollectionSamplingParams`](../src/isac/data_structures/params/sampling_params.py)）；仿真类 TOML 无此段时为 `None`。
+**采集专用段**：`config/data_collection/data_collection.toml` 中的 `[monte_carlo_sampling]` 解析为可选字段 `SystemParams.monte_carlo_sampling`（类型 [`CollectionSamplingParams`](../src/isac/data_structures/params/sampling_params.py)）；含 `num_samples`、`sampler_pool_factor`（预采样池 = 二者之积，由 `pool_size` 属性计算）；仿真类 TOML 无此段时为 `None`。
 
 ---
 

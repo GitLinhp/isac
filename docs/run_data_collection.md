@@ -46,9 +46,8 @@
 # 默认配置（empty_room 场景，采样参数见 data_collection.toml）
 python script/data_collection/run_data_collection.py
 
-# 自定义样本数、设备；切换采样策略请编辑 TOML 或使用 --config_file
+# 自定义设备与随机种子；样本数等采样参数请编辑 TOML 或使用 --config_file
 python script/data_collection/run_data_collection.py \
-  --num_samples 1000 \
   --device cpu \
   --seed 42
 ```
@@ -60,16 +59,16 @@ python script/data_collection/run_data_collection.py \
 | `--config_file`         | `config/data_collection/data_collection.toml` | 仿真与采样 TOML                                                  |
 | `--device` / `-d`     | `cuda:0`                                      | `cuda:0` 或 `cpu`                                            |
 | `--seed`                | `42`                                          | 蒙特卡洛随机种子                                                 |
-| `--num_samples`         | `20000`                                       | 最终采纳 episode 数                                              |
-| `--sampler_pool_factor` | `5`                                           | 预采样`num_samples × factor` 条，循环中过滤至 `num_samples` |
 | `--h5_compression`      | `lzf`                                         | HDF5`h_dd` 压缩：`lzf` / `gzip` / `none`                 |
 
 ### `[monte_carlo_sampling]` 配置
 
-平面 ROI 与速度采样参数在 TOML 中配置（**不由 CLI 覆盖**），由 `SystemParams.from_dict` 解析为 `monte_carlo_sampling`：
+平面 ROI、速度采样与采集规模在 TOML 中配置（**不由 CLI 覆盖**），由 `SystemParams.from_dict` 解析为 `monte_carlo_sampling`；`SystemComponents.build_from_params` 据此构建 `roi_kinematics_sampler`：
 
 ```toml
 [monte_carlo_sampling]
+num_samples = 20000
+sampler_pool_factor = 5
 roi = [-2.5, 2.5, -4.5, 4.5]   # xmin, xmax, ymin, ymax（m），z 固定为 0
 position_sampling_mode = "uniform"  # uniform | gaussian
 speed_range = [0.1, 3.0]          # 速度模值范围 (m/s)
@@ -80,6 +79,8 @@ speed_sampling_mode = "uniform"   # uniform | gaussian
 | -------------------------- | ---- | --------------------------------------------------------- |
 | `roi`                    | 是   | 平面 ROI 四元组`[xmin, xmax, ymin, ymax]`               |
 | `speed_range`            | 是   | 速度模值`[vmin, vmax]` (m/s)，须满足 `0 <= min < max` |
+| `num_samples`            | 否   | 最终采纳 episode 数，默认 `20000`                       |
+| `sampler_pool_factor`    | 否   | 预采样池倍数，默认 `5`；池大小 = `num_samples × factor`（不可单独配置 `pool_size`） |
 | `position_sampling_mode` | 否   | 默认`uniform`                                           |
 | `speed_sampling_mode`    | 否   | 默认`uniform`                                           |
 
@@ -91,18 +92,17 @@ speed_sampling_mode = "uniform"   # uniform | gaussian
 
 `main()` 按以下顺序执行：
 
-1. 解析 CLI，`load_config`，构建 `System`；从 `system.params.monte_carlo_sampling` 经 `SystemComponents.build_roi_kinematics_sampler` 预采样池。
+1. 解析 CLI，`load_config`，构建 `System`；`SystemComponents.build_from_params` 根据 `[monte_carlo_sampling]` 构建 `roi_kinematics_sampler` 预采样池。
 2. 设置随机种子，取 RT 场景与第一个 `rt_target`，打开 HDF5 流式写入器。
-3. 循环：采样 → 过滤 → 更新目标位姿 → 仿真 → 追加 episode，直至采纳 `num_samples` 条。
+3. 循环：采样 → 过滤 → 更新目标位姿 → 仿真 → 追加 episode，直至采纳 TOML 中 `num_samples` 条。
 4. `RTDataset.finalize` 写入 HDF5 元数据；`save_collection_artifacts` 写出 TOML / CSV / PNG。
 
 ```mermaid
 flowchart TD
     CLI[CLI 解析] --> Load[load_config]
-    Load --> Parse[CollectionSamplingParams]
-    Parse --> Pool[RoiKinematicsSampler 预采样池]
     CLI --> Seed[set_random_seed]
-    Load --> Sys[System 构建]
+    Load --> Sys[System + build_from_params]
+    Sys --> Pool[roi_kinematics_sampler]
     Pool --> Loop{accepted < num_samples?}
     Loop --> Pop[sampler.pop]
     Pop --> F1[accept_episode_kinematics]
@@ -129,7 +129,7 @@ flowchart TD
 1. **`accept_episode_kinematics`**：`scene_filter(pos)` 为真（位置不在障碍物 AABB 内；`safe_margin` 见 `[rt_simulator.scene_filter]`）
 2. **`paths_intersect_target`**：RT 路径与目标 mesh 有交互
 
-采样池耗尽时抛出 `RuntimeError`，提示增大 `--sampler_pool_factor` 或调整 `[monte_carlo_sampling]` / 过滤条件。
+采样池耗尽时抛出 `RuntimeError`，提示增大 `[monte_carlo_sampling].sampler_pool_factor` 或调整过滤条件。
 
 ### 单 episode 仿真链
 
@@ -327,7 +327,7 @@ python script/evaluation/run_sensing_from_dataset.py \
 
 | 现象               | 处理                                                                                               |
 | ------------------ | -------------------------------------------------------------------------------------------------- |
-| 采样池耗尽         | 增大`--sampler_pool_factor`，或调整 `[monte_carlo_sampling]` / `[rt_simulator.scene_filter]` |
+| 采样池耗尽         | 增大 `[monte_carlo_sampling].sampler_pool_factor`，或调整 `[rt_simulator.scene_filter]` |
 | HDF5 报旧 CFR 格式 | 重新运行`run_data_collection.py` 采集 `h_dd` 数据集                                            |
 | 接受率过低         | 脚本结束会打印`接受率: X% (accepted/attempts)`；可调整 ROI 或场景配置                            |
 | 评估脚本找不到配置 | 确保 HDF5 同目录存在`data_collection.toml`（采集时自动复制）                                     |

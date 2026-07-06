@@ -19,7 +19,6 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
-from .params.sampling_params import CollectionSamplingParams
 from ..collection.roi_sampling import RoiKinematicsSampler
 from ..channel.channel import Channel
 from ..channel.rcs.rcs_channel import RCSChannel
@@ -89,6 +88,10 @@ class SystemComponents:
     music_estimator: Optional[MUSICEstimator] = None
     """MUSIC估计器"""
 
+    # 采集组件
+    roi_kinematics_sampler: Optional[RoiKinematicsSampler] = None
+    """ROI 运动学预采样池；``[monte_carlo_sampling]`` 存在时由 ``build_from_params`` 构建"""
+
     @classmethod
     def build_from_params(
         cls,
@@ -109,24 +112,16 @@ class SystemComponents:
         if system_params.channel is not None and rg is not None:
             kwargs.update(cls._build_channel(system_params, rg, device))
         kwargs.update(cls._build_sensing(system_params, rg, device))
+        if system_params.monte_carlo_sampling is not None:
+            s = system_params.monte_carlo_sampling
+            kwargs["roi_kinematics_sampler"] = RoiKinematicsSampler(
+                roi=s.roi,
+                position_sampling_mode=s.position_sampling_mode,
+                speed_range=s.speed_range,
+                speed_sampling_mode=s.speed_sampling_mode,
+                num_samples=s.pool_size,
+            )
         return cls(**kwargs)
-
-    @staticmethod
-    def build_roi_kinematics_sampler(
-        sampling: CollectionSamplingParams,
-        *,
-        pool_size: int,
-    ) -> RoiKinematicsSampler:
-        """由 ``SystemParams.monte_carlo_sampling`` 与 CLI 池大小构建 ROI 运动学采样器。"""
-        if pool_size < 1:
-            raise ValueError("pool_size 须 >= 1")
-        return RoiKinematicsSampler(
-            roi=sampling.roi,
-            position_sampling_mode=sampling.position_sampling_mode,
-            speed_range=sampling.speed_range,
-            speed_sampling_mode=sampling.speed_sampling_mode,
-            num_samples=pool_size,
-        )
 
     @staticmethod
     def _build_basic(

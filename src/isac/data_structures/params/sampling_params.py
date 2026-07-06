@@ -31,6 +31,13 @@ class CollectionSamplingParams:
     position_sampling_mode: SamplingMode
     speed_range: tuple[float, float]
     speed_sampling_mode: SamplingMode
+    num_samples: int = 20000
+    sampler_pool_factor: int = 5
+
+    @property
+    def pool_size(self) -> int:
+        """预采样池大小：``num_samples × sampler_pool_factor``（不可在 TOML 中直接配置）。"""
+        return self.num_samples * self.sampler_pool_factor
 
     @classmethod
     def from_dict(cls, section: dict[str, Any]) -> CollectionSamplingParams:
@@ -53,10 +60,18 @@ class CollectionSamplingParams:
             section.get("speed_sampling_mode", "uniform"),
             field="speed_sampling_mode",
         )
+        num_samples = int(section.get("num_samples", 20000))
+        sampler_pool_factor = int(section.get("sampler_pool_factor", 5))
+        if num_samples < 1:
+            raise ValueError("monte_carlo_sampling.num_samples 须 >= 1")
+        if sampler_pool_factor < 1:
+            raise ValueError("monte_carlo_sampling.sampler_pool_factor 须 >= 1")
 
         return cls(
             roi=roi,
             position_sampling_mode=position_sampling_mode,
             speed_range=speed_range,
             speed_sampling_mode=speed_sampling_mode,
+            num_samples=num_samples,
+            sampler_pool_factor=sampler_pool_factor,
         )
