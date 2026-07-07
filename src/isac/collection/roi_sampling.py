@@ -156,4 +156,3 @@ class RoiKinematicsSampler:
         orientations = cartesian_direction_to_yaw_pitch_roll(dirs)
         velocities = (speeds[:, None] * dirs).astype(np.float64)
         return velocities, orientations
-
