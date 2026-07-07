@@ -140,6 +140,6 @@ def test_display_includes_type_range_vel(capsys):
     )
     geom.display()
     text = capsys.readouterr().out
-    assert "路径类型" in text and "路径长度_m" in text and "径向速度_mps" in text
+    assert "路径类型" in text and "路径长度(m)" in text and "径向速度(m/s)" in text
     assert "monostatic" in text
     assert "t0" in text and "r0" in text and "x0" in text

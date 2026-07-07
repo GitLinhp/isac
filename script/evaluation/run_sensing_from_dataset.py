@@ -122,7 +122,7 @@ def _evaluate_episode(
     comps = system.components
 
     if setup.label == "MUSIC":
-        est_ranges, est_velocities, _ = comps.music_estimator(
+        est_ranges, est_velocities, _ = comps.music_sensing(
             spectrum_tensor=h_dd,
             metric_mode=setup.metric_mode,
             sens_mode="monostatic",
@@ -245,8 +245,8 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--metric_mode",
         type=str,
-        default="range_velocity",
-        choices=["delay_doppler", "range_velocity"],
+        default="rv",
+        choices=["dd", "rv"],
         help="谱图与 MUSIC 日志 metric（仅 music 估计器）",
     )
     parser.add_argument(

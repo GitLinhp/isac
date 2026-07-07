@@ -1,6 +1,6 @@
 """深度学习感知模型。"""
 
-from .utils import (
+from .preprocess import (
     dd_spectrum_to_features,
     monostatic_labels_from_kinematics,
 )

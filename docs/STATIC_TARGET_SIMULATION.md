@@ -198,7 +198,7 @@ select_peak_and_log_radial_rmse(
 | `--device` / `-d` | `cuda:0` | `cuda:0` 或 `cpu` |
 | `--seed` | `42` | 随机种子 |
 | `--batch_size` | `1` | 批大小 |
-| `--metric_mode` | `range_velocity` | 谱图/MUSIC 坐标：`range_velocity` 或 `delay_doppler` |
+| `--metric_mode` | `rv` | 谱图/MUSIC 坐标：`rv` 或 `dd` |
 
 ### 目标与仿真器
 

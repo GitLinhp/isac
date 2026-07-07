@@ -66,9 +66,9 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--metric_mode",
         type=str,
-        default="range_velocity",
-        choices=["delay_doppler", "range_velocity"],
-        help="谱图与 MUSIC 日志 metric：delay_doppler 用时延 (ns) / 多普勒 (Hz)；range_velocity 用距离 (m) / 速度 (m/s)",
+        default="rv",
+        choices=["dd", "rv"],
+        help="谱图与 MUSIC 日志 metric：dd 用时延 (ns) / 多普勒 (Hz)；rv 用距离 (m) / 速度 (m/s)",
     )
 
     return parser.parse_args()
@@ -167,13 +167,13 @@ def main() -> None:
             to_db=False,
             metric_mode=args.metric_mode,
             backend="matplotlib",
-            announce_save=False,
+            sens_mode=sens_mode,
         )
 
         spectra_stack.append(h_dd_tx)
         panel_labels.append(tx_name)
 
-        est_ranges, est_velocities, _ = system.components.music_estimator(
+        est_ranges, est_velocities, _ = system.components.music_sensing(
             spectrum_tensor=h_dd_tx,
             metric_mode=args.metric_mode,
             sens_mode=sens_mode,
@@ -260,7 +260,6 @@ def main() -> None:
         metric_mode=args.metric_mode,
         backend="matplotlib",
         panel_labels=panel_labels,
-        announce_save=False,
     )
 
     h_combined = sum(
@@ -275,7 +274,6 @@ def main() -> None:
         to_db=False,
         metric_mode=args.metric_mode,
         backend="matplotlib",
-        announce_save=False,
     )
 
     if mono_tx_name is None or bistatic_tx_name is None:

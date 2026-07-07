@@ -9,8 +9,9 @@
 
 import numpy as np
 import torch
+from typing import Literal, overload
 
-from .type_converter import convert
+from .type_converter import _ConvertReturn, convert
 
 
 # =============================================================================
@@ -138,42 +139,144 @@ def cartesian_direction_to_yaw_pitch_roll(
 
 
 #  线性尺度转换为 dB 尺度工具函数
+@overload
+def linear_to_db(
+    linear_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: Literal["numpy", "np"] = "numpy",
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> np.ndarray: ...
+
+
+@overload
+def linear_to_db(
+    linear_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: Literal["torch", "tensor", "pytorch"],
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> torch.Tensor: ...
+
+
+@overload
+def linear_to_db(
+    linear_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: Literal["float"],
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> float: ...
+
+
+@overload
+def linear_to_db(
+    linear_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: str,
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> _ConvertReturn: ...
+
+
 def linear_to_db(
     linear_tensor: torch.Tensor | np.ndarray | float,
     is_power: bool = False,
     min_value: float = 1e-20,
-) -> torch.Tensor | np.ndarray | float:
+    *,
+    return_type: str = "numpy",
+    dtype: torch.dtype | None = None,
+    device: torch.device | None = None,
+) -> _ConvertReturn:
     """将线性尺度转换为 dB 尺度。
 
     参数:
     - linear_tensor : torch.Tensor | np.ndarray | float
         输入张量或标量，支持 ``torch.Tensor``、``numpy.ndarray`` 或浮点数。
     - is_power : bool
-        为 ``True`` 时按照功率(20log10)，否则按照幅度(10log10)。
+        为 ``True`` 时使用 20·log10（线性幅度 → dB）；为 ``False`` 时使用 10·log10（功率 → dB）。
+    - min_value : float
+        下限裁剪，避免 ``log10(0)``。
+    - return_type : str
+        输出类型，经 :func:`~isac.utils.type_converter.convert` 转换；默认 ``numpy``。
+    - dtype, device :
+        仅当 ``return_type`` 为 torch 时转发给 ``convert``。
 
     返回:
-        与输入类型匹配的 dB 值。
+        经 ``convert`` 转换后的 dB 值，类型由 ``return_type`` 决定。
     """
-
     factor = 20.0 if is_power else 10.0
+    arr = convert(linear_tensor, "numpy")
+    safe = np.clip(arr, min_value, None)
+    result = np.asarray(factor * np.log10(safe))
+    return convert(result, return_type, dtype=dtype, device=device)  # type: ignore[arg-type]
 
-    if isinstance(linear_tensor, torch.Tensor):
-        safe_tensor = torch.clamp(linear_tensor, min=min_value)
-        return factor * torch.log10(safe_tensor)
-    if isinstance(linear_tensor, np.ndarray):
-        safe_tensor = np.clip(linear_tensor, min_value, None)
-        return factor * np.log10(safe_tensor)
 
-    safe_value = max(float(linear_tensor), min_value)
+@overload
+def db_to_linear(
+    db_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: Literal["numpy", "np"] = "numpy",
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> np.ndarray: ...
 
-    return float(factor * np.log10(safe_value))
+
+@overload
+def db_to_linear(
+    db_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: Literal["torch", "tensor", "pytorch"],
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> torch.Tensor: ...
+
+
+@overload
+def db_to_linear(
+    db_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: Literal["float"],
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> float: ...
+
+
+@overload
+def db_to_linear(
+    db_tensor: torch.Tensor | np.ndarray | float,
+    is_power: bool = ...,
+    min_value: float = ...,
+    *,
+    return_type: str,
+    dtype: torch.dtype | None = ...,
+    device: torch.device | None = ...,
+) -> _ConvertReturn: ...
 
 
 def db_to_linear(
     db_tensor: torch.Tensor | np.ndarray | float,
     is_power: bool = False,
     min_value: float = 1e-20,
-) -> torch.Tensor | np.ndarray | float:
+    *,
+    return_type: str = "numpy",
+    dtype: torch.dtype | None = None,
+    device: torch.device | None = None,
+) -> _ConvertReturn:
     """将 dB 尺度转换为线性尺度。
 
     参数:
@@ -182,19 +285,19 @@ def db_to_linear(
         输入张量或标量，支持 ``torch.Tensor``、``numpy.ndarray`` 或浮点数。
     - is_power : bool
         为 ``True`` 时按照功率(20log10)，否则按照幅度(10log10)。
+    - min_value : float
+        dB 输入下限裁剪。
+    - return_type : str
+        输出类型，经 :func:`~isac.utils.type_converter.convert` 转换；默认 ``numpy``。
+    - dtype, device :
+        仅当 ``return_type`` 为 torch 时转发给 ``convert``。
 
     返回:
     -------
-    - 与输入类型匹配的线性值。
+    - 经 ``convert`` 转换后的线性值，类型由 ``return_type`` 决定。
     """
     factor = 10.0 if is_power else 20.0
-
-    if isinstance(db_tensor, torch.Tensor):
-        safe_tensor = torch.clamp(db_tensor, min=min_value)
-        return torch.pow(10.0, safe_tensor / factor)
-    if isinstance(db_tensor, np.ndarray):
-        safe_tensor = np.clip(db_tensor, min_value, None)
-        return np.power(10.0, safe_tensor / factor)
-    safe_value = max(float(db_tensor), min_value)
-
-    return np.power(10.0, safe_value / factor)
+    arr = convert(db_tensor, "numpy")
+    safe = np.clip(arr, min_value, None)
+    result = np.asarray(np.power(10.0, safe / factor))
+    return convert(result, return_type, dtype=dtype, device=device)  # type: ignore[arg-type]

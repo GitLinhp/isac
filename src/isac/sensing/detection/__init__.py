@@ -1,9 +1,12 @@
 from .cfar import CFARDetector
-from .metric_mode import SensMode, canonical_metric_mode, metric_mode
+from ..types import MetricMode, SensMode
+
+# 向后兼容别名
+metric_mode = MetricMode
 
 __all__ = [
     "CFARDetector",
+    "MetricMode",
     "SensMode",
-    "canonical_metric_mode",
     "metric_mode",
 ]

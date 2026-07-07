@@ -31,6 +31,7 @@ from ..sensing.spectrum import (
 )
 from ..sensing.detection import CFARDetector
 from ..sensing.detection.music_estimator import MUSICEstimator
+from ..sensing.detection.music_sensing import MusicSensingEstimator
 from ..sensing.clutter import MovingTargetIndication, MovingTargetDetection
 from ..zc_source import ZCSource
 
@@ -85,7 +86,9 @@ class SystemComponents:
     cfar_detector: Optional[CFARDetector] = None
     """CFAR检测器"""
     music_estimator: Optional[MUSICEstimator] = None
-    """MUSIC估计器"""
+    """MUSIC bin 检峰器"""
+    music_sensing: Optional[MusicSensingEstimator] = None
+    """MUSIC 感知编排（bin→物理量与日志）"""
 
     @classmethod
     def build_from_params(
@@ -304,11 +307,11 @@ class SystemComponents:
                 )
 
             if system_params.music is not None:
-                kwargs["music_estimator"] = MUSICEstimator(
-                    device=device,
+                music_estimator = MUSICEstimator(device=device)
+                kwargs["music_estimator"] = music_estimator
+                kwargs["music_sensing"] = MusicSensingEstimator(
+                    music_estimator=music_estimator,
                     sensing_performance=sensing_performance,
-                    max_range_m=max_range_m,
-                    max_velocity_mps=max_velocity_mps,
                 )
 
         return kwargs

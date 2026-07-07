@@ -26,7 +26,7 @@ def _music_velocity(
     if comps.moving_target_indication is not None:
         h_work = comps.moving_target_indication(h_work, axis=-2)
     h_dd = comps.delay_doppler_spectrum(h_work)
-    _, velocities, _ = comps.music_estimator(
+    _, velocities, _ = comps.music_sensing(
         spectrum_tensor=h_dd,
         sens_mode=sens_mode,
         num_sources=1,

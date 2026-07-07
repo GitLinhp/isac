@@ -77,9 +77,9 @@ def main() -> None:
     system.visualize_sensing_spectrum(
         h_dd,
         file=script_out_dir / "sensing_baseline_delay_doppler_spectrum.png",
-        metric_mode="delay_doppler",
+        metric_mode="dd",
     )
-    system.estimate_sensing_music(h_dd, metric_mode="delay_doppler")
+    system.estimate_sensing_music(h_dd, metric_mode="dd")
 
     rt_simulator = system.components.rt_simulator
     paths = rt_simulator.paths()

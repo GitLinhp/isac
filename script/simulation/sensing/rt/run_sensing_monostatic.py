@@ -42,8 +42,8 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--metric_mode",
         type=str,
-        default="range_velocity",
-        choices=["delay_doppler", "range_velocity", "dd", "rv"],
+        default="rv",
+        choices=["dd", "rv"],
         help="谱图与 MUSIC 日志 metric",
     )
 
@@ -93,7 +93,7 @@ def main() -> None:
         metric_mode=args.metric_mode,
         to_db=False,
     )
-    est_ranges, est_velocities, _ = comps.music_estimator(
+    est_ranges, est_velocities, _ = comps.music_sensing(
         spectrum_tensor=h_dd,
         metric_mode=args.metric_mode,
         sens_mode="monostatic",

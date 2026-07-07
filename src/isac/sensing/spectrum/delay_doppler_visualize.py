@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objs as go
 import torch
 
-from ..detection.metric_mode import canonical_metric_mode
 from ...utils.numerical import linear_to_db
-from .sensing_performance import SensingPerformance
+from ..metric import SpectrumMetric
+from ..types import MetricMode, RoiSlices, SensMode
 
 
 def linear_or_db_amplitude(
@@ -20,12 +20,12 @@ def linear_or_db_amplitude(
     cfar_grid: Optional[np.ndarray],
     to_db: bool,
     eps: float,
-) -> Tuple[np.ndarray, Optional[np.ndarray], str, str]:
+) -> tuple[np.ndarray, Optional[np.ndarray], str, str]:
     """将线性幅度网格转为显示用 ``z``；返回 ``(z_disp, cfar_disp, zlabel_mpl, ztitle_plotly)``。"""
     if to_db:
-        z_disp = linear_to_db(np.maximum(z_grid, eps), is_power=True)
+        z_disp = np.asarray(linear_to_db(np.maximum(z_grid, eps), is_power=True))
         cfar_disp = (
-            linear_to_db(np.maximum(cfar_grid, eps), is_power=True)
+            np.asarray(linear_to_db(np.maximum(cfar_grid, eps), is_power=True))
             if cfar_grid is not None
             else None
         )
@@ -47,26 +47,26 @@ def ensure_parent_and_path(file_name: Union[Path, str]) -> Path:
 
 
 def prepare_surface_grids(
-    sensing_performance: SensingPerformance,
-    roi_slices: Tuple[int, int, int, int],
+    metric: SpectrumMetric,
+    roi_slices: RoiSlices,
     h_abs_2d: np.ndarray,
     cfar_2d: Optional[np.ndarray],
     *,
-    mode: str,
+    metric_mode: MetricMode,
+    sens_mode: SensMode,
     to_db: bool,
     eps: float,
 ) -> Dict[str, Any]:
     """为单路 2D 谱 ``(多普勒, 时延)`` 准备 matplotlib/plotly 曲面数据。"""
-    dop_start, dop_end, delay_start, delay_end = roi_slices
+    x_axis, y_axis, x_label, y_label = metric.axes_for_roi(
+        roi_slices, metric_mode, sens_mode
+    )
+    x_grid, y_grid = np.meshgrid(x_axis, y_axis, indexing="xy")
+    z_disp, cfar_disp, z_label, z_title_plotly = linear_or_db_amplitude(
+        h_abs_2d, cfar_2d, to_db, eps
+    )
 
-    if mode == "delay_doppler":
-        sp = sensing_performance
-        delay_axis = sp.delay_bins[delay_start:delay_end]
-        doppler_axis = sp.doppler_bins[dop_start:dop_end]
-        x_grid, y_grid = np.meshgrid(delay_axis, doppler_axis, indexing="xy")
-        z_disp, cfar_disp, z_label, z_title_plotly = linear_or_db_amplitude(
-            h_abs_2d, cfar_2d, to_db, eps
-        )
+    if metric_mode == "dd":
         return {
             "x_mpl": x_grid,
             "y_mpl": y_grid,
@@ -76,8 +76,8 @@ def prepare_surface_grids(
             "y_plot": y_grid,
             "z_plot": z_disp,
             "cfar_plot_z": cfar_disp,
-            "x_label": "Delay (ns)",
-            "y_label": "Doppler (Hz)",
+            "x_label": x_label,
+            "y_label": y_label,
             "z_label": z_label,
             "title_mpl": (
                 "Delay-Doppler Spectrum (dB)" if to_db else "Delay-Doppler Spectrum"
@@ -87,24 +87,17 @@ def prepare_surface_grids(
             "plotly_cfar_opacity": 0.35,
         }
 
-    sp = sensing_performance
-    range_axis = sp.range_bins[delay_start:delay_end]
-    velocity_axis = sp.velocity_bins[dop_start:dop_end]
-    z_disp, cfar_disp, z_label, z_title_plotly = linear_or_db_amplitude(
-        h_abs_2d, cfar_2d, to_db, eps
-    )
-    R, V = np.meshgrid(range_axis, velocity_axis, indexing="xy")
     return {
-        "x_mpl": R,
-        "y_mpl": V,
+        "x_mpl": x_grid,
+        "y_mpl": y_grid,
         "z_mpl": z_disp,
         "cfar_mpl_z": cfar_disp,
-        "x_plot": range_axis,
-        "y_plot": velocity_axis,
+        "x_plot": x_axis,
+        "y_plot": y_axis,
         "z_plot": np.transpose(z_disp),
         "cfar_plot_z": np.transpose(cfar_disp) if cfar_disp is not None else None,
-        "x_label": "Range (m)",
-        "y_label": "Velocity (m/s)",
+        "x_label": x_label,
+        "y_label": y_label,
         "z_label": z_label,
         "title_mpl": (
             "Range-Velocity Map with CFAR Threshold"
@@ -154,31 +147,23 @@ def plot_matplotlib_3d_surface(
 
 def visualize_delay_doppler_spectrum(
     *,
-    sensing_performance: SensingPerformance,
+    metric: SpectrumMetric,
     h_delay_doppler: torch.Tensor,
-    roi_slices: Tuple[int, int, int, int],
+    roi_slices: RoiSlices,
     file_name: Union[Path, str, None] = None,
     cfar: Optional[Union[np.ndarray, torch.Tensor]] = None,
     to_db: bool = True,
     eps: float = 1e-12,
-    mode: str = "delay_doppler",
-    metric_mode: Optional[str] = None,
+    metric_mode: MetricMode = "dd",
+    sens_mode: SensMode = "monostatic",
     backend: str = "matplotlib",
     panel_labels: Optional[list[str]] = None,
-    announce_save: bool = True,
 ) -> None:
     """渲染 DD / RV 谱图，可选叠加 CFAR 阈值面。"""
-    effective_mode = metric_mode if metric_mode is not None else mode
-    mode = canonical_metric_mode(effective_mode)
-
     backend_to_use = backend.lower()
     if backend_to_use not in {"matplotlib", "plotly"}:
         raise ValueError(
             f"Unknown backend: {backend!r}. Expected 'matplotlib' or 'plotly'."
-        )
-    if mode not in {"delay_doppler", "range_velocity"}:
-        raise ValueError(
-            f"Unknown visualize mode: {mode}. Expected 'delay_doppler' or 'range_velocity'."
         )
 
     h_abs_np = torch.abs(h_delay_doppler).detach().cpu().numpy()
@@ -215,11 +200,12 @@ def visualize_delay_doppler_spectrum(
             for r, ax in enumerate(axes):
                 cfar_r = cfar_np[r] if cfar_np is not None else None
                 grids = prepare_surface_grids(
-                    sensing_performance,
+                    metric,
                     roi_slices,
                     h_abs_np[r],
                     cfar_r,
-                    mode=mode,
+                    metric_mode=metric_mode,
+                    sens_mode=sens_mode,
                     to_db=to_db,
                     eps=eps,
                 )
@@ -232,11 +218,12 @@ def visualize_delay_doppler_spectrum(
             fig.tight_layout()
         else:
             grids = prepare_surface_grids(
-                sensing_performance,
+                metric,
                 roi_slices,
                 h_abs_np,
                 cfar_np,
-                mode=mode,
+                metric_mode=metric_mode,
+                sens_mode=sens_mode,
                 to_db=to_db,
                 eps=eps,
             )
@@ -248,8 +235,7 @@ def visualize_delay_doppler_spectrum(
             out_path = ensure_parent_and_path(file_name)
             plt.savefig(out_path)
             plt.close()
-            if announce_save:
-                print(f"谱图已保存: {out_path.resolve()}")
+            print(f"谱图已保存: {out_path.resolve()}")
         else:
             plt.show()
         return
@@ -258,11 +244,12 @@ def visualize_delay_doppler_spectrum(
         raise ValueError("plotly 仅支持 2D 谱；多 RX 请使用 backend='matplotlib'")
 
     grids = prepare_surface_grids(
-        sensing_performance,
+        metric,
         roi_slices,
         h_abs_np,
         cfar_np,
-        mode=mode,
+        metric_mode=metric_mode,
+        sens_mode=sens_mode,
         to_db=to_db,
         eps=eps,
     )
@@ -303,7 +290,6 @@ def visualize_delay_doppler_spectrum(
     if file_name is not None:
         out_path = ensure_parent_and_path(file_name)
         fig.write_image(str(out_path))
-        if announce_save:
-            print(f"谱图已保存: {out_path.resolve()}")
+        print(f"谱图已保存: {out_path.resolve()}")
     else:
         fig.show()

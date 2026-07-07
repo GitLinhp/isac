@@ -3,37 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
 
+from ..metric import SpectrumMetric
+from ..types import MetricMode, RoiSlices, SensMode
 from .delay_doppler_visualize import visualize_delay_doppler_spectrum
 from .sensing_performance import SensingPerformance
 from ...utils import convert
 from ...utils.windows import apply_window
-
-
-def compute_dd_roi_slices(
-    sensing_performance: SensingPerformance,
-    max_range_m: float,
-    max_velocity_mps: float,
-    n_doppler: int,
-    n_delay: int,
-) -> tuple[int, int, int, int]:
-    """由 ROI 物理量与全谱尺寸计算 ``(dop_start, dop_end, delay_start, delay_end)``。"""
-    if max_range_m <= 0:
-        raise ValueError(f"max_range_m 须为正，收到 {max_range_m}")
-    if max_velocity_mps <= 0:
-        raise ValueError(f"max_velocity_mps 须为正，收到 {max_velocity_mps}")
-    dr = sensing_performance.range_resolution
-    dv = sensing_performance.velocity_resolution
-    delay_bins = min(n_delay, max(1, int(max_range_m / dr) + 1))
-    dop_half = min(n_doppler // 2, max(1, int(round(max_velocity_mps / dv))))
-    dop_center = n_doppler // 2
-    dop_start = max(0, dop_center - dop_half)
-    dop_end = min(n_doppler, dop_center + dop_half)
-    return dop_start, dop_end, 0, delay_bins
 
 
 class DelayDopplerSpectrum:
@@ -51,12 +31,13 @@ class DelayDopplerSpectrum:
         max_velocity_mps: Optional[float] = None,
     ):
         self.sensing_performance = sensing_performance
+        self._metric = SpectrumMetric(sensing_performance)
         self.device = device
         self.delay_window = delay_window
         self.doppler_window = doppler_window
         self.max_range_m = max_range_m
         self.max_velocity_mps = max_velocity_mps
-        self._roi_slices: Optional[Tuple[int, int, int, int]] = None
+        self._roi_slices: Optional[RoiSlices] = None
 
     @property
     def has_roi(self) -> bool:
@@ -74,25 +55,23 @@ class DelayDopplerSpectrum:
             raise ValueError(f"max_velocity_mps 须为正，收到 {self.max_velocity_mps}")
 
     def roi_delay_bins(self) -> int:
-        dr = self.sensing_performance.range_resolution
         assert self.max_range_m is not None
-        return max(1, int(self.max_range_m / dr) + 1)
+        return self._metric.roi_delay_bin_count(self.max_range_m)
 
     def roi_doppler_half_bins(self) -> int:
-        dv = self.sensing_performance.velocity_resolution
         assert self.max_velocity_mps is not None
-        return max(1, int(round(self.max_velocity_mps / dv)))
+        return self._metric.roi_doppler_half_bins(self.max_velocity_mps)
 
-    def bin_slices(self, h_dd: torch.Tensor) -> tuple[int, int, int, int]:
+    def bin_slices(self, h_dd: torch.Tensor) -> RoiSlices:
+        """由 ROI 物理量与谱尺寸计算 ``(dop_start, dop_end, delay_start, delay_end)``。"""
         self._validate_roi()
         assert self.max_range_m is not None and self.max_velocity_mps is not None
         n_doppler, n_delay = h_dd.shape[-2], h_dd.shape[-1]
-        return compute_dd_roi_slices(
-            self.sensing_performance,
-            self.max_range_m,
-            self.max_velocity_mps,
+        return self._metric.bin_slices(
             n_doppler,
             n_delay,
+            self.max_range_m,
+            self.max_velocity_mps,
         )
 
     def __call__(self, h_freq: torch.Tensor) -> torch.Tensor:
@@ -130,11 +109,10 @@ class DelayDopplerSpectrum:
         cfar: Optional[Union[np.ndarray, torch.Tensor]] = None,
         to_db: bool = True,
         eps: float = 1e-12,
-        mode: str = "delay_doppler",
-        metric_mode: Optional[str] = None,
+        metric_mode: MetricMode = "dd",
         backend: str = "matplotlib",
         panel_labels: Optional[list[str]] = None,
-        announce_save: bool = True,
+        sens_mode: SensMode = "monostatic",
     ) -> None:
         """可视化谱图；实现见 :func:`~.delay_doppler_visualize.visualize_delay_doppler_spectrum`。"""
         if not hasattr(self, "h_delay_doppler"):
@@ -142,16 +120,15 @@ class DelayDopplerSpectrum:
         if self._roi_slices is None:
             raise ValueError("visualize 要求先通过 __call__ 计算并裁剪 DD 谱")
         visualize_delay_doppler_spectrum(
-            sensing_performance=self.sensing_performance,
+            metric=self._metric,
             h_delay_doppler=self.h_delay_doppler,
             roi_slices=self._roi_slices,
             file_name=file_name,
             cfar=cfar,
             to_db=to_db,
             eps=eps,
-            mode=mode,
             metric_mode=metric_mode,
             backend=backend,
             panel_labels=panel_labels,
-            announce_save=announce_save,
+            sens_mode=sens_mode,
         )

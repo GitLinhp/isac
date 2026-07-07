@@ -67,7 +67,10 @@
 - 多普勒向（慢时间）Chebyshev 窗，旁瓣抑制 60 dB
 
 ### 5.2 二维 FFT
-调用：
+
+> **注**：原 radarsimpy 兼容 API（`range_doppler_fft` 等）已从 `geometry.py` 移除；历史实现见 `backup/isac/sensing/processing.py`。当前 ISAC 主链路使用 OFDM DD 谱（`DelayDopplerSpectrum`）。
+
+原流程示意：
 - `range_doppler = proc.range_doppler_fft(baseband, rwin=range_window, dwin=doppler_window)`
 
 输出数据语义：

@@ -104,15 +104,8 @@ class SensingPerformance:
 
     @property
     def range_bins(self) -> np.ndarray:
-        """距离范围 (米)
-
-        基于有效子载波数的距离分辨率
-
-        返回值:
-        -------
-            - np.ndarray: 距离范围数组，单位为米
-        """
-        return np.arange(0, self.rg.fft_size) * self.range_resolution
+        """距离范围 (米)，单基地；双基地请用 ``range_bins_for('bistatic')``。"""
+        return self.range_bins_for("monostatic")
 
     @property
     def bistatic_range_resolution(self) -> float:
@@ -158,6 +151,9 @@ class SensingPerformance:
     def velocity_bins(self) -> np.ndarray:
         """速度范围 (m/s)，单基地尺度；双基地请用 ``velocity_bins_for('bistatic')``。"""
         return self.velocity_bins_for("monostatic")
+
+    # 点值换算见 geometry.delay_to_range / doppler_to_velocity；
+    # 轴数组与 bin 编排见 SpectrumMetric。
 
     # ==================== 最大探测范围 ====================
     @property

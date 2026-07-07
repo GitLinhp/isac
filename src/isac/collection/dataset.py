@@ -43,7 +43,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from isac.models.utils import (
+from isac.models.preprocess import (
     dd_spectrum_to_features,
     monostatic_labels_from_kinematics,
 )

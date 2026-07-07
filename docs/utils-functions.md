@@ -168,7 +168,7 @@ flowchart LR
 | `next_pow2` | ≥ n 的最小 2 的幂。 |
 | `approx_quantile` | 随机采样近似分位数（大张量加速）。 |
 | `degree_to_radian` / `radian_to_degree` | 角度与弧度互转。 |
-| `linear_to_db` / `db_to_linear` | 线性幅度/功率与 dB 互转（`is_power` 控制 10/20 因子）。 |
+| `linear_to_db` / `db_to_linear` | 线性幅度/功率与 dB 互转（`is_power` 控制 10/20 因子）；默认 `return_type="numpy"`，经 `convert` 输出；`dtype`/`device` 在 torch 目标时转发。 |
 | `quantize` / `dequantize` | 连续值与定长比特量化互转。 |
 
 ### [`windows.py`](src/isac/utils/windows.py)

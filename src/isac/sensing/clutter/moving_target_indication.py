@@ -14,6 +14,23 @@ from ..spectrum.sensing_performance import SensingPerformance
 class MovingTargetIndication:
     """动目标显示：``order`` 阶脉冲对消，系数为 ``(1 - z^{-1})^{order}``；PRF 由 ``ResourceGrid.ofdm_symbol_duration`` 推导。"""
 
+    def __init__(
+        self,
+        sensing_performance: SensingPerformance,
+        filter_order: int = 1,
+        prf: Optional[float] = None,
+    ):
+        self.sensing_performance = sensing_performance
+        self.rg = sensing_performance.rg
+        self.filter_order = int(filter_order)
+
+        if prf is None:
+            self.prf = 1.0 / float(self.rg.ofdm_symbol_duration)
+        else:
+            self.prf = float(prf)
+
+        self.filter_coefficients = self._coefficients_from_order(self.filter_order)
+
     @staticmethod
     def _coefficients_from_order(order: int) -> np.ndarray:
         """``(1 - z^{-1})^{order}`` 的 FIR 分子系数 ``b[k] = (-1)^k * C(order, k)``，``k=0…order``。"""
@@ -43,23 +60,6 @@ class MovingTargetIndication:
         windows = xpad.unfold(1, L, 1).flip(-1)
         y2 = (windows * b).sum(dim=-1)
         return y2.reshape(*lead, t)
-
-    def __init__(
-        self,
-        sensing_performance: SensingPerformance,
-        filter_order: int = 1,
-        prf: Optional[float] = None,
-    ):
-        self.sensing_performance = sensing_performance
-        self.rg = sensing_performance.rg
-        self.filter_order = int(filter_order)
-
-        if prf is None:
-            self.prf = 1.0 / float(self.rg.ofdm_symbol_duration)
-        else:
-            self.prf = float(prf)
-
-        self.filter_coefficients = self._coefficients_from_order(self.filter_order)
 
     def __call__(
         self,

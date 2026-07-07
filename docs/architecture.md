@@ -45,7 +45,7 @@ flowchart TB
 | `sensing/spectrum/` | DD 谱、感知性能、LS 估计 | `from isac.sensing.spectrum import DelayDopplerSpectrum` |
 | `sensing/detection/` | CFAR、MUSIC | `from isac.sensing.detection import CFARDetector` |
 | `sensing/clutter/` | MTI / MTD | `from isac.sensing.clutter import MovingTargetIndication` |
-| `sensing/geometry.py` | 雷达几何与物理量换算（原 `sensing/utils.py`） | `from isac.sensing.geometry import delay_to_range` |
+| `sensing/geometry.py` | Rx–Target–Tx 三元组几何 + τ/f_d 物理换算 | `from isac.sensing.geometry import delay_to_range` |
 | `collection/` | 蒙特卡洛采集、HDF5、`RTDataset` | `from isac.collection import RTDataset` |
 | `models/` | 深度学习模型与损失 | `from isac.models.model_design import ...` |
 | `utils/` | 无状态横切工具 | `from isac.utils import load_config, convert` |
@@ -66,7 +66,7 @@ flowchart TB
 ## 术语（感知）
 
 - **`sens_mode`**（`monostatic` / `bistatic`）：物理换算尺度。
-- **`metric_mode`**（`delay_doppler` / `range_velocity`）：日志与可视化列，不改变 MUSIC 返回值。
+- **`metric_mode`**（`dd` / `rv`）：日志与可视化列，不改变 MUSIC 返回值。
 
 ## 公开 API
 
