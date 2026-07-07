@@ -2,6 +2,8 @@
 
 import argparse
 
+import torch
+
 from isac import PROJECT_ROOT
 from isac.system import System
 from isac.utils import load_config, set_random_seed
@@ -85,7 +87,7 @@ def main() -> None:
     comps.sensing_performance()
 
     h_freq = comps.ls_channel_estimator(x_rg, y_rg)
-    # h = comps.moving_target_indication(h, axis=-2)
+    # h = comps.moving_target_indication(h)
     h_dd = comps.delay_doppler_spectrum(h_freq)
 
     # --- 可视化 ---
@@ -95,10 +97,15 @@ def main() -> None:
         to_db=False,
     )
 
-    # --- MUSIC 估计与 RMSE 评估 ---
+    # --- MUSIC 检峰 → 物理量换算与 RMSE 评估 ---
     geom = comps.rt_simulator.rx_target_tx_geometric
+    num_doppler_bins = int(torch.squeeze(h_dd).shape[0])
+    peaks_delay, peaks_doppler, peaks_power = comps.music_estimator(h_dd)
     comps.music_evaluator.evaluate(
-        spectrum_tensor=h_dd,
+        peaks_delay,
+        peaks_doppler,
+        peaks_power,
+        num_doppler_bins=num_doppler_bins,
         true_ranges=geom.range_tensor,
         true_velocities=geom.vel_tensor,
         metric_mode=args.metric_mode,

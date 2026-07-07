@@ -1,14 +1,13 @@
-"""MUSIC 感知评估：裁切谱 bin → 物理量换算 → 匈牙利 RMSE 匹配。
+"""MUSIC 感知评估：bin 峰 → 物理量换算 → 匈牙利 RMSE 匹配。
 
-输入须为上游 :class:`~isac.sensing.spectrum.DelayDopplerSpectrum` 按
-``[dd_spectrum_roi]`` 裁切后的时延多普勒谱；本模块不做 ROI 裁切或全谱坐标映射。
-检峰委托 :class:`~isac.sensing.detection.music_estimator.MUSICEstimator`。
+bin 检峰由上游 :class:`~isac.sensing.detection.music_estimator.MUSICEstimator` 完成；
+本模块接收其输出的 ``(delay_bin, doppler_bin, power)``，不做 ROI 裁切或全谱检峰。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 from scipy.optimize import linear_sum_assignment
@@ -19,7 +18,6 @@ from ...utils.type_converter import convert
 from ..metric import SpectrumMetric
 from ..types import MetricMode, SensMode
 from ..spectrum.sensing_performance import SensingPerformance
-from .music_estimator import MUSICEstimator
 
 _PEAK_TABLE_HEADERS: dict[MetricMode, list[str]] = {
     "dd": [
@@ -141,10 +139,10 @@ class MusicEvaluationResult:
 
 
 class MusicSensingEvaluator:
-    """MUSIC 感知评估器：ROI 裁切谱 → 物理量换算 → 可选 RMSE。
+    """MUSIC 感知评估器：bin 峰 → 物理量换算 → 可选 RMSE。
 
-    调用 :class:`MUSICEstimator` 完成 bin 检峰；``estimate`` 负责物理量换算与日志，
-    ``evaluate`` 额外调用 ``match_peaks_and_compute_radial_rmse`` 与真值对齐。
+    bin 检峰由外部 :class:`~isac.sensing.detection.music_estimator.MUSICEstimator` 完成；
+    ``estimate`` 负责物理量换算与日志，``evaluate`` 额外做匈牙利 RMSE 匹配。
 
     **estimate 返回值恒为** ``(distance_m, velocity_mps, peaks_power)``；
     ``metric_mode`` 仅影响日志表头与展示列，不改变返回值。
@@ -152,46 +150,43 @@ class MusicSensingEvaluator:
 
     def __init__(
         self,
-        music_estimator: MUSICEstimator,
         sensing_performance: SensingPerformance,
+        device: Union[str, torch.device],
     ):
         """初始化 MUSIC 感知评估器。
 
         参数
         ----
-        - music_estimator :
-            bin 检峰器。
         - sensing_performance :
             感知性能对象，用于 bin→物理量换算。
+        - device :
+            张量计算设备（用于换算结果与日志）。
         """
-        self.music_estimator = music_estimator
         self.sensing_performance = sensing_performance
         self._metric = SpectrumMetric(sensing_performance)
-        self.device = music_estimator.device
+        self.device = (
+            torch.device(device) if isinstance(device, str) else device
+        )
 
     def estimate(
         self,
-        spectrum_tensor: torch.Tensor,
+        peaks_delay: torch.Tensor,
+        peaks_doppler: torch.Tensor,
+        peaks_power: torch.Tensor,
         *,
-        num_sources: int | None = None,
-        threshold: float = 0.1,
-        cfar: torch.Tensor | None = None,
+        num_doppler_bins: int,
         sens_mode: SensMode = "monostatic",
         metric_mode: MetricMode = "rv",
         log_peaks: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """2D-MUSIC 谱峰估计并换算为距离/速度。
+        """将 MUSIC bin 检峰结果换算为距离/速度。
 
         参数
         ----
-        - spectrum_tensor :
-            ROI 裁切后的时延多普勒谱，squeeze 后须为 ``(num_doppler, num_delay)``。
-        - num_sources :
-            信号源数量；``None`` 时自动估计（协方差特征值）且默认输出 2 个峰。
-        - threshold :
-            自动估计信号源数量时的归一化特征值阈值。
-        - cfar :
-            与谱同形状的二维阈值面；给定则候选门限为 ``|X| > cfar``。
+        - peaks_delay / peaks_doppler / peaks_power :
+            :class:`MUSICEstimator` 输出的裁切谱局部 bin 索引与功率。
+        - num_doppler_bins :
+            裁切谱多普勒维长度（与输入谱 ``shape[0]`` 一致）。
         - sens_mode :
             物理换算尺度（``monostatic`` 往返 / ``bistatic`` 单程）。
         - metric_mode :
@@ -203,20 +198,6 @@ class MusicSensingEvaluator:
         ----
         ``(distance_m, velocity_mps, peaks_power)``：距离/速度 ``float64``，功率 ``float32``。
         """
-        spectrum = torch.squeeze(spectrum_tensor)
-        if spectrum.ndim != 2:
-            raise ValueError(
-                f"spectrum_tensor 需要是二维矩阵，当前形状: {tuple(spectrum.shape)}"
-            )
-        num_doppler_bins = int(spectrum.shape[0])
-
-        peaks_delay, peaks_doppler, peaks_power = self.music_estimator(
-            spectrum_tensor,
-            num_sources=num_sources,
-            threshold=threshold,
-            cfar=cfar,
-        )
-
         tau_s, fd_hz, range_m, v_mps = self._metric.local_bins_to_range_velocity(
             peaks_delay,
             peaks_doppler,
@@ -246,13 +227,13 @@ class MusicSensingEvaluator:
 
     def evaluate(
         self,
-        spectrum_tensor: torch.Tensor,
+        peaks_delay: torch.Tensor,
+        peaks_doppler: torch.Tensor,
+        peaks_power: torch.Tensor,
         *,
+        num_doppler_bins: int,
         true_ranges: torch.Tensor,
         true_velocities: torch.Tensor,
-        num_sources: int | None = None,
-        threshold: float = 0.1,
-        cfar: torch.Tensor | None = None,
         sens_mode: SensMode = "monostatic",
         metric_mode: MetricMode = "rv",
         log_peaks: bool = True,
@@ -261,12 +242,12 @@ class MusicSensingEvaluator:
         velocity_axis_label: str = "径向速度",
         verbose: bool = True,
     ) -> MusicEvaluationResult:
-        """MUSIC 估计并与真值格点做匈牙利匹配，返回 RMSE 与最佳配对估计。"""
-        est_ranges, est_velocities, peaks_power = self.estimate(
-            spectrum_tensor,
-            num_sources=num_sources,
-            threshold=threshold,
-            cfar=cfar,
+        """bin 峰换算为物理量并与真值格点做匈牙利匹配，返回 RMSE 与最佳配对估计。"""
+        est_ranges, est_velocities, peaks_power_out = self.estimate(
+            peaks_delay,
+            peaks_doppler,
+            peaks_power,
+            num_doppler_bins=num_doppler_bins,
             sens_mode=sens_mode,
             metric_mode=metric_mode,
             log_peaks=log_peaks,
@@ -290,7 +271,7 @@ class MusicSensingEvaluator:
         return MusicEvaluationResult(
             est_ranges=est_ranges,
             est_velocities=est_velocities,
-            peaks_power=peaks_power,
+            peaks_power=peaks_power_out,
             rmse_range_m=rmse_range_m,
             rmse_velocity_mps=rmse_velocity_mps,
             est_range_m=est_range_m,

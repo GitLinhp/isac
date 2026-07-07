@@ -11,7 +11,7 @@
 4. 对候选点算 MUSIC 伪谱 × 幅度，贪心去重选峰
 5. 返回裁切谱坐标系下的 ``(delay_bin, doppler_bin, power)``
 
-物理量换算、日志与 RMSE 评估见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEvaluator`。
+物理量换算、日志与 RMSE 评估见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEvaluator`（输入为 bin 检峰结果，非谱张量）。
 
 采用子阵空间平滑 + 候选点扫描，避免对全 (M×N) 网格构造巨型协方差矩阵。
 """

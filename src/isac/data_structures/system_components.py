@@ -307,11 +307,12 @@ class SystemComponents:
                 )
 
             if system_params.music is not None:
-                music_estimator = SystemComponents._build_music_estimator(device)
-                kwargs["music_estimator"] = music_estimator
+                kwargs["music_estimator"] = SystemComponents._build_music_estimator(
+                    device
+                )
                 kwargs["music_evaluator"] = SystemComponents._build_music_evaluator(
-                    music_estimator,
                     sensing_performance,
+                    device,
                 )
 
         return kwargs
@@ -323,8 +324,8 @@ class SystemComponents:
 
     @staticmethod
     def _build_music_evaluator(
-        music_estimator: MUSICEstimator,
         sensing_performance: SensingPerformance,
+        device: str,
     ) -> MusicSensingEvaluator:
-        """构建 MUSIC 感知评估器（依赖已初始化的检峰器与感知性能）。"""
-        return MusicSensingEvaluator(music_estimator, sensing_performance)
+        """构建 MUSIC 感知评估器（bin→物理量与 RMSE，不含检峰）。"""
+        return MusicSensingEvaluator(sensing_performance, device)

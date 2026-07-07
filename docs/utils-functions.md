@@ -31,7 +31,7 @@
 | ---- | ---------------- |
 | `set_random_seed` | 固定随机种子。 |
 
-RMSE 评估见 `comps.music_evaluator.evaluate(...)` 或 `from isac.sensing import match_peaks_and_compute_radial_rmse`（CNN 等非 MUSIC 路径）。
+RMSE 评估：`music_estimator(h_dd)` → `comps.music_evaluator.evaluate(peaks_*, ...)`；CNN 等非 MUSIC 路径可用 `from isac.sensing import match_peaks_and_compute_radial_rmse`。
 
 ### [`script/simulation/run_static_target_simulation.py`](script/simulation/run_static_target_simulation.py)
 

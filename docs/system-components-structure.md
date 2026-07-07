@@ -130,7 +130,12 @@ SensingPerformance(rg, carrier_frequency)
     └── MusicSensingEvaluator       ← [music]（`_build_music_evaluator`）
 ```
 
-MUSIC 路径：`music_evaluator.estimate(...)` 仅估计；`music_evaluator.evaluate(...)` 内部调用同模块 [`match_peaks_and_compute_radial_rmse`](../src/isac/sensing/detection/music_sensing.py) 做匈牙利 RMSE 匹配。
+MUSIC 两阶段流水线（`[music]` 段同时构建两个独立组件）：
+
+1. `music_estimator(h_dd)` → `(peaks_delay, peaks_doppler, peaks_power)`（bin 检峰）
+2. `music_evaluator.estimate/evaluate(peaks_*, num_doppler_bins=...)` → 物理量 / RMSE
+
+`_build_music_evaluator(sp, device)` 不依赖 `music_estimator`；评估器内部不含检峰逻辑。
 
 ---
 

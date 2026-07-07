@@ -183,13 +183,21 @@ def main() -> None:
             distance_label = "径向距离"
             velocity_label = "径向速度"
 
+        num_doppler_bins = int(torch.squeeze(h_dd_tx).shape[0])
+        peaks_delay, peaks_doppler, peaks_power = system.components.music_estimator(
+            h_dd_tx,
+            num_sources=1,
+        )
+
         result = system.components.music_evaluator.evaluate(
-            spectrum_tensor=h_dd_tx,
+            peaks_delay,
+            peaks_doppler,
+            peaks_power,
+            num_doppler_bins=num_doppler_bins,
             true_ranges=true_range,
             true_velocities=true_velocity,
             metric_mode=args.metric_mode,
             sens_mode=sens_mode,
-            num_sources=1,
             log_peaks=False,
             label=(
                 f"协同感知 — RX {rx_name} / TX {tx_name} "

@@ -129,8 +129,16 @@ def _evaluate_episode(
     true_velocity = torch.tensor(vel_mps, dtype=torch.float64, device=system.device)
 
     if setup.label == "MUSIC":
+        num_doppler_bins = int(torch.squeeze(h_dd).shape[0])
+        peaks_delay, peaks_doppler, peaks_power = comps.music_estimator(
+            h_dd,
+            num_sources=1,
+        )
         result = comps.music_evaluator.evaluate(
-            spectrum_tensor=h_dd,
+            peaks_delay,
+            peaks_doppler,
+            peaks_power,
+            num_doppler_bins=num_doppler_bins,
             true_ranges=true_range.reshape(-1),
             true_velocities=true_velocity.reshape(-1),
             metric_mode=setup.metric_mode,
