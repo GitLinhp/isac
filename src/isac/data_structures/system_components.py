@@ -225,8 +225,8 @@ class SystemComponents:
                     "rt_simulator": rt_simulator,
                     "channel": RTChannel(
                         rg=rg,
-                        # 延迟绑定：paths 在每次信道调用时按当前场景状态求解
-                        paths=lambda: rt_simulator.paths,
+                        # 延迟绑定：paths() 复用缓存；位姿变更后须先 paths(update=True)
+                        paths=lambda: rt_simulator.paths(),
                         rx_names=lambda: list(rt_simulator.rx_states.keys()),
                         tx_names=lambda: list(rt_simulator.tx_states.keys()),
                         device=device,

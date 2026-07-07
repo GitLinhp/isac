@@ -90,11 +90,11 @@ rt_simulator = RTSimulator(
     frequency=carrier_frequency,
     bandwidth=rg.bandwidth,
 )
-channel = RTChannel(rg=rg, paths=lambda: rt_simulator.paths)
+channel = RTChannel(rg=rg, paths=lambda: rt_simulator.paths())
 ```
 
 - 频域 CFR：`domain="freq"`
-- 依赖 Sionna 射线追踪路径 `rt_simulator.paths`
+- 依赖 Sionna 射线追踪路径；`RTSimulator.paths(update=True)` 在场景/位姿变更后重算，`paths()` 默认可复用缓存
 
 ### RCS 信道（`channel.type = "rcs"`）
 

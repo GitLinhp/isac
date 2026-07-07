@@ -338,13 +338,15 @@ class RTSimulator:
         )
         return self._rx_target_tx_geometric
 
-    @property
-    def paths(self) -> Paths:
-        """获取路径，每次调用时自动重新计算最新结果。"""
+    def paths(self, *, update: bool = False) -> Paths:
+        """获取路径；``update=True`` 时强制重算，否则返回缓存（无缓存时首次求解）。"""
         cfg = self.rt_simulator_params.path_solver
         if cfg is None:
+            if not hasattr(self, "_paths"):
+                raise RuntimeError("path_solver 未配置且尚无缓存 paths")
             return self._paths
-        self._paths = self.path_solver(scene=self.scene, **asdict(cfg))
+        if update or not hasattr(self, "_paths"):
+            self._paths = self.path_solver(scene=self.scene, **asdict(cfg))
         return self._paths
 
     # ==================== 场景可视化方法 ====================
@@ -370,7 +372,9 @@ class RTSimulator:
         - None
         """
         clip_at = self._resolve_clip_at(clip_at)
-        self.scene.preview(paths=self.paths if with_paths else None, clip_at=clip_at)
+        self.scene.preview(
+            paths=self.paths(update=True) if with_paths else None, clip_at=clip_at
+        )
 
     def render(
         self, with_paths: bool = True, clip_at: Optional[float] = None
@@ -391,7 +395,7 @@ class RTSimulator:
         if not with_paths:
             return self.scene.render(camera=camera, clip_at=clip_at)
         else:
-            paths = self.paths
+            paths = self.paths(update=True)
             a: np.ndarray = paths.cir(out_type="numpy")[0]
 
             if a.size == 0:  # 不存在有效路径，只渲染场景
@@ -429,7 +433,7 @@ class RTSimulator:
         self.scene.render_to_file(
             camera=self.camera,
             filename=str(out_path),
-            paths=self.paths if with_paths else None,
+            paths=self.paths(update=True) if with_paths else None,
             clip_at=clip_at,
         )
         return out_path

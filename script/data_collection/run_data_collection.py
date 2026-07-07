@@ -26,7 +26,7 @@ from isac.system import System
 from isac.utils import load_config, set_random_seed
 from isac.collection.utils import (
     los_truth_from_kinematics,
-    paths_intersect_target,
+    paths_intersect_object,
     scene_slug_from_rt_simulator,
 )
 from isac.utils.misc import csv_float2_scalar, csv_vec3
@@ -90,11 +90,7 @@ def main() -> None:
         device=args.device,
     )
     sampling = system.params.monte_carlo_sampling
-    if sampling is None:
-        raise ValueError("采集要求配置 [monte_carlo_sampling]")
     sampler = system.components.roi_kinematics_sampler
-    if sampler is None:
-        raise RuntimeError("未构建 roi_kinematics_sampler")
 
     comps = system.components
 
@@ -134,8 +130,9 @@ def main() -> None:
                 velocity=vel,
                 orientation=ori,
             )
-            # 判断是否与目标路径交互
-            if not paths_intersect_target(rt_simulator, target):
+
+            paths = rt_simulator.paths(update=True)
+            if not paths_intersect_object(paths, int(target.object_id)):
                 continue
 
             true_range, true_velocity = los_truth_from_kinematics(
@@ -151,7 +148,7 @@ def main() -> None:
                 }
             )
 
-            # 信号传输
+            # 信号传输（paths(update=True) 已缓存；channel 内 paths() 读缓存）
             _, x_rg, x_time = system.transmit()
             snr_db = system.params.channel.snr_db
             y_rg = comps.channel(x_rg, x_time, domain="frequency", snr_db=snr_db)

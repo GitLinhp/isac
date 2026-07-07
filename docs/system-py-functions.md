@@ -41,7 +41,7 @@
 
 ### 蒙特卡洛数据集采集（[`run_data_collection.py`](../script/model_training/run_data_collection.py)）
 
-轨迹推进相关 API 已移除；批量 episode 由 [`RoiKinematicsSampler`](../src/isac/collection/roi_sampling.py) 预采样，经 `accept_episode_kinematics` / `paths_intersect_target` 过滤后逐条仿真，由 [`RTDataset`](../src/isac/datasets.py) 流式写入 HDF5。详见 [run_data_collection.md](run_data_collection.md)。
+轨迹推进相关 API 已移除；批量 episode 由 [`RoiKinematicsSampler`](../src/isac/collection/roi_sampling.py) 预采样，经 [`accept_episode_kinematics`](../src/isac/collection/utils.py) / `paths_intersect_target` 过滤后逐条仿真（路径过滤与信道共用一次 `paths` 求解），由 [`RTDataset`](../src/isac/collection/dataset.py) 流式写入 HDF5。详见 [run_data_collection.md](run_data_collection.md)。
 
 ### 蒙特卡洛：仅数据 vs 采样+感知
 

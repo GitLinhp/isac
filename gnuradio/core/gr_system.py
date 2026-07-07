@@ -97,9 +97,9 @@ class GrSystemContext:
 
     def print_rt_paths(self) -> None:
         rt = self.system.components.rt_simulator
-        if rt is None or rt.paths is None:
+        if rt is None or not hasattr(rt, "_paths"):
             return
-        paths = rt.paths
+        paths = rt.paths()
         print("Delay - LoS Path (ns) :", paths.tau[0, 0, 0] / 1e-9)
         print("Doppler - LoS Path (Hz) :", paths.doppler[0, 0, 0])
         if paths.tau.shape[-1] > 1:

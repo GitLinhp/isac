@@ -134,7 +134,7 @@ max_velocity_mps = 5.0
 
 # 蒙特卡洛运动学采样（run_data_collection.py）
 [monte_carlo_sampling]
-num_samples = 20000
+num_samples = 5000
 sampler_pool_factor = 5
 roi = [-2.5, 2.5, -4.5, 4.5]       # xmin, xmax, ymin, ymax（m），z 固定为 0
 position_sampling_mode = "uniform" # uniform | gaussian

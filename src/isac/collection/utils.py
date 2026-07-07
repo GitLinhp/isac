@@ -45,11 +45,24 @@ def scene_slug_from_rt_simulator(rt_simulator: RTSimulator) -> str:
     return s
 
 
+def accept_episode_kinematics(
+    rt_simulator: RTSimulator,
+    position: np.ndarray,
+) -> bool:
+    """场景障碍物过滤：位置不在 mesh AABB（含 safe_margin）内则采纳。"""
+    return bool(rt_simulator.scene_filter(position))
+
+
 def paths_intersect_object(paths: Paths, object_id: int) -> bool:
     """任一路径在任一 bounce 深度与 ``object_id`` 相交则返回 True。"""
     return bool(np.any(np.asarray(paths.objects) == object_id))
 
 
-def paths_intersect_target(rt_simulator: RTSimulator, target: RTTarget) -> bool:
+def paths_intersect_target(
+    rt_simulator: RTSimulator,
+    target: RTTarget,
+    paths: Paths | None = None,
+) -> bool:
     """目标位姿更新后，判断是否存在与该目标 mesh 相交的路径。"""
-    return paths_intersect_object(rt_simulator.paths, int(target.object_id))
+    resolved = paths if paths is not None else rt_simulator.paths(update=True)
+    return paths_intersect_object(resolved, int(target.object_id))

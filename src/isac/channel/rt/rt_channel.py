@@ -110,7 +110,13 @@ class RTChannel(Channel):
         sampling_frequency: float,
         out_type: Literal["drjit", "jax", "numpy", "tf", "torch"] = "torch",
     ) -> tuple[Any, Any] | tuple[torch.Tensor, torch.Tensor]:
-        """获取 CIR"""
+        """获取 CIR；若已注入 ``cir`` 则直接返回注入值。"""
+        if self._cir is not None:
+            if out_type != "torch":
+                raise ValueError(
+                    f"已注入 cir 时 get_cir 仅支持 out_type='torch'，收到 {out_type!r}"
+                )
+            return self._cir
         paths = self.paths()
         a, tau = paths.cir(
             sampling_frequency=sampling_frequency,
@@ -126,13 +132,19 @@ class RTChannel(Channel):
         sampling_frequency: float,
         out_type: Literal["drjit", "jax", "numpy", "tf", "torch"] = "torch",
     ) -> Any | torch.Tensor:
-        """获取信道频率响应（仅 ``out_type='torch'``）。
+        """获取信道频率响应（仅 ``out_type='torch'``）；若已注入 ``cfr`` 则直接返回。
 
         ``out_type='torch'`` 时通常为 7D：
         ``[batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, num_frequencies]``；
         单天线合成阵列下也可能为 6D：
         ``[batch, num_rx, num_tx, num_rx_ant, num_time_steps, num_frequencies]``。
         """
+        if self._cfr is not None:
+            if out_type != "torch":
+                raise ValueError(
+                    f"已注入 cfr 时 get_cfr 仅支持 out_type='torch'，收到 {out_type!r}"
+                )
+            return self._cfr
         paths = self.paths()
         return paths.cfr(
             frequencies=self.frequencies,
@@ -227,6 +239,8 @@ class RTChannel(Channel):
 
     @property
     def h_freq(self) -> torch.Tensor:
+        if self._cfr is not None:
+            return self._cfr
         a, tau = self.get_cir(
             num_time_steps=self.rg.num_ofdm_symbols,
             sampling_frequency=1 / self.rg.ofdm_symbol_duration,

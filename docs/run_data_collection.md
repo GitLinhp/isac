@@ -32,8 +32,8 @@
 | `RTDataset`                 | 流式写入与读取 HDF5                                                 |
 | `RoiKinematicsSampler`      | 平面 ROI 内批量采样位置与速度                                       |
 | `CollectionSamplingParams`  | `SystemParams.monte_carlo_sampling`（`[monte_carlo_sampling]`） |
-| `accept_episode_kinematics` | 场景障碍物过滤                                                      |
-| `paths_intersect_target`    | RT 路径与目标 mesh 交互检查                                         |
+| `accept_episode_kinematics` | 场景障碍物过滤（`scene_filter`）                                      |
+| `paths_intersect_target`    | RT 路径与目标 mesh 交互检查（可传入已求解 `paths`）                   |
 | `los_truth_from_kinematics` | 几何真值（距离、径向速度）                                          |
 
 ---
@@ -105,10 +105,11 @@ flowchart TD
     Sys --> Pool[roi_kinematics_sampler]
     Pool --> Loop{accepted < num_samples?}
     Loop --> Pop[sampler.pop]
-    Pop --> F1[accept_episode_kinematics]
-    F1 -->|通过| Pose[target 更新位姿]
-    Pose --> F2[paths_intersect_target]
-    F2 -->|通过| Sim[transmit → channel → ls_channel_estimator → delay_doppler_spectrum]
+    Pop --> Pose[target 更新位姿]
+    Pose --> F1[accept_episode_kinematics]
+    F1 -->|通过| Paths["rt_simulator.paths(update=True)"]
+    Paths --> F2[paths_intersect_object]
+    F2 -->|通过| Sim["transmit → channel(paths() 读缓存) → ls → DD"]
     Sim --> H5[RTDataset.append_episode]
     H5 --> Loop
     Loop -->|完成| Final[RTDataset.finalize]
@@ -126,8 +127,8 @@ flowchart TD
 
 无独立 CLI，由 TOML 与 RT 场景决定：
 
-1. **`accept_episode_kinematics`**：`scene_filter(pos)` 为真（位置不在障碍物 AABB 内；`safe_margin` 见 `[rt_simulator.scene_filter]`）
-2. **`paths_intersect_target`**：RT 路径与目标 mesh 有交互
+1. **`accept_episode_kinematics`**（[`collection/utils.py`](../src/isac/collection/utils.py)）：`scene_filter(pos)` 为真（位置不在障碍物 AABB 内；`safe_margin` 见 `[rt_simulator.scene_filter]`）
+2. **`paths_intersect_target`** / `paths_intersect_object`：RT 路径与目标 mesh 有交互；位姿更新后调用 `rt_simulator.paths(update=True)` 重算并缓存，信道侧经 `RTChannel` 绑定 `paths()` 复用缓存
 
 采样池耗尽时抛出 `RuntimeError`，提示增大 `[monte_carlo_sampling].sampler_pool_factor` 或调整过滤条件。
 
@@ -135,9 +136,12 @@ flowchart TD
 
 ```text
 target(position, velocity, orientation)
+  → accept_episode_kinematics（scene_filter）
+  → rt_simulator.paths(update=True)（重算并缓存）
+  → paths_intersect_object
   → los_truth_from_kinematics（CSV 真值）
   → system.transmit() → x_rg
-  → comps.channel(x_rg, x_time, domain="frequency", snr_db=...) → y_rg
+  → comps.channel(...) → y_rg（内部 paths() 读缓存）
   → comps.ls_channel_estimator(x_rg, y_rg) → h_freq
   → comps.delay_doppler_spectrum(h_freq) → h_dd（ROI 裁剪）
   → RTDataset.append_episode(h_dd, pos, vel)

@@ -17,7 +17,7 @@
 | `set_random_seed` | CLI 解析后固定 NumPy / PyTorch / Sionna 随机性，保证可复现采集。 |
 | `load_config` | 加载 TOML 配置，构建 `System`。 |
 | `RoiKinematicsSampler` | 批量预采样 `(位置, 速度, 姿态)`，循环中 `pop()` 消费。 |
-| `accept_episode_kinematics` | 过滤障碍物内无效位置（`scene_filter`）。 |
+| `accept_episode_kinematics` | 过滤障碍物内无效位置（`scene_filter`）；定义于 `isac.collection.utils`。 |
 | `scene_slug_from_rt_simulator` | 从 RT 场景文件名生成输出文件 slug（HDF5、CSV、PNG 前缀）。 |
 | `paths_intersect_target` | 判断 RT 路径是否与目标 mesh 有交互。 |
 | `los_truth_from_kinematics` | 计算几何真值（距离、径向速度），写入 CSV。 |

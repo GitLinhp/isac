@@ -59,6 +59,7 @@ def main() -> None:
     rt = system.components.rt_simulator
     rt.scene.objects["reflector"].velocity = [0, 0, -20]
     rt.transceivers["bs1"].tx.velocity = [30, 0, 0]
+    rt.paths(update=True)
 
     # --- 发射 ---
     _, x_rg, x_time = system.transmit()
@@ -81,15 +82,16 @@ def main() -> None:
     system.estimate_sensing_music(h_dd, metric_mode="delay_doppler")
 
     rt_simulator = system.components.rt_simulator
-    print("Delay - LoS Path (ns) :", rt_simulator.paths.tau[0, 0, 0] / 1e-9)
-    print("Doppler - LoS Path (Hz) :", rt_simulator.paths.doppler[0, 0, 0])
+    paths = rt_simulator.paths()
+    print("Delay - LoS Path (ns) :", paths.tau[0, 0, 0] / 1e-9)
+    print("Doppler - LoS Path (Hz) :", paths.doppler[0, 0, 0])
     print(
         "Delay - Reflected Path (ns) :",
-        rt_simulator.paths.tau[0, 0, 1].numpy() / 1e-9,
+        paths.tau[0, 0, 1].numpy() / 1e-9,
     )
     print(
         "Doppler - Reflected Path (Hz) :",
-        rt_simulator.paths.doppler[0, 0, 1],
+        paths.doppler[0, 0, 1],
     )
 
 

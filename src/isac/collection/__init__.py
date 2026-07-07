@@ -17,7 +17,12 @@ from .roi_sampling import (
     parse_roi_xy,
     parse_speed_range,
 )
-from .utils import los_truth_from_kinematics, scene_slug_from_rt_simulator
+from .utils import (
+    accept_episode_kinematics,
+    los_truth_from_kinematics,
+    paths_intersect_target,
+    scene_slug_from_rt_simulator,
+)
 
 __all__ = [
     "CollectionMetadata",
@@ -33,4 +38,6 @@ __all__ = [
     "parse_speed_range",
     "los_truth_from_kinematics",
     "scene_slug_from_rt_simulator",
+    "accept_episode_kinematics",
+    "paths_intersect_target",
 ]
