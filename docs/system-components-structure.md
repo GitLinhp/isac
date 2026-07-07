@@ -45,6 +45,7 @@ SystemParams
 | | `delay_doppler_spectrum` | `DelayDopplerSpectrum` | + `[windows]` |
 | | `cfar_detector` | `CFARDetector` | + `[cfar]` |
 | | `music_estimator` | `MUSICEstimator` | + `[music]` |
+| | `music_evaluator` | `MusicSensingEvaluator` | + `[music]` |
 
 ## Params → Components 映射
 
@@ -63,7 +64,7 @@ SystemParams
 | `mtd` | `moving_target_detection` | [`MovingTargetDetection`](../src/isac/sensing/clutter/moving_target_detection.py) |
 | `windows` | `delay_doppler_spectrum` | [`DelayDopplerSpectrum`](../src/isac/sensing/spectrum/delay_doppler_spectrum.py) |
 | `cfar` | `cfar_detector` | [`CFARDetector`](../src/isac/sensing/detection/cfar.py) |
-| `music` | `music_estimator` | [`MUSICEstimator`](../src/isac/sensing/detection/music_estimator.py) |
+| `music` | `music_estimator`, `music_evaluator` | [`MUSICEstimator`](../src/isac/sensing/detection/music_estimator.py)、[`MusicSensingEvaluator`](../src/isac/sensing/detection/music_sensing.py) |
 
 ---
 
@@ -125,10 +126,11 @@ SensingPerformance(rg, carrier_frequency)
     ├── MovingTargetDetection       ← [mtd]
     ├── DelayDopplerSpectrum        ← [windows]
     ├── CFARDetector                ← [cfar]
-    └── MUSICEstimator              ← [music]
+    ├── MUSICEstimator              ← [music]（`_build_music_estimator`）
+    └── MusicSensingEvaluator       ← [music]（`_build_music_evaluator`）
 ```
 
-`System.sensing()` 典型顺序：时延–多普勒谱 → CFAR → MUSIC → RMSE 评估。
+MUSIC 路径：`music_evaluator.estimate(...)` 仅估计；`music_evaluator.evaluate(...)` 内部调用同模块 [`match_peaks_and_compute_radial_rmse`](../src/isac/sensing/detection/music_sensing.py) 做匈牙利 RMSE 匹配。
 
 ---
 
@@ -141,7 +143,7 @@ SensingPerformance(rg, carrier_frequency)
 | `transmit()` | `zc_source` / `binary_source` + `mapper` + `rg_mapper` + `modulator` |
 | `components.channel(x_rg, x_time, domain, snr_db=...)` | `RTChannel` 或 `RCSChannel`；按 `domain` 选用频域或时域输入 |
 | `components.demodulator(...)` | `OFDMDemodulator` |
-| `sensing(...)` | `delay_doppler_spectrum`, `cfar_detector`, `music_estimator` |
+| `sensing(...)` | `delay_doppler_spectrum`, `cfar_detector`, `music_estimator`, `music_evaluator` |
 
 ---
 
@@ -165,6 +167,7 @@ flowchart TB
         sp[sensing_performance]
         dd[delay_doppler_spectrum]
         music[music_estimator]
+        music_eval[music_evaluator]
     end
 
     ofdm_p --> rg

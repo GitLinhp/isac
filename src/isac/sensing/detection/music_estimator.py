@@ -11,7 +11,7 @@
 4. 对候选点算 MUSIC 伪谱 × 幅度，贪心去重选峰
 5. 返回裁切谱坐标系下的 ``(delay_bin, doppler_bin, power)``
 
-物理量换算与日志见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEstimator`。
+物理量换算、日志与 RMSE 评估见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEvaluator`。
 
 采用子阵空间平滑 + 候选点扫描，避免对全 (M×N) 网格构造巨型协方差矩阵。
 """
@@ -22,8 +22,6 @@ from typing import NamedTuple, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-
-from ..metric import SpectrumMetric
 
 from ..metric import SpectrumMetric
 
@@ -304,7 +302,7 @@ class MUSICEstimator:
     估计谱峰；对实例直接调用 ``estimator(spectrum_tensor, ...)`` 即可。
 
     **返回值恒为** ``(delay_bin, doppler_bin, peaks_power)``，坐标相对输入裁切谱。
-    不做物理量换算与日志（见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEstimator`）。
+    不做物理量换算与日志（见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEvaluator`）。
     """
 
     def __init__(self, device: torch.device):

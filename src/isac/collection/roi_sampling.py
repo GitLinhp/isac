@@ -106,7 +106,9 @@ class RoiKinematicsSampler:
             std = np.array(
                 [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0], dtype=np.float64
             )
-            pts = np.random.normal(loc=center, scale=std, size=(n, 3)).astype(np.float64)
+            pts = np.random.normal(loc=center, scale=std, size=(n, 3)).astype(
+                np.float64
+            )
             return np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
         raise ValueError("sampling_mode 仅支持 'uniform' 或 'gaussian'")
 
@@ -155,7 +157,3 @@ class RoiKinematicsSampler:
         velocities = (speeds[:, None] * dirs).astype(np.float64)
         return velocities, orientations
 
-
-# 向后兼容：外部仍可通过模块级名称调用解析函数
-parse_roi_xy = RoiKinematicsSampler.parse_roi_xy
-parse_speed_range = RoiKinematicsSampler.parse_speed_range

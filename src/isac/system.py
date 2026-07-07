@@ -73,16 +73,15 @@ class System:
                 ]
             )
             x = comps.mapper(b)
-
         elif src_type == "zc":
             b = None
             x = comps.zc_source([1, 1, 1, rg.num_data_symbols])
-
         else:
             raise ValueError(f"unsupported source.type: {src_type!r}")
 
         x_rg = comps.rg_mapper(x)
         x_time = comps.modulator(x_rg)
+
         return b, x_rg, x_time
 
     # ==================== 接收 ====================
@@ -111,4 +110,6 @@ class System:
         comps = self.components
         y_rg = comps.demodulator(y_time)
         y = comps.rg_demapper(y_rg)
-        return comps.demapper(y, no=no)
+        b_hat = comps.demapper(y, no=no)
+
+        return b_hat

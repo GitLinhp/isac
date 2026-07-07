@@ -31,7 +31,7 @@ from ..sensing.spectrum import (
 )
 from ..sensing.detection import CFARDetector
 from ..sensing.detection.music_estimator import MUSICEstimator
-from ..sensing.detection.music_sensing import MusicSensingEstimator
+from ..sensing.detection.music_sensing import MusicSensingEvaluator
 from ..sensing.clutter import MovingTargetIndication, MovingTargetDetection
 from ..zc_source import ZCSource
 
@@ -87,8 +87,8 @@ class SystemComponents:
     """CFAR检测器"""
     music_estimator: Optional[MUSICEstimator] = None
     """MUSIC bin 检峰器"""
-    music_sensing: Optional[MusicSensingEstimator] = None
-    """MUSIC 感知编排（bin→物理量与日志）"""
+    music_evaluator: Optional[MusicSensingEvaluator] = None
+    """MUSIC 感知评估（估计 + RMSE 匹配）"""
 
     @classmethod
     def build_from_params(
@@ -307,11 +307,24 @@ class SystemComponents:
                 )
 
             if system_params.music is not None:
-                music_estimator = MUSICEstimator(device=device)
+                music_estimator = SystemComponents._build_music_estimator(device)
                 kwargs["music_estimator"] = music_estimator
-                kwargs["music_sensing"] = MusicSensingEstimator(
-                    music_estimator=music_estimator,
-                    sensing_performance=sensing_performance,
+                kwargs["music_evaluator"] = SystemComponents._build_music_evaluator(
+                    music_estimator,
+                    sensing_performance,
                 )
 
         return kwargs
+
+    @staticmethod
+    def _build_music_estimator(device: str) -> MUSICEstimator:
+        """构建 MUSIC bin 检峰器。"""
+        return MUSICEstimator(device=device)
+
+    @staticmethod
+    def _build_music_evaluator(
+        music_estimator: MUSICEstimator,
+        sensing_performance: SensingPerformance,
+    ) -> MusicSensingEvaluator:
+        """构建 MUSIC 感知评估器（依赖已初始化的检峰器与感知性能）。"""
+        return MusicSensingEvaluator(music_estimator, sensing_performance)

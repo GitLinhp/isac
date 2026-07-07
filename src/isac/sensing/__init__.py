@@ -2,7 +2,7 @@
 
 典型导入::
 
-    from isac.sensing import DelayDopplerSpectrum, MUSICEstimator, MusicSensingEstimator, CFARDetector
+    from isac.sensing import DelayDopplerSpectrum, MUSICEstimator, MusicSensingEvaluator, CFARDetector
     from isac.sensing.geometry import delay_to_range, doppler_to_velocity
 """
 
@@ -13,7 +13,11 @@ from .spectrum import (
 )
 from .detection import CFARDetector
 from .detection.music_estimator import MUSICEstimator
-from .detection.music_sensing import MusicSensingEstimator
+from .detection.music_sensing import (
+    MusicEvaluationResult,
+    MusicSensingEvaluator,
+    match_peaks_and_compute_radial_rmse,
+)
 from .clutter import MovingTargetIndication, MovingTargetDetection
 from .localization import (
     ground_circle_radius_sq,
@@ -37,7 +41,9 @@ __all__ = [
     "LSChannelEstimator",
     "DelayDopplerSpectrum",
     "MUSICEstimator",
-    "MusicSensingEstimator",
+    "MusicSensingEvaluator",
+    "MusicEvaluationResult",
+    "match_peaks_and_compute_radial_rmse",
     "CFARDetector",
     "MovingTargetIndication",
     "MovingTargetDetection",

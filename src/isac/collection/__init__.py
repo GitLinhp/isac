@@ -14,8 +14,6 @@ from .h5_layout import (
 from .roi_sampling import (
     RoiKinematicsSampler,
     SamplingMode,
-    parse_roi_xy,
-    parse_speed_range,
 )
 from .utils import scene_slug_from_rt_simulator
 

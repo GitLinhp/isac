@@ -26,7 +26,7 @@ def _music_velocity(
     if comps.moving_target_indication is not None:
         h_work = comps.moving_target_indication(h_work, axis=-2)
     h_dd = comps.delay_doppler_spectrum(h_work)
-    _, velocities, _ = comps.music_sensing(
+    _, velocities, _ = comps.music_evaluator.estimate(
         spectrum_tensor=h_dd,
         sens_mode=sens_mode,
         num_sources=1,
@@ -113,10 +113,12 @@ def test_static_target_sensing_velocity_stays_positive():
     y_time = comps.channel(x_rg, x_time, domain="time")
     y_rg = comps.demodulator(y_time).squeeze()
 
-    h_dd = system.compute_sensing_spectrum(x_rg, y_rg)
-    _, est_velocities = system.estimate_sensing_music(
-        h_dd,
+    h_freq = comps.ls_channel_estimator(x_rg, y_rg)
+    h_dd = comps.delay_doppler_spectrum(h_freq)
+    _, est_velocities, _ = comps.music_evaluator.estimate(
+        spectrum_tensor=h_dd,
         sens_mode="monostatic",
+        num_sources=1,
         log_peaks=False,
     )
     est_v = float(est_velocities.reshape(-1)[0].item())

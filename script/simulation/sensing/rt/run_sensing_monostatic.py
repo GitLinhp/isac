@@ -4,7 +4,7 @@ import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.utils import load_config, set_random_seed
 
 SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "sensing_monostatic"
 
@@ -88,22 +88,21 @@ def main() -> None:
     # h = comps.moving_target_indication(h, axis=-2)
     h_dd = comps.delay_doppler_spectrum(h_freq)
 
+    # --- 可视化 ---
     comps.delay_doppler_spectrum.visualize(
         file_name=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
         metric_mode=args.metric_mode,
         to_db=False,
     )
-    est_ranges, est_velocities, _ = comps.music_sensing(
-        spectrum_tensor=h_dd,
-        metric_mode=args.metric_mode,
-        sens_mode="monostatic",
-    )
+
+    # --- MUSIC 估计与 RMSE 评估 ---
     geom = comps.rt_simulator.rx_target_tx_geometric
-    match_peaks_and_compute_radial_rmse(
-        est_ranges=est_ranges,
-        est_velocities=est_velocities,
+    comps.music_evaluator.evaluate(
+        spectrum_tensor=h_dd,
         true_ranges=geom.range_tensor,
         true_velocities=geom.vel_tensor,
+        metric_mode=args.metric_mode,
+        sens_mode="monostatic",
         label="单基地感知",
     )
 

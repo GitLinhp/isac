@@ -60,6 +60,7 @@ flowchart TB
 | 算法底层张量算子（无状态） | 同目录 `*_kernels.py` |
 | 把配置变成可调用对象 | `data_structures/system_components.py` |
 | 采集 / HDF5 / Dataset | `collection/` |
+| 感知 RMSE 评估（匈牙利匹配） | `sensing/detection/music_sensing.py` |
 | 训练 CNN / 损失 | `models/` |
 | 通用数值 / 窗函数 / 配置加载 | `utils/` |
 

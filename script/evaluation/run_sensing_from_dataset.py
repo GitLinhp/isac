@@ -37,6 +37,7 @@ from isac import (
     OUT_DIR,
 )
 from isac.collection import RTDataset
+from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.models import (
     MonostaticCnnCheckpointMeta,
     MonostaticDelayDopplerCNN,
@@ -46,7 +47,7 @@ from isac.models import (
     read_monostatic_cnn_checkpoint_meta,
 )
 from isac.system import System
-from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.utils import load_config, set_random_seed
 from isac.collection.utils import scene_slug_from_rt_simulator
 
 
@@ -121,31 +122,37 @@ def _evaluate_episode(
     h_dd = dataset.spectrum_tensor(i, device=system.device)
     comps = system.components
 
-    if setup.label == "MUSIC":
-        est_ranges, est_velocities, _ = comps.music_sensing(
-            spectrum_tensor=h_dd,
-            metric_mode=setup.metric_mode,
-            sens_mode="monostatic",
-            log_peaks=False,
-        )
-    else:
-        assert setup.cnn_model is not None
-        est_ranges, est_velocities = _estimate_with_model(h_dd, setup.cnn_model)
-
     pos = dataset.target_position[i]
     vel = dataset.target_velocity[i]
     range_m, vel_mps = monostatic_labels_from_kinematics(pos, vel, dataset.bs_pos)
     true_range = torch.tensor(range_m, dtype=torch.float64, device=system.device)
     true_velocity = torch.tensor(vel_mps, dtype=torch.float64, device=system.device)
 
-    rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
-        est_ranges=est_ranges,
-        est_velocities=est_velocities,
-        true_ranges=true_range.reshape(-1),
-        true_velocities=true_velocity.reshape(-1),
-        label=f"episode {i}",
-        verbose=False,
-    )
+    if setup.label == "MUSIC":
+        result = comps.music_evaluator.evaluate(
+            spectrum_tensor=h_dd,
+            true_ranges=true_range.reshape(-1),
+            true_velocities=true_velocity.reshape(-1),
+            metric_mode=setup.metric_mode,
+            sens_mode="monostatic",
+            log_peaks=False,
+            label=f"episode {i}",
+            verbose=False,
+        )
+        rmse_range_m = result.rmse_range_m
+        rmse_velocity_mps = result.rmse_velocity_mps
+    else:
+        assert setup.cnn_model is not None
+        est_ranges, est_velocities = _estimate_with_model(h_dd, setup.cnn_model)
+
+        rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
+            est_ranges=est_ranges,
+            est_velocities=est_velocities,
+            true_ranges=true_range.reshape(-1),
+            true_velocities=true_velocity.reshape(-1),
+            label=f"episode {i}",
+            verbose=False,
+        )
     return rmse_range_m, rmse_velocity_mps
 
 

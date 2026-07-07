@@ -1,6 +1,6 @@
 # `src/isac/utils` 功能说明
 
-模块职责：配置加载、射线追踪信道路径抽取、蒙特卡洛/轨迹目标采样、感知评估指标、类型/张量工具、窗函数、可视化与数值换算。各子模块经 [`src/isac/utils/__init__.py`](src/isac/utils/__init__.py) 聚合导出，典型用法为 `from isac.utils import ...`。
+模块职责：配置加载、射线追踪信道路径抽取、蒙特卡洛/轨迹目标采样、类型/张量工具、窗函数、可视化与数值换算。各子模块经 [`src/isac/utils/__init__.py`](src/isac/utils/__init__.py) 聚合导出，典型用法为 `from isac.utils import ...`。MUSIC 感知 RMSE 评估见 [`MusicSensingEvaluator.evaluate`](src/isac/sensing/detection/music_sensing.py) 与 [`match_peaks_and_compute_radial_rmse`](src/isac/sensing/detection/music_sensing.py)。
 
 ---
 
@@ -30,7 +30,8 @@
 | 函数 | 在流水线中的角色 |
 | ---- | ---------------- |
 | `set_random_seed` | 固定随机种子。 |
-| `match_peaks_and_compute_radial_rmse` | 将 MUSIC 峰与 `rx_target_tx_geometric` 真值格点一对一匹配并输出/打印径向距离、速度 RMSE。 |
+
+RMSE 评估见 `comps.music_evaluator.evaluate(...)` 或 `from isac.sensing import match_peaks_and_compute_radial_rmse`（CNN 等非 MUSIC 路径）。
 
 ### [`script/simulation/run_static_target_simulation.py`](script/simulation/run_static_target_simulation.py)
 
@@ -39,7 +40,8 @@
 | 函数 | 在流水线中的角色 |
 | ---- | ---------------- |
 | `set_random_seed` | 固定随机种子。 |
-| `match_peaks_and_compute_radial_rmse` | MUSIC 峰与 CLI 标量真值匹配并计算 RMSE。 |
+
+RMSE 匹配见 `isac.sensing.detection.music_sensing`。
 
 ### 基线脚本
 
@@ -65,7 +67,6 @@
 | [`src/isac/sensing/detection/music_estimator.py`](src/isac/sensing/detection/music_estimator.py) | `linear_to_db` | 伪谱功率转 dB 日志。 |
 | [`src/isac/sensing/processing.py`](src/isac/sensing/processing.py) | `convert` | DOA/MUSIC 等处理中 numpy ↔ torch 与标量提取。 |
 | [`src/isac/learning/torch_dataset.py`](src/isac/learning/torch_dataset.py) | `load_config` | 数据集类按配置名加载 TOML。 |
-| [`src/isac/utils/metrics.py`](src/isac/utils/metrics.py) | `convert`（内部） | 匈牙利匹配前后统一张量类型与打印格式。 |
 
 ---
 
@@ -78,7 +79,7 @@ flowchart LR
   run_data_collection --> collection_utils
   run_data_collection --> config_loader
   run_data_collection --> misc
-  run_sensing_scripts --> metrics
+  run_sensing_scripts --> collection_metrics
   run_sensing_scripts --> misc
   system_py --> config_loader
   system_py --> misc
@@ -121,14 +122,6 @@ flowchart LR
 | `generate_monte_carlo_points` | ROI 内 `uniform`/`gaussian` 采样，经 `scene.is_position_valid` 剔除无效点。 |
 | `generate_targets_monte_carlo` | ROI + 速度策略批量采样位置与速度。 |
 
-### [`metrics.py`](src/isac/utils/metrics.py)
-
-| 函数 | 功能概要 |
-| ---- | -------- |
-| `match_peaks_and_compute_radial_rmse` | 匈牙利算法匹配估计峰与真值格点，计算径向距离/速度 RMSE 并打印。 |
-| `compute_rmse` | 逐元素 RMSE（`torch` 上 `sqrt(mean((est-target)²))`）。 |
-| `compute_mse` | 逐元素 MSE。 |
-
 ### [`misc.py`](src/isac/utils/misc.py)
 
 | 函数 | 功能概要 |
@@ -142,7 +135,7 @@ flowchart LR
 
 | 函数 | 功能概要 |
 | ---- | -------- |
-| `convert` | numpy / torch / Python 标量 / list / tuple 互转；项目内广泛用于 `metrics`、`delay_doppler_spectrum`、`processing`、`misc`、`system` 等。 |
+| `convert` | numpy / torch / Python 标量 / list / tuple 互转；项目内广泛用于 `delay_doppler_spectrum`、`processing`、`misc`、`system`、`music_sensing` 等。 |
 | `str_to_bool` | 字符串 → 布尔。**当前无项目内外部调用。** |
 | `to_tuple` | 输入 → 元组。**当前无项目内外部调用。** |
 | `image_to_bits` / `bits_to_image` | 图像与比特互转。**当前无项目内外部调用。** |

@@ -55,7 +55,7 @@ flowchart TB
 
 | 路径 | 说明 |
 |------|------|
-| [`src/isac/`](src/isac/) | 核心包：`system`、`channel/`（RT 几何 [`rx_target_tx_geometric`](src/isac/channel/rt/rx_target_tx_geometric.py)、点目标 / AWGN）、`sensing/`、`data_collection/`（采集质量过滤）、`data_structures/`、`utils/`（含 [`metrics`](src/isac/utils/metrics.py)）、`datasets.py` |
+| [`src/isac/`](src/isac/) | 核心包：`system`、`channel/`（RT 几何 [`rx_target_tx_geometric`](src/isac/channel/rt/rx_target_tx_geometric.py)、点目标 / AWGN）、`sensing/`（含 [`music_sensing`](src/isac/sensing/detection/music_sensing.py)）、`collection/`（HDF5 采集）、`data_structures/`、`utils/`、`datasets.py` |
 | [`script/simulation/`](script/simulation/) | 通信 / 感知仿真入口脚本 |
 | [`script/model_training/`](script/model_training/) | 蒙特卡洛数据集采集 |
 | [`config/`](config/) | TOML 配置（`simulation/`、`data_collection/`） |

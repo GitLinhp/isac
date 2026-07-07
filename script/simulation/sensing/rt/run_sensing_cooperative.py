@@ -21,7 +21,7 @@ from isac.sensing.localization import (
     position_rmse_xy,
 )
 from isac.system import System
-from isac.utils import load_config, match_peaks_and_compute_radial_rmse, set_random_seed
+from isac.utils import load_config, set_random_seed
 from isac.channel import RTChannel
 
 
@@ -173,14 +173,6 @@ def main() -> None:
         spectra_stack.append(h_dd_tx)
         panel_labels.append(tx_name)
 
-        est_ranges, est_velocities, _ = system.components.music_sensing(
-            spectrum_tensor=h_dd_tx,
-            metric_mode=args.metric_mode,
-            sens_mode=sens_mode,
-            num_sources=1,
-            log_peaks=False,
-        )
-
         true_range = geom.range_tensor[rx_idx, target_idx, tx_idx]
         true_velocity = geom.vel_tensor[rx_idx, target_idx, tx_idx]
 
@@ -191,21 +183,26 @@ def main() -> None:
             distance_label = "径向距离"
             velocity_label = "径向速度"
 
-        rmse_range, rmse_velocity, est_range_m, est_velocity_mps, _ = (
-            match_peaks_and_compute_radial_rmse(
-                est_ranges=est_ranges,
-                est_velocities=est_velocities,
-                true_ranges=true_range,
-                true_velocities=true_velocity,
-                label=(
-                    f"协同感知 — RX {rx_name} / TX {tx_name} "
-                    f"({path_label}, sens_mode={sens_mode})"
-                ),
-                distance_axis_label=distance_label,
-                velocity_axis_label=velocity_label,
-                verbose=False,
-            )
+        result = system.components.music_evaluator.evaluate(
+            spectrum_tensor=h_dd_tx,
+            true_ranges=true_range,
+            true_velocities=true_velocity,
+            metric_mode=args.metric_mode,
+            sens_mode=sens_mode,
+            num_sources=1,
+            log_peaks=False,
+            label=(
+                f"协同感知 — RX {rx_name} / TX {tx_name} "
+                f"({path_label}, sens_mode={sens_mode})"
+            ),
+            distance_axis_label=distance_label,
+            velocity_axis_label=velocity_label,
+            verbose=False,
         )
+        rmse_range = result.rmse_range_m
+        rmse_velocity = result.rmse_velocity_mps
+        est_range_m = result.est_range_m
+        est_velocity_mps = result.est_velocity_mps
 
         true_r = float(true_range.reshape(-1)[0].item())
         true_v = float(true_velocity.reshape(-1)[0].item())

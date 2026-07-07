@@ -25,7 +25,7 @@
 - 单链路仿真/数据集采集常以 ``geom.range_tensor[0, 0, 0]``、
   ``geom.vel_tensor[0, 0, 0]`` 作为 MUSIC 匹配真值（见 ``run_dataset_collection``）。
 - ``System.run_sensing(..., compute_rmse=True)`` 可将完整 ``range_tensor`` /
-  ``vel_tensor`` 传入 ``match_peaks_and_compute_radial_rmse`` 做匈牙利多峰匹配。
+  ``vel_tensor`` 传入 ``MusicSensingEvaluator.evaluate``（内部匈牙利 RMSE 匹配）做匈牙利多峰匹配。
 """
 
 from dataclasses import dataclass
