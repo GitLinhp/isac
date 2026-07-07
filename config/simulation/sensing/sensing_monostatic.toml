@@ -112,7 +112,6 @@ detector = "linear" # 检测器: linear | squarelaw
 # MUSIC 参数
 [music]
 threshold = 0.1
-near_range_guard_m = 1.0
 
 # 时延–多普勒谱 ROI（物理量裁剪）
 [dd_spectrum_roi]

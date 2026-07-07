@@ -19,7 +19,6 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
-from ..collection.roi_sampling import RoiKinematicsSampler
 from ..channel.channel import Channel
 from ..channel.rcs.rcs_channel import RCSChannel
 from ..channel.rcs.rcs_scene import RCSScene
@@ -88,10 +87,6 @@ class SystemComponents:
     music_estimator: Optional[MUSICEstimator] = None
     """MUSIC估计器"""
 
-    # 采集组件
-    roi_kinematics_sampler: Optional[RoiKinematicsSampler] = None
-    """ROI 运动学预采样池；``[monte_carlo_sampling]`` 存在时由 ``build_from_params`` 构建"""
-
     @classmethod
     def build_from_params(
         cls,
@@ -112,15 +107,6 @@ class SystemComponents:
         if system_params.channel is not None and rg is not None:
             kwargs.update(cls._build_channel(system_params, rg, device))
         kwargs.update(cls._build_sensing(system_params, rg, device))
-        if system_params.monte_carlo_sampling is not None:
-            s = system_params.monte_carlo_sampling
-            kwargs["roi_kinematics_sampler"] = RoiKinematicsSampler(
-                roi=s.roi,
-                position_sampling_mode=s.position_sampling_mode,
-                speed_range=s.speed_range,
-                speed_sampling_mode=s.speed_sampling_mode,
-                num_samples=s.pool_size,
-            )
         return cls(**kwargs)
 
     @staticmethod
@@ -321,7 +307,6 @@ class SystemComponents:
                 kwargs["music_estimator"] = MUSICEstimator(
                     device=device,
                     sensing_performance=sensing_performance,
-                    near_range_guard_m=system_params.music.near_range_guard_m,
                     max_range_m=max_range_m,
                     max_velocity_mps=max_velocity_mps,
                 )

@@ -113,7 +113,6 @@ def _checkpoint_payload(
         "velocity_resolution": model.velocity_resolution,
         "max_range_m": model.max_range_m,
         "max_velocity_mps": model.max_velocity_mps,
-        "use_phase": full_ds.use_phase,
         "dataset_h5": str(h5_path),
         "config_file": str(config_path),
     }
@@ -237,7 +236,7 @@ def main() -> None:
     config = load_config(config_path)
     system = System(config=config, device=device)
     sensing = sensing_attrs_from_system(system)
-    in_channels = 2 if full_ds.use_phase else 1
+    in_channels = 2
     model = MonostaticDelayDopplerCNN(
         in_channels=in_channels,
         **sensing,

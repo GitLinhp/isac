@@ -20,14 +20,12 @@ from .sensing_params import (
     MusicParams,
     WindowParams,
 )
-from .sampling_params import CollectionSamplingParams
 from .system_params import SystemParams
 
 __all__ = [
     "AntennaArrayParams",
     "CameraParams",
     "CFARParams",
-    "CollectionSamplingParams",
     "DelayDopplerRoiParams",
     "ChannelParams",
     "MTDParams",

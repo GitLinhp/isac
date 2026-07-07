@@ -166,7 +166,6 @@ detector = "linear" # linear | squarelaw
 # --- MUSIC（SystemParams.music）---
 [music]
 threshold = 0.1          # MUSICEstimator.__call__ 默认门限
-near_range_guard_m = 1.0 # 跳过近距直达波/泄漏的物理距离 (m)
 
 # --- 时延–多普勒谱 ROI（SystemParams.dd_spectrum_roi）---
 [dd_spectrum_roi]

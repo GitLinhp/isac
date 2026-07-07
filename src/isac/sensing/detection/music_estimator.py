@@ -2,7 +2,7 @@
 
 流程概览
 --------
-1. 裁剪搜索窗（近距保护 + 可选 ``search_range``）
+1. 在输入谱上检峰
 2. 子阵快拍 → 样本协方差 → 噪声子空间（``eigh`` + 对角加载）
 3. ``|谱|`` 局部极大值筛候选点（可选 CFAR 门限）
 4. 对候选点算 MUSIC 伪谱 × 幅度，贪心去重选峰
@@ -37,7 +37,6 @@ from .music_kernels import (
     MIN_SEARCH_DIMENSION,
     MUSIC_EPS,
     NUM_SNAPSHOTS,
-    SubarrayGeometry,
     batch_music_scores,
     greedy_select_peaks,
     local_maxima_candidates,
@@ -112,7 +111,6 @@ class MUSICEstimator:
         self,
         device: torch.device,
         sensing_performance: Optional[SensingPerformance] = None,
-        near_range_guard_m: float = 0.0,
         max_range_m: Optional[float] = None,
         max_velocity_mps: Optional[float] = None,
     ):
@@ -120,19 +118,16 @@ class MUSICEstimator:
 
         参数
         ----
-        device :
+        - device :
             计算设备。
-        sensing_performance :
+        - sensing_performance :
             感知性能对象；``__call__`` 须注入以完成 bin→物理量换算与日志。
-        near_range_guard_m :
-            默认近距保护物理距离 (m)；跳过 ``[0, guard)`` 对应时延 bin。
-        max_range_m, max_velocity_mps :
+        - max_range_m, max_velocity_mps :
             ``[dd_spectrum_roi]`` 物理 ROI；二者均给定且已注入 ``sensing_performance`` 时，
             预计算裁剪谱在全网格中的 ``bin_origin``。
         """
         self.device = device
         self.sensing_performance = sensing_performance
-        self.near_range_guard_m = near_range_guard_m
         self._bin_origin: Tuple[int, int] = (0, 0)
         if (
             sensing_performance is not None
@@ -153,13 +148,11 @@ class MUSICEstimator:
         self,
         spectrum_tensor: torch.Tensor,
         num_sources: Optional[int] = None,
-        search_range: Optional[Tuple[int, int, int, int]] = None,
         threshold: float = 0.1,
         cfar: Optional[torch.Tensor] = None,
         metric_mode: metric_mode = "delay_doppler",
         *,
         sens_mode: SensMode = "monostatic",
-        near_range_guard_m: Optional[float] = None,
         log_peaks: bool = True,
         bin_origin: Optional[Tuple[int, int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -170,25 +163,21 @@ class MUSICEstimator:
 
         参数
         ----
-        spectrum_tensor :
+        - spectrum_tensor :
             时延多普勒谱，squeeze 后须为 ``(num_symbols, num_subcarriers)``。
-        num_sources :
+        - num_sources :
             信号源数量；``None`` 时自动估计（协方差特征值）且默认输出 2 个峰。
-        search_range :
-            ``(delay_start, delay_end, doppler_start, doppler_end)``。
-        threshold :
+        - threshold :
             自动估计信号源数量时的归一化特征值阈值。
-        cfar :
+        - cfar :
             与谱同形状的二维阈值面；给定则候选门限为 ``|X| > cfar``。
-        metric_mode :
+        - metric_mode :
             仅影响日志列名与单位（bin+ns/Hz 或 m/m/s）。
-        sens_mode :
+        - sens_mode :
             物理换算尺度（``monostatic`` 往返 / ``bistatic`` 单程）。
-        near_range_guard_m :
-            单次调用覆盖近距保护距离；``None`` 用构造默认值。
-        log_peaks :
+        - log_peaks :
             是否打印谱峰表格。
-        bin_origin :
+        - bin_origin :
             裁剪谱在全网格中的 ``(doppler_start, delay_start)`` 偏移。
 
         返回
@@ -202,11 +191,8 @@ class MUSICEstimator:
 
         ctx = self._prepare_call_context(
             spectrum_tensor,
-            search_range=search_range,
             cfar=cfar,
             metric_mode=metric_mode,
-            sens_mode=sens_mode,
-            near_range_guard_m=near_range_guard_m,
             bin_origin=bin_origin,
         )
         if ctx.search_too_small:
@@ -259,11 +245,8 @@ class MUSICEstimator:
         self,
         spectrum_tensor: torch.Tensor,
         *,
-        search_range: Optional[Tuple[int, int, int, int]],
         cfar: Optional[torch.Tensor],
         metric_mode: metric_mode,
-        sens_mode: SensMode,
-        near_range_guard_m: Optional[float],
         bin_origin: Optional[Tuple[int, int]],
     ) -> _CallContext:
         """校验输入、裁剪搜索窗，返回后续检峰所需上下文。"""
@@ -288,18 +271,8 @@ class MUSICEstimator:
                     f"当前 cfar {tuple(cfar_full.shape)}，谱 {tuple(spectrum.shape)}"
                 )
 
-        guard_m = (
-            self.near_range_guard_m
-            if near_range_guard_m is None
-            else near_range_guard_m
-        )
-        delay_start, delay_end, doppler_start, doppler_end = self._get_search_range(
-            search_range,
-            num_subcarriers,
-            num_symbols,
-            sens_mode=sens_mode,
-            near_range_guard_m=guard_m,
-        )
+        delay_start, doppler_start = 0, 0
+        delay_end, doppler_end = num_subcarriers, num_symbols
 
         num_doppler_bins = int(doppler_end - doppler_start)
         num_delay_bins = int(delay_end - delay_start)
@@ -410,28 +383,6 @@ class MUSICEstimator:
             )
         ]
         print(tabulate(table_data, headers=headers, tablefmt="simple_grid"))
-
-    def _get_search_range(
-        self,
-        search_range: Optional[Tuple[int, int, int, int]],
-        num_subcarriers: int,
-        num_symbols: int,
-        *,
-        sens_mode: SensMode = "monostatic",
-        near_range_guard_m: float = 1.0,
-    ) -> Tuple[int, int, int, int]:
-        """返回 ``(delay_start, delay_end, doppler_start, doppler_end)``。"""
-        if search_range is None:
-            sp = self.sensing_performance
-            if sp is None:
-                raise ValueError(
-                    "search_range 为 None 时须注入 sensing_performance，"
-                    "以按 near_range_guard_m 换算近距保护 bin"
-                )
-            delay_guard = sp.near_delay_guard_bins(near_range_guard_m, sens_mode)
-            delay_guard = min(max(0, delay_guard), num_subcarriers - 1)
-            return delay_guard, num_subcarriers, 0, num_symbols
-        return search_range
 
     def _empty_peak_tensors(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """无谱峰时返回 ``self.device`` 侧三个空一维张量。"""

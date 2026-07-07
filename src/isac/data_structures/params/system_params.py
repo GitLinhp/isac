@@ -15,8 +15,6 @@ from .sensing_params import (
     MusicParams,
     WindowParams,
 )
-from .sampling_params import CollectionSamplingParams
-
 
 @dataclass
 class SystemParams:
@@ -50,8 +48,6 @@ class SystemParams:
     """MUSIC 谱估计"""
     dd_spectrum_roi: Optional[DelayDopplerRoiParams] = None
     """时延–多普勒谱 ROI（物理量）"""
-    monte_carlo_sampling: Optional[CollectionSamplingParams] = None
-    """平面 ROI 蒙特卡洛采样（采集 TOML 专用，仿真配置可无此段）"""
 
     @staticmethod
     def _parse_section(
@@ -97,9 +93,6 @@ class SystemParams:
         dd_spectrum_roi = cls._parse_section(
             config_dict, "dd_spectrum_roi", DelayDopplerRoiParams.from_dict
         )
-        monte_carlo_sampling = cls._parse_section(
-            config_dict, "monte_carlo_sampling", CollectionSamplingParams.from_dict
-        )
 
         params = cls(
             carrier_frequency=carrier_frequency,
@@ -115,7 +108,6 @@ class SystemParams:
             cfar=cfar,
             music=music,
             dd_spectrum_roi=dd_spectrum_roi,
-            monte_carlo_sampling=monte_carlo_sampling,
         )
         params._validate_channel_dependencies()
         return params

@@ -18,17 +18,13 @@ from tqdm import tqdm
 from isac import DEFAULT_COLLECTION_OUT_DIR
 from isac.collection import (
     CollectionMetadata,
-    RTDataset,
+    RTDatasetWriter,
     collection_h5_path,
     save_collection_artifacts,
 )
 from isac.system import System
-from isac.utils import load_config, set_random_seed
-from isac.collection.utils import (
-    los_truth_from_kinematics,
-    paths_intersect_object,
-    scene_slug_from_rt_simulator,
-)
+from isac.utils import load_config
+from isac.collection.utils import scene_slug_from_rt_simulator
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 # 忽略 Sionna 警告
@@ -67,6 +63,48 @@ def argument_parser() -> argparse.Namespace:
         help="随机种子（蒙特卡洛位置/速度采样）",
     )
     parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=5000,
+        help="目标采纳 episode 数",
+    )
+    parser.add_argument(
+        "--sampler_pool_factor",
+        type=int,
+        default=5,
+        help="预采样池倍数（池大小 = num_samples × 本参数）",
+    )
+    parser.add_argument(
+        "--roi",
+        nargs=4,
+        type=float,
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
+        default=[-2.5, 2.5, -4.5, 4.5],
+        help="平面 ROI 四元组（m），z 固定为 0",
+    )
+    parser.add_argument(
+        "--position_sampling_mode",
+        type=str,
+        default="uniform",
+        choices=["uniform", "gaussian"],
+        help="位置采样分布",
+    )
+    parser.add_argument(
+        "--speed_range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        default=[0.1, 3.0],
+        help="速度模值范围 (m/s)",
+    )
+    parser.add_argument(
+        "--speed_sampling_mode",
+        type=str,
+        default="uniform",
+        choices=["uniform", "gaussian"],
+        help="速度模值采样分布",
+    )
+    parser.add_argument(
         "--h5_compression",
         type=str,
         default="lzf",
@@ -81,17 +119,13 @@ def main() -> None:
     """蒙特卡洛采集 episode → 写出 TOML / CSV / HDF5。"""
     args = argument_parser()
 
-    set_random_seed(args.seed)
-
-    config = load_config(args.config_file)
+    collection_meta = CollectionMetadata.from_args(args)
+    sampler = collection_meta.build_sampler()
 
     system = System(
-        config=config,
+        config=load_config(args.config_file),
         device=args.device,
     )
-    sampling = system.params.monte_carlo_sampling
-    sampler = system.components.roi_kinematics_sampler
-
     comps = system.components
 
     # 获取 RT 模拟器与目标
@@ -104,9 +138,7 @@ def main() -> None:
     csv_rows: list[dict[str, str | int]] = []
     bs_pos = np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64)
     h5_path = collection_h5_path(scene_slug, DEFAULT_COLLECTION_OUT_DIR)
-    collection_meta = CollectionMetadata.from_sampling_params(args.seed, sampling)
-
-    with RTDataset.open_for_collection(
+    with RTDatasetWriter.open(
         h5_path,
         bs_pos,
         compression=args.h5_compression,
@@ -114,12 +146,12 @@ def main() -> None:
         # 采集 episode
         accepted = 0
         attempts = 0
-        pbar = tqdm(total=sampling.num_samples, desc="数据采集", unit="ep")
-        while accepted < sampling.num_samples:
+        pbar = tqdm(total=collection_meta.num_samples, desc="数据采集", unit="ep")
+        while accepted < collection_meta.num_samples:
             if len(sampler) == 0:
                 raise RuntimeError(
-                    f"采样池已耗尽：已采纳 {accepted}/{sampling.num_samples} 条。"
-                    "请增大 [monte_carlo_sampling].sampler_pool_factor 或调整过滤条件（scene_filter / 目标路径交互）。"
+                    f"采样池已耗尽：已采纳 {accepted}/{collection_meta.num_samples} 条。"
+                    "请增大 --sampler_pool_factor 或调整过滤条件（scene_filter / 目标路径交互）。"
                 )
             pos, vel, ori = sampler.pop()
             attempts += 1
@@ -131,13 +163,14 @@ def main() -> None:
                 orientation=ori,
             )
 
-            paths = rt_simulator.paths(update=True)
-            if not paths_intersect_object(paths, int(target.object_id)):
+            # 更新路径
+            rt_simulator.paths(update=True)
+            if not rt_simulator.paths_intersect_target(target):
                 continue
 
-            true_range, true_velocity = los_truth_from_kinematics(
-                pos, vel, rt_simulator, system.device
-            )
+            geom = rt_simulator.rx_target_tx_geometric
+            true_range = geom.range_tensor[0, 0, 0]
+            true_velocity = geom.vel_tensor[0, 0, 0]
             csv_rows.append(
                 {
                     "sample_idx": accepted,
@@ -148,7 +181,7 @@ def main() -> None:
                 }
             )
 
-            # 信号传输（paths(update=True) 已缓存；channel 内 paths() 读缓存）
+            # 信号传输
             _, x_rg, x_time = system.transmit()
             snr_db = system.params.channel.snr_db
             y_rg = comps.channel(x_rg, x_time, domain="frequency", snr_db=snr_db)

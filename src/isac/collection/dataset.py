@@ -1,15 +1,9 @@
 """ISAC 仿真采集结果的 HDF5 数据集读写与元数据封装。
 
-采集期：``RTDataset.open_for_collection`` 按 episode 流式写入 HDF5。
+采集期：``RTDatasetWriter.open`` 按 episode 流式写入 HDF5。
 消费侧：``RTDataset.load`` 加载内存；``__getitem__`` 返回 CNN 训练 dict。
 采集期完成 CFR→h_dd 感知链；HDF5 仅存 ROI 裁剪后的复数 DD 谱与运动学。
-``RTDataset`` 继承 ``torch.utils.data.Dataset``。
-
-RTDataset 双模式
-----------------
-- **写入模式**：``open_for_collection`` → ``append_episode`` → ``finalize``；
-  内存数组为占位，未完成 ``finalize`` 前不可 ``__getitem__``。
-- **读取模式**：``load`` 后 ``h_dd`` 等数组驻内存，供 DataLoader / 评估脚本使用。
+``RTDataset`` 继承 ``torch.utils.data.Dataset``（只读）；写入由 ``RTDatasetWriter`` 负责。
 
 HDF5 文件布局
 --------------
@@ -22,7 +16,8 @@ HDF5 文件布局
 根 attrs:
 
 - ``description``
-- ``seed``, ``roi``, ``position_sampling_mode``, ``speed_range``, ``speed_sampling_mode``：由 ``CollectionMetadata`` 写入
+- ``seed``, ``roi``, ``position_sampling_mode``, ``speed_range``, ``speed_sampling_mode``、
+  ``num_samples``, ``sampler_pool_factor``：由 ``CollectionMetadata`` 写入
 
 感知 ROI 与分辨率见同目录 TOML 副本（``[dd_spectrum_roi]``、``[ofdm]``），不写入 HDF5。
 
@@ -36,9 +31,10 @@ HDF5 文件布局
 
 from __future__ import annotations
 
+import argparse
 import csv
 import shutil
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -47,17 +43,15 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from isac import DEFAULT_COLLECTION_OUT_DIR
 from isac.models.utils import (
     dd_spectrum_to_features,
     monostatic_labels_from_kinematics,
 )
+from isac.utils import set_random_seed
 from isac.utils.config_loader import resolve_config_path
 
 if TYPE_CHECKING:
     from isac.channel.rt.rt_simulator import RTSimulator
-    from isac.system import System
-    from isac.data_structures import CollectionSamplingParams
 
 from .h5_layout import (
     ARRAY_DATASET_SPECS,
@@ -73,18 +67,21 @@ from .h5_layout import (
     SCENE_PNG_SUFFIX,
     collection_dataset_description,
 )
+from .roi_sampling import RoiKinematicsSampler, SamplingMode
+
+_VALID_SAMPLING_MODES = frozenset({"uniform", "gaussian"})
 
 
-def _resolve_out_dir(output_root: Path | None) -> Path:
-    """解析采集输出目录并确保存在。"""
-    out = output_root or DEFAULT_COLLECTION_OUT_DIR
-    out.mkdir(parents=True, exist_ok=True)
-    return out
+def _parse_sampling_mode(raw: Any, *, field: str) -> SamplingMode:
+    mode = str(raw).strip().lower()
+    if mode not in _VALID_SAMPLING_MODES:
+        raise ValueError(
+            f"{field} 仅支持 'uniform' 或 'gaussian'，收到 {raw!r}"
+        )
+    return mode  # type: ignore[return-value]
 
 
 # --- HDF5 读写辅助 ---
-
-
 def _require_dataset(f: h5py.File, key: str) -> h5py.Dataset:
     """返回指定名称的 HDF5 dataset；缺失或旧 CFR 格式时抛出明确错误。"""
     if key not in f:
@@ -133,8 +130,6 @@ def _create_vec3_dataset(f: h5py.File, key: str) -> h5py.Dataset:
 
 
 # --- 数据类 ---
-
-
 def _hdf5_serialize(val: Any) -> Any:
     """将 tuple 转为 list，供 h5py 根属性写入。"""
     return list(val) if isinstance(val, tuple) else val
@@ -151,7 +146,7 @@ def _hdf5_deserialize_collection(name: str, val: Any) -> Any:
 class CollectionMetadata:
     """一次采集运行的可复现配置摘要，序列化到 HDF5 根属性。
 
-    采样字段来自 TOML ``[monte_carlo_sampling]``；``seed`` 来自 CLI。
+    由 ``run_data_collection.py`` CLI 经 ``from_args`` 解析；``build_sampler`` 构建预采样池。
 
     字段
     ----
@@ -160,13 +155,59 @@ class CollectionMetadata:
     - ``position_sampling_mode``：``uniform`` / ``gaussian``
     - ``speed_range``：速度模值 ``[vmin, vmax]``（m/s）
     - ``speed_sampling_mode``：``uniform`` / ``gaussian``
+    - ``num_samples``：目标采纳 episode 数
+    - ``sampler_pool_factor``：预采样池倍数（池大小 = ``num_samples × sampler_pool_factor``）
     """
 
     seed: int
     roi: tuple[float, float, float, float]
-    position_sampling_mode: str = "uniform"
+    position_sampling_mode: SamplingMode = "uniform"
     speed_range: tuple[float, float] = (0.0, 0.0)
-    speed_sampling_mode: str = "uniform"
+    speed_sampling_mode: SamplingMode = "uniform"
+    num_samples: int = 20000
+    sampler_pool_factor: int = 5
+
+    @property
+    def pool_size(self) -> int:
+        """预采样池大小：``num_samples × sampler_pool_factor``。"""
+        return self.num_samples * self.sampler_pool_factor
+
+    def build_sampler(self) -> RoiKinematicsSampler:
+        """按本元数据构建 ``RoiKinematicsSampler``（池大小为 ``pool_size``）。"""
+        return RoiKinematicsSampler(
+            roi=self.roi,
+            position_sampling_mode=self.position_sampling_mode,
+            speed_range=self.speed_range,
+            speed_sampling_mode=self.speed_sampling_mode,
+            num_samples=self.pool_size,
+        )
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> CollectionMetadata:
+        """从 ``run_data_collection.py`` CLI 参数解析并设置随机种子。"""
+        seed = int(args.seed)
+        num_samples = int(args.num_samples)
+        sampler_pool_factor = int(args.sampler_pool_factor)
+        if num_samples < 1:
+            raise ValueError("num_samples 须 >= 1")
+        if sampler_pool_factor < 1:
+            raise ValueError("sampler_pool_factor 须 >= 1")
+        set_random_seed(seed)
+        return cls(
+            seed=seed,
+            roi=RoiKinematicsSampler.parse_roi_xy(args.roi),
+            position_sampling_mode=_parse_sampling_mode(
+                args.position_sampling_mode,
+                field="position_sampling_mode",
+            ),
+            speed_range=RoiKinematicsSampler.parse_speed_range(args.speed_range),
+            speed_sampling_mode=_parse_sampling_mode(
+                args.speed_sampling_mode,
+                field="speed_sampling_mode",
+            ),
+            num_samples=num_samples,
+            sampler_pool_factor=sampler_pool_factor,
+        )
 
     def write_hdf5_attrs(self, f: h5py.File) -> None:
         """写入采集元数据根属性（``seed``、``roi`` 等）。"""
@@ -185,177 +226,48 @@ class CollectionMetadata:
             kwargs[fld.name] = _hdf5_deserialize_collection(fld.name, f.attrs[fld.name])
         return cls(**kwargs)
 
-    @classmethod
-    def from_sampling_params(
-        cls,
-        seed: int,
-        params: CollectionSamplingParams,
-    ) -> CollectionMetadata:
-        """从 CLI ``seed`` 与 ``[monte_carlo_sampling]`` 解析结果构造。"""
-        return cls(
-            seed=int(seed),
-            roi=params.roi,
-            position_sampling_mode=str(params.position_sampling_mode),
-            speed_range=params.speed_range,
-            speed_sampling_mode=str(params.speed_sampling_mode),
-        )
 
+@dataclass
+class RTDatasetWriter:
+    """HDF5 采集流式写入器：``open`` → ``append_episode`` → ``finalize``。"""
 
-def sensing_attrs_from_system(system: "System") -> dict[str, float]:
-    """从已构建 ``System`` 提取 ROI 与分辨率（需 ``[dd_spectrum_roi]``）。"""
-    sp = system.components.sensing_performance
-    if sp is None:
-        raise ValueError("采集要求已构建 sensing_performance 组件")
-    dd = system.components.delay_doppler_spectrum
-    if dd is None or not dd.has_roi:
-        raise ValueError(
-            "采集要求配置 [dd_spectrum_roi]（max_range_m / max_velocity_mps）"
-        )
-    return {
-        "max_range_m": float(dd.max_range_m),
-        "max_velocity_mps": float(dd.max_velocity_mps),
-        "range_resolution": float(sp.range_resolution),
-        "velocity_resolution": float(sp.velocity_resolution),
-    }
+    path: Path
+    bs_pos: np.ndarray
+    compression: str | None = "lzf"
+    _file: h5py.File | None = field(default=None, repr=False)
+    _h_dd_ds: h5py.Dataset | None = field(default=None, repr=False)
+    _pos_ds: h5py.Dataset | None = field(default=None, repr=False)
+    _vel_ds: h5py.Dataset | None = field(default=None, repr=False)
+    _writer_count: int = 0
+    _finalized: bool = False
 
-
-class RTDataset(Dataset):
-    """ISAC HDF5 数据集：采集流式写入与内存读取。
-
-    典型形状：``h_dd`` 为 ``(N, H, W)`` 复数；运动学为 ``(N, 3)``。
-
-    采集写入
-    --------
-    ``with RTDataset.open_for_collection(path, bs_pos) as ds:``
-    ``ds.append_episode(...)`` → ``ds.finalize(...)``
-
-    读取 / 训练
-    -----------
-    - ``RTDataset.load(path)``
-    - ``len(dataset)`` → episode 条数
-    - ``dataset[i]`` → ``dict`` 含 ``features``、``range_m``、``velocity_mps``、``slot``
-    - ``spectrum_tensor(i)`` → 单条复数 h_dd（评估用）
-    """
-
-    def __init__(
-        self,
-        *,
-        bs_pos: np.ndarray,
-        target_position: np.ndarray,
-        target_velocity: np.ndarray,
-        h_dd: np.ndarray,
-        collection_meta: CollectionMetadata | None = None,
-        use_phase: bool = True,
-    ) -> None:
-        """构造数据集实例（读取模式或 ``open_for_collection`` 占位）。
-
-        公开字段约定
-        ------------
-        - ``bs_pos``：``(3,)`` float64
-        - ``target_position`` / ``target_velocity``：``(N, 3)`` float64
-        - ``h_dd``：``(N, H, W)`` complex64（写入模式下为占位空数组）
-        - ``use_phase``：``__getitem__`` 是否在 ``features`` 中包含相位通道
-
-        写入模式内部状态（``_path`` … ``_finalized``）由 ``open_for_collection`` 设置，
-        用户代码不应直接构造写入实例（请用 ``open_for_collection``）。
-        """
-        self.bs_pos = np.asarray(bs_pos, dtype=np.float64).reshape(-1)
-        self.target_position = target_position
-        self.target_velocity = target_velocity
-        self.h_dd = h_dd
-        self.collection_meta = collection_meta
-        self.use_phase = use_phase
-        self._path: Path | None = None
-        self._compression: str | None = None
-        self._file: h5py.File | None = None
-        self._h_dd_ds: h5py.Dataset | None = None
-        self._pos_ds: h5py.Dataset | None = None
-        self._vel_ds: h5py.Dataset | None = None
-        self._writer_count = 0
-        self._finalized = False
-
-    def _ensure_readable(self) -> None:
-        """写入模式且未 ``finalize`` 时禁止 ``__getitem__`` / ``spectrum_tensor``。"""
-        if self._path is not None and not self._finalized:
-            raise RuntimeError(
-                "RTDataset 处于采集写入模式，请先 finalize 再 load 或索引"
-            )
-
-    def _validate_slot_index(self, idx: int) -> None:
-        n = len(self)
-        if idx < 0 or idx >= n:
-            raise IndexError(f"index {idx} out of range for {n} slots")
-
-    def __len__(self) -> int:
-        if self._path is not None:
-            return self._writer_count
-        return int(self.h_dd.shape[0])
-
-    def spectrum_tensor(
-        self, idx: int, *, device: torch.device | str | None = None
-    ) -> torch.Tensor:
-        """返回单条 episode 的复数 h_dd 张量。"""
-        self._ensure_readable()
-        self._validate_slot_index(idx)
-        t = torch.from_numpy(self.h_dd[idx])
-        if device is not None:
-            t = t.to(device)
-        return t
-
-    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        """CNN 训练样本 dict。
-
-        返回键
-        ------
-        - ``features``：``(C, H, W)`` float32；C=1（幅度 dB）或 2（+相位），由 ``use_phase`` 决定
-        - ``range_m`` / ``velocity_mps``：单基地几何标签 (float32 标量)
-        - ``slot``：episode 索引 (int64)
-        """
-        self._ensure_readable()
-        self._validate_slot_index(idx)
-        h_dd = torch.from_numpy(self.h_dd[idx])
-        features = dd_spectrum_to_features(h_dd, use_phase=self.use_phase)
-        range_m, vel_mps = monostatic_labels_from_kinematics(
-            self.target_position[idx],
-            self.target_velocity[idx],
-            self.bs_pos,
-        )
-        return {
-            "features": features.to(dtype=torch.float32),
-            "range_m": torch.tensor(range_m, dtype=torch.float32),
-            "velocity_mps": torch.tensor(vel_mps, dtype=torch.float32),
-            "slot": torch.tensor(idx, dtype=torch.int64),
-        }
-
-    def __repr__(self) -> str:
-        if self._path is not None:
-            return f"RTDataset(writer, count={self._writer_count}, path={self._path})"
-        return f"RTDataset(n={len(self)}, h_dd_shape={self.h_dd.shape})"
+    def __post_init__(self) -> None:
+        self.bs_pos = np.asarray(self.bs_pos, dtype=np.float64).reshape(-1)
+        self.path = Path(self.path)
+        if self.compression in (None, "none"):
+            self.compression = None
 
     @classmethod
-    def open_for_collection(
+    def open(
         cls,
         path: str | Path,
         bs_pos: np.ndarray,
         *,
         compression: str | None = "lzf",
-    ) -> RTDataset:
+    ) -> RTDatasetWriter:
         """打开 HDF5 文件，准备按 episode 流式写入。
 
         ``compression`` 可选 ``lzf``（默认）、``gzip`` 或 ``none``。
         """
-        comp = None if compression in (None, "none") else compression
-        ds = cls(
-            bs_pos=np.asarray(bs_pos, dtype=np.float64).reshape(-1),
-            target_position=np.empty((0, 3), dtype=np.float64),
-            target_velocity=np.empty((0, 3), dtype=np.float64),
-            h_dd=np.empty((0,), dtype=np.complex64),
-        )
-        ds._path = Path(path)
-        ds._compression = comp
-        return ds
+        return cls(path=path, bs_pos=bs_pos, compression=compression)
 
-    def __enter__(self) -> RTDataset:
+    def __len__(self) -> int:
+        return self._writer_count
+
+    def __repr__(self) -> str:
+        return f"RTDatasetWriter(count={self._writer_count}, path={self.path})"
+
+    def __enter__(self) -> RTDatasetWriter:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -375,8 +287,6 @@ class RTDataset(Dataset):
         ``h_dd`` 为 ``(H, W)`` complex64；``pos`` / ``vel`` 为 ``(3,)`` float64。
         首次调用时创建 HDF5 可扩展 datasets。
         """
-        if self._path is None:
-            raise RuntimeError("append_episode 仅用于 open_for_collection 返回的实例")
         h_dd_arr = np.asarray(h_dd, dtype=np.complex64)
         pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
         vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
@@ -394,17 +304,16 @@ class RTDataset(Dataset):
 
     def _open_writer(self, h_dd: np.ndarray) -> None:
         """首次 ``append_episode`` 时创建 HDF5 文件与可扩展 datasets。"""
-        assert self._path is not None
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._file = h5py.File(self._path, "w")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = h5py.File(self.path, "w")
         self._file.create_dataset(DATASET_KEY_BS_POS, data=self.bs_pos)
 
         h_dd_kwargs: dict[str, Any] = {
             "maxshape": (None,) + tuple(h_dd.shape),
             "chunks": (1,) + tuple(h_dd.shape),
         }
-        if self._compression:
-            h_dd_kwargs["compression"] = self._compression
+        if self.compression:
+            h_dd_kwargs["compression"] = self.compression
 
         self._h_dd_ds = self._file.create_dataset(
             DATASET_KEY_H_DD,
@@ -432,7 +341,7 @@ class RTDataset(Dataset):
     ) -> None:
         """写入根属性并关闭 HDF5 文件；无 episode 时 ``ValueError``。"""
         if self._file is None:
-            raise ValueError("RTDataset 无 episode 数据")
+            raise ValueError("RTDatasetWriter 无 episode 数据")
         if self._finalized:
             return
         _write_hdf5_root_metadata(
@@ -445,12 +354,80 @@ class RTDataset(Dataset):
         self._file = None
         self._finalized = True
 
-    @classmethod
-    def load(cls, filepath: str | Path, *, use_phase: bool = True) -> RTDataset:
-        """从 HDF5 加载至内存。
 
-        旧 CFR 格式（含 ``channel_frequency_response``）会抛出 ``ValueError`` 并提示重新采集。
+@dataclass
+class RTDataset(Dataset):
+    """ISAC HDF5 只读数据集（内存驻留），供训练与评估。
+
+    典型形状：``h_dd`` 为 ``(N, H, W)`` 复数；运动学为 ``(N, 3)``。
+
+    读取 / 训练
+    -----------
+    - ``RTDataset.load(path)``
+    - ``len(dataset)`` → episode 条数
+    - ``dataset[i]`` → ``dict`` 含 ``features``、``range_m``、``velocity_mps``、``slot``
+    - ``spectrum_tensor(i)`` → 单条复数 h_dd（评估用）
+
+    采集写入请使用 ``RTDatasetWriter.open``。
+    """
+
+    bs_pos: np.ndarray
+    target_position: np.ndarray
+    target_velocity: np.ndarray
+    h_dd: np.ndarray
+    collection_meta: CollectionMetadata | None = None
+
+    def __post_init__(self) -> None:
+        self.bs_pos = np.asarray(self.bs_pos, dtype=np.float64).reshape(-1)
+
+    def _validate_slot_index(self, idx: int) -> None:
+        n = len(self)
+        if idx < 0 or idx >= n:
+            raise IndexError(f"index {idx} out of range for {n} slots")
+
+    def __len__(self) -> int:
+        return int(self.h_dd.shape[0])
+
+    def spectrum_tensor(
+        self, idx: int, *, device: torch.device | str | None = None
+    ) -> torch.Tensor:
+        """返回单条 episode 的复数 h_dd 张量。"""
+        self._validate_slot_index(idx)
+        t = torch.from_numpy(self.h_dd[idx])
+        if device is not None:
+            t = t.to(device)
+        return t
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        """CNN 训练样本 dict。
+
+        返回键
+        ------
+        - ``features``：``(2, H, W)`` float32 幅相双通道（幅度 dB + 相位）
+        - ``range_m`` / ``velocity_mps``：单基地几何标签 (float32 标量)
+        - ``slot``：episode 索引 (int64)
         """
+        self._validate_slot_index(idx)
+        h_dd = torch.from_numpy(self.h_dd[idx])
+        features = dd_spectrum_to_features(h_dd)
+        range_m, vel_mps = monostatic_labels_from_kinematics(
+            self.target_position[idx],
+            self.target_velocity[idx],
+            self.bs_pos,
+        )
+        return {
+            "features": features.to(dtype=torch.float32),
+            "range_m": torch.tensor(range_m, dtype=torch.float32),
+            "velocity_mps": torch.tensor(vel_mps, dtype=torch.float32),
+            "slot": torch.tensor(idx, dtype=torch.int64),
+        }
+
+    def __repr__(self) -> str:
+        return f"RTDataset(n={len(self)}, h_dd_shape={self.h_dd.shape})"
+
+    @classmethod
+    def load(cls, filepath: str | Path) -> RTDataset:
+        """从 HDF5 加载至内存。"""
         filepath = Path(filepath)
         with h5py.File(filepath, "r") as f:
             arrays = _read_array_datasets(f)
@@ -460,51 +437,7 @@ class RTDataset(Dataset):
                 target_velocity=arrays["target_velocity"],
                 h_dd=arrays["h_dd"],
                 collection_meta=CollectionMetadata.read_hdf5_attrs(f),
-                use_phase=use_phase,
             )
-
-
-# --- 采集产物写出 ---
-
-
-def _save_collection_config(
-    *,
-    config_file: str | Path,
-    output_root: Path,
-) -> Path:
-    """复制采集 TOML 配置到输出目录（保留原文件名）。"""
-    src = resolve_config_path(config_file)
-    dst = output_root / src.name
-    shutil.copy2(src, dst)
-    return dst
-
-
-def _save_episodes_csv(
-    *,
-    scene_slug: str,
-    rows: list[dict[str, str | int]],
-    output_root: Path,
-) -> None:
-    """写出 ``{scene_slug}_mc_dataset_episodes.csv``。"""
-    if not rows:
-        return
-    path = output_root / f"{scene_slug}{EPISODE_CSV_SUFFIX}"
-    keys = list(EPISODE_CSV_COLUMNS)
-    with path.open("w", newline="", encoding="utf-8") as csv_f:
-        writer = csv.DictWriter(csv_f, fieldnames=keys, restval="")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: row.get(k, "") for k in keys})
-
-
-def _save_scene_render(
-    rt_simulator: RTSimulator,
-    scene_slug: str,
-    output_root: Path,
-) -> Path:
-    """渲染 RT 场景并保存 ``{scene_slug}_scene.png``。"""
-    filename = f"{scene_slug}{SCENE_PNG_SUFFIX}"
-    return rt_simulator.render_to_file(filename, output_dir=output_root)
 
 
 def save_collection_artifacts(
@@ -513,15 +446,29 @@ def save_collection_artifacts(
     config_file: str | Path,
     csv_rows: list[dict[str, str | int]],
     rt_simulator: RTSimulator,
-    out_dir: Path | None = None,
+    out_dir: Path,
 ) -> None:
-    """写出采集产物：TOML、CSV、场景 PNG。HDF5 由采集循环内 ``RTDataset.finalize`` 完成。"""
-    target_dir = _resolve_out_dir(out_dir)
-    _save_collection_config(config_file=config_file, output_root=target_dir)
-    _save_episodes_csv(
-        scene_slug=scene_slug,
-        rows=csv_rows,
-        output_root=target_dir,
+    """写出采集产物：TOML、CSV、场景 PNG。HDF5 由采集循环内 ``RTDatasetWriter.finalize`` 完成。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 保存配置文件
+    src = resolve_config_path(config_file)
+    shutil.copy2(src, out_dir / src.name)
+
+    # 保存 CSV 文件
+    if csv_rows:
+        csv_path = out_dir / f"{scene_slug}{EPISODE_CSV_SUFFIX}"
+        keys = list(EPISODE_CSV_COLUMNS)
+        with csv_path.open("w", newline="", encoding="utf-8") as csv_f:
+            writer = csv.DictWriter(csv_f, fieldnames=keys, restval="")
+            writer.writeheader()
+            for row in csv_rows:
+                writer.writerow({k: row.get(k, "") for k in keys})
+
+    # 保存场景 PNG 文件
+    rt_simulator.render_to_file(
+        f"{scene_slug}{SCENE_PNG_SUFFIX}",
+        output_dir=out_dir,
     )
-    _save_scene_render(rt_simulator, scene_slug, target_dir)
-    print(f"采集产物已保存至: {target_dir}")
+
+    print(f"采集产物已保存至: {out_dir}")

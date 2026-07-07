@@ -4,8 +4,6 @@
 提供延迟、距离、多普勒和速度分辨率的计算功能。
 """
 
-import math
-
 from scipy.constants import speed_of_light as c
 import numpy as np
 from tabulate import tabulate
@@ -130,26 +128,6 @@ class SensingPerformance:
         if sens_mode == "bistatic":
             return k * self.bistatic_range_resolution
         raise ValueError(f"不支持的 sens_mode: {sens_mode!r}")
-
-    def near_delay_guard_bins(
-        self, guard_range_m: float, sens_mode: str = "monostatic"
-    ) -> int:
-        """将近距保护物理距离 (m) 换算为跳过的时延 bin 数（``ceil(guard/res)``）。
-
-        与 ``range_bins_for`` 一致：单基地用 ``range_resolution``，双基地用
-        ``bistatic_range_resolution``。``guard_range_m <= 0`` 时不跳过任何 bin。
-        """
-        if guard_range_m <= 0:
-            return 0
-        if sens_mode == "monostatic":
-            res = self.range_resolution
-        elif sens_mode == "bistatic":
-            res = self.bistatic_range_resolution
-        else:
-            raise ValueError(f"不支持的 sens_mode: {sens_mode!r}")
-        if res <= 0:
-            raise ValueError("距离分辨率须为正数")
-        return int(math.ceil(guard_range_m / res))
 
     def velocity_bins_for(self, sens_mode: str = "monostatic") -> np.ndarray:
         """与 ``doppler_to_velocity`` 一致的逐 bin 速度轴 (m/s)。"""

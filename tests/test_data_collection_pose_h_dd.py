@@ -9,11 +9,7 @@ import torch
 from scipy.constants import speed_of_light as c
 
 from isac import PROJECT_ROOT
-from isac.collection.utils import (
-    accept_episode_kinematics,
-    los_truth_from_kinematics,
-    paths_intersect_object,
-)
+from isac.collection import RoiKinematicsSampler
 from isac.sensing.geometry import delay_to_range, doppler_to_velocity
 from isac.system import System
 from isac.utils import load_config, set_random_seed
@@ -42,15 +38,15 @@ def _simulate_episode_h_dd(
     ori = cartesian_direction_to_yaw_pitch_roll(vel.reshape(1, 3))[0]
 
     target(position=pos, velocity=vel, orientation=ori)
-    if not accept_episode_kinematics(rt_simulator, pos):
+    if not rt_simulator.scene_filter(pos):
         return None
-    paths = rt_simulator.paths(update=True)
-    if not paths_intersect_object(paths, int(target.object_id)):
+    rt_simulator.paths(update=True)
+    if not rt_simulator.paths_intersect_target(target):
         return None
 
-    true_range, true_velocity = los_truth_from_kinematics(
-        pos, vel, rt_simulator, system.device
-    )
+    geom = rt_simulator.rx_target_tx_geometric
+    true_range = geom.range_tensor[0, 0, 0]
+    true_velocity = geom.vel_tensor[0, 0, 0]
     comps = system.components
     _, x_rg, x_time = system.transmit()
     y_rg = comps.channel(x_rg, x_time, domain="frequency", snr_db=snr_db)
@@ -113,7 +109,7 @@ def test_h_dd_changes_with_pose_update(collection_system: System) -> None:
 
 
 def test_h_dd_peak_aligns_with_geometry_truth(collection_system: System) -> None:
-    """h_dd 主峰与 los_truth_from_kinematics 在 3 bin 容差内对齐。"""
+    """h_dd 主峰与 rx_target_tx_geometric 在 3 bin 容差内对齐。"""
     pos = np.array([1.2, -0.8, 0.0], dtype=np.float64)
     vel = np.array([1.5, -0.5, 0.0], dtype=np.float64)
 
@@ -137,8 +133,13 @@ def test_consecutive_sampler_episodes_have_distinct_h_dd(
     collection_system: System,
 ) -> None:
     """连续 pop 5 条采样 kinematics，至少 2 条采纳 episode 的 h_dd 互不相同。"""
-    sampler = collection_system.components.roi_kinematics_sampler
-    assert sampler is not None
+    sampler = RoiKinematicsSampler(
+        roi=[-2.5, 2.5, -4.5, 4.5],
+        position_sampling_mode="uniform",
+        speed_range=[0.1, 3.0],
+        speed_sampling_mode="uniform",
+        num_samples=50,
+    )
 
     h_dd_list: list[torch.Tensor] = []
     attempts = 0

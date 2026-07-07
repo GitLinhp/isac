@@ -17,9 +17,45 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import bins_to_physical, physical_to_bins
+_REQUIRED_CKPT_KEYS = (
+    "model_state_dict",
+    "in_channels",
+    "base_channels",
+    "dropout",
+    "range_resolution",
+    "velocity_resolution",
+    "max_range_m",
+    "max_velocity_mps",
+)
 
-_SIDECAR_CHECKPOINT_NAMES = ("checkpoint_final.pt", "checkpoint_final.pth")
+
+def physical_to_bins(
+    range_m: torch.Tensor,
+    velocity_mps: torch.Tensor,
+    *,
+    range_resolution: float,
+    velocity_resolution: float,
+) -> torch.Tensor:
+    """物理量转为连续 bin 监督目标 ``(B, 2)``。
+
+    - 第 0 维：距离 bin ``range_m / range_resolution``
+    - 第 1 维：多普勒 bin（有符号）``velocity_mps / velocity_resolution``
+    """
+    range_bin = range_m / range_resolution
+    vel_bin = velocity_mps / velocity_resolution
+    return torch.stack([range_bin, vel_bin], dim=-1)
+
+
+def bins_to_physical(
+    bins: torch.Tensor,
+    *,
+    range_resolution: float,
+    velocity_resolution: float,
+) -> torch.Tensor:
+    """连续 bin 还原为 ``(range_m, velocity_mps)``。"""
+    range_m = bins[..., 0] * range_resolution
+    velocity = bins[..., 1] * velocity_resolution
+    return torch.stack([range_m, velocity], dim=-1)
 
 
 class ConvResidualBlock(nn.Module):
@@ -182,7 +218,6 @@ class MonostaticCnnCheckpointMeta:
 
     max_range_m: float
     max_velocity_mps: float
-    use_phase: bool
     range_resolution: float
     velocity_resolution: float
     dataset_h5: Path | None = None
@@ -196,45 +231,24 @@ def _optional_path(value: object) -> Path | None:
     return Path(str(value)).resolve()
 
 
-def _roi_from_checkpoint(ckpt: dict) -> tuple[float, float]:
-    if "max_range_m" not in ckpt or "max_velocity_mps" not in ckpt:
-        raise KeyError(
-            "checkpoint 须含 max_range_m 与 max_velocity_mps；"
-            "旧版含 offset 的权重请重新训练或手动补全 ROI 字段"
-        )
-    return float(ckpt["max_range_m"]), float(ckpt["max_velocity_mps"])
-
-
-def _merge_checkpoint_dicts(primary: dict, sidecar: dict) -> dict:
-    merged = dict(primary)
-    for key in ("dataset_h5", "config_file", "epoch", "max_range_m", "max_velocity_mps"):
-        if merged.get(key) is None and sidecar.get(key) is not None:
-            merged[key] = sidecar[key]
-    return merged
+def _validate_checkpoint_dict(ckpt: dict) -> None:
+    missing = [key for key in _REQUIRED_CKPT_KEYS if key not in ckpt]
+    if missing:
+        raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
 
 
 def _load_checkpoint_dict(path: Path) -> dict:
-    """读取 checkpoint；必要时从同目录 ``checkpoint_final.*`` 补全元数据。"""
+    """读取 checkpoint 并校验必填字段。"""
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    if ckpt.get("dataset_h5") is not None and ckpt.get("config_file") is not None:
-        return ckpt
-    for name in _SIDECAR_CHECKPOINT_NAMES:
-        sidecar_path = path.parent / name
-        if not sidecar_path.is_file():
-            continue
-        sidecar = torch.load(sidecar_path, map_location="cpu", weights_only=False)
-        return _merge_checkpoint_dicts(ckpt, sidecar)
+    _validate_checkpoint_dict(ckpt)
     return ckpt
 
 
 def _meta_from_checkpoint_dict(ckpt: dict) -> MonostaticCnnCheckpointMeta:
-    max_range_m, max_velocity_mps = _roi_from_checkpoint(ckpt)
-    use_phase = bool(ckpt.get("use_phase", True))
     epoch_raw = ckpt.get("epoch")
     return MonostaticCnnCheckpointMeta(
-        max_range_m=max_range_m,
-        max_velocity_mps=max_velocity_mps,
-        use_phase=use_phase,
+        max_range_m=float(ckpt["max_range_m"]),
+        max_velocity_mps=float(ckpt["max_velocity_mps"]),
         range_resolution=float(ckpt["range_resolution"]),
         velocity_resolution=float(ckpt["velocity_resolution"]),
         dataset_h5=_optional_path(ckpt.get("dataset_h5")),
@@ -267,12 +281,11 @@ def load_monostatic_cnn_checkpoint(
 
     ckpt = _load_checkpoint_dict(ckpt_path)
     meta = _meta_from_checkpoint_dict(ckpt)
-    in_channels = int(ckpt.get("in_channels", 2 if meta.use_phase else 1))
 
     model = MonostaticDelayDopplerCNN(
-        in_channels=in_channels,
-        base_channels=int(ckpt.get("base_channels", 32)),
-        dropout=float(ckpt.get("dropout", 0.2)),
+        in_channels=int(ckpt["in_channels"]),
+        base_channels=int(ckpt["base_channels"]),
+        dropout=float(ckpt["dropout"]),
         range_resolution=meta.range_resolution,
         velocity_resolution=meta.velocity_resolution,
         max_range_m=meta.max_range_m,

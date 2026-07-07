@@ -118,11 +118,9 @@ class MusicParams:
     """MUSIC 估计器默认调用参数"""
 
     threshold: float = 0.1
-    near_range_guard_m: float = 1.0
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "MusicParams":
         return cls(
             threshold=float(config_dict.get("threshold", 0.1)),
-            near_range_guard_m=float(config_dict.get("near_range_guard_m", 1.0)),
         )

@@ -349,6 +349,14 @@ class RTSimulator:
             self._paths = self.path_solver(scene=self.scene, **asdict(cfg))
         return self._paths
 
+    def paths_intersect_object(self, object_id: int) -> bool:
+        """任一路径在任一 bounce 深度与 ``object_id`` 相交则返回 True。"""
+        return bool(np.any(np.asarray(self.paths().objects) == object_id))
+
+    def paths_intersect_target(self, target: RTTarget) -> bool:
+        """判断 ``paths`` 是否与目标 mesh 有交互。"""
+        return self.paths_intersect_object(int(target.object_id))
+
     # ==================== 场景可视化方法 ====================
 
     def _resolve_clip_at(self, clip_at: Optional[float]) -> Optional[float]:
