@@ -9,7 +9,7 @@ import torch
 
 from .geometry import delay_to_range, doppler_to_velocity
 from .spectrum.sensing_performance import SensingPerformance
-from .types import MetricMode, RoiSlices, SensMode
+from ..data_structures.types import MetricMode, RoiSlices, SensMode
 
 ArrayLike = Union[np.ndarray, torch.Tensor, float, int]
 

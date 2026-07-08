@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from ..metric import SpectrumMetric
-from ..types import MetricMode, RoiSlices, SensMode
+from ...data_structures.types import MetricMode, RoiSlices, SensMode
 from .delay_doppler_visualize import visualize_delay_doppler_spectrum
 from .sensing_performance import SensingPerformance
 from ...utils import convert

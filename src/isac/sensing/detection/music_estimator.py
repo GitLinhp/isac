@@ -9,9 +9,10 @@
 2. 子阵快拍 → 样本协方差 → 噪声子空间（``eigh`` + 对角加载）
 3. ``|谱|`` 局部极大值筛候选点（可选 CFAR 门限）
 4. 对候选点算 MUSIC 伪谱 × 幅度，贪心去重选峰
-5. 返回裁切谱坐标系下的 ``(delay_bin, doppler_bin, power)``
+5. 返回裁切谱坐标系下的 :class:`~isac.data_structures.types.MusicPeaks`
 
-物理量换算、日志与 RMSE 评估见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEvaluator`（输入为 bin 检峰结果，非谱张量）。
+物理量换算与日志见 :class:`~isac.sensing.evaluation.SensingEstimator`，
+RMSE 评估见 :func:`~isac.sensing.evaluation.match_peaks_and_compute_radial_rmse`（输入为 bin 检峰结果，非谱张量）。
 
 采用子阵空间平滑 + 候选点扫描，避免对全 (M×N) 网格构造巨型协方差矩阵。
 """
@@ -23,6 +24,7 @@ from typing import NamedTuple, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
+from ...data_structures.types import MusicPeaks
 from ..metric import SpectrumMetric
 
 # --- 算法常数 ---
@@ -35,9 +37,8 @@ MUSIC_EPS = 1e-12  # 伪谱分母稳定项
 COV_DIAG_LOAD_REL = 1e-8  # eigh 数值稳定：对角加载相对 trace 的比例
 COV_DIAG_LOAD_MIN = 1e-20  # 对角加载下限
 
+
 # --- 模块级 2D-MUSIC 辅助算子（不对外导出）---
-
-
 class _SubarrayGeometry(NamedTuple):
     """子阵尺寸与导向向量相位索引。
 
@@ -67,25 +68,6 @@ def _subarray_geometry(
         doppler_row_idx=torch.arange(doppler_size, device=device, dtype=torch.float32),
         delay_row_idx=torch.arange(delay_size, device=device, dtype=torch.float32),
     )
-
-
-def _steering_vector_2d(
-    doppler_idx: int,
-    delay_idx: int,
-    *,
-    num_doppler_bins: int,
-    num_delay_bins: int,
-    geometry: _SubarrayGeometry,
-) -> torch.Tensor:
-    """单点 2D 导向向量，形状 ``(geometry.size,)``。"""
-    return _batch_steering_vectors(
-        torch.tensor(
-            [[doppler_idx, delay_idx]], device=geometry.doppler_row_idx.device
-        ),
-        num_doppler_bins=num_doppler_bins,
-        num_delay_bins=num_delay_bins,
-        geometry=geometry,
-    )[:, 0]
 
 
 def _batch_steering_vectors(
@@ -293,16 +275,15 @@ def _resolve_num_output_peaks(num_sources: Optional[int]) -> int:
 
 
 # --- MUSICEstimator：裁切谱 bin 检峰入口 ---
-
-
 class MUSICEstimator:
     """MUSIC 算法估计器（纯 bin 检峰）。
 
     使用 2D-MUSIC（子阵/空间平滑 + 候选点扫描）在 **ROI 裁切后的** 时延多普勒谱上
     估计谱峰；对实例直接调用 ``estimator(spectrum_tensor, ...)`` 即可。
 
-    **返回值恒为** ``(delay_bin, doppler_bin, peaks_power)``，坐标相对输入裁切谱。
-    不做物理量换算与日志（见 :class:`~isac.sensing.detection.music_sensing.MusicSensingEvaluator`）。
+    **返回值恒为** :class:`~isac.data_structures.types.MusicPeaks`，坐标相对输入裁切谱。
+    不做物理量换算与日志（见 :class:`~isac.sensing.evaluation.SensingEstimator` /
+    :func:`~isac.sensing.evaluation.match_peaks_and_compute_radial_rmse`）。
     """
 
     def __init__(self, device: torch.device):
@@ -321,7 +302,7 @@ class MUSICEstimator:
         num_sources: Optional[int] = None,
         threshold: float = 0.1,
         cfar: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> MusicPeaks:
         """2D-MUSIC 谱峰 bin 估计。
 
         参数
@@ -337,8 +318,9 @@ class MUSICEstimator:
 
         返回
         ----
-        ``(delay_bin, doppler_bin, peaks_power)``：
-        ``delay_bin``/``doppler_bin`` 为整型索引张量（``int64``），``power`` 为 ``float32``。
+        :class:`~isac.data_structures.types.MusicPeaks`：
+        ``peaks_delay``/``peaks_doppler`` 为索引张量，``peaks_power`` 为 ``float32``，
+        ``num_doppler_bins`` 为裁切谱多普勒维长度。
         """
         # 1. 校验并准备裁切谱
         spectrum, cfar_mask, num_doppler_bins, num_delay_bins = self._prepare_spectrum(
@@ -354,7 +336,7 @@ class MUSICEstimator:
             threshold,
         )
         if noise_subspace is None:
-            return self._return_empty_peaks()
+            return self._return_empty_peaks(num_doppler_bins)
 
         # 3. 候选检峰 → MUSIC 评分 → 贪心选峰
         return self._score_and_select_peaks(
@@ -404,14 +386,9 @@ class MUSICEstimator:
             num_delay_bins,
         )
 
-    def _return_empty_peaks(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """协方差分解失败时返回三个长度为 0 的空张量。"""
-        dev = self.device
-        return (
-            torch.empty(0, dtype=torch.float64, device=dev),
-            torch.empty(0, dtype=torch.float64, device=dev),
-            torch.empty(0, dtype=torch.float32, device=dev),
-        )
+    def _return_empty_peaks(self, num_doppler_bins: int) -> MusicPeaks:
+        """协方差分解失败时返回空 :class:`~isac.data_structures.types.MusicPeaks`。"""
+        return MusicPeaks.empty(self.device, num_doppler_bins=num_doppler_bins)
 
     def _noise_subspace_from_spectrum(
         self,
@@ -481,10 +458,10 @@ class MUSICEstimator:
         num_sources: Optional[int],
         *,
         cfar_mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> MusicPeaks:
         """候选检峰 → 批量 MUSIC 评分 → 贪心去重。
 
-        返回 ``(delay_bin, doppler_bin, power)``，坐标相对输入裁切谱。
+        返回 :class:`~isac.data_structures.types.MusicPeaks`，坐标相对输入裁切谱。
         """
         magnitude = torch.abs(spectrum)
         candidates = _local_maxima_candidates(
@@ -510,4 +487,9 @@ class MUSICEstimator:
             num_output,
         )
 
-        return sel_delay, sel_dop, sel_scores
+        return MusicPeaks(
+            peaks_delay=sel_delay,
+            peaks_doppler=sel_dop,
+            peaks_power=sel_scores,
+            num_doppler_bins=num_doppler_bins,
+        )

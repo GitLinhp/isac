@@ -12,7 +12,7 @@ import torch
 
 from ...utils.numerical import linear_to_db
 from ..metric import SpectrumMetric
-from ..types import MetricMode, RoiSlices, SensMode
+from ...data_structures.types import MetricMode, RoiSlices, SensMode
 
 
 def linear_or_db_amplitude(

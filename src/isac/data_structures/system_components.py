@@ -19,7 +19,6 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
-from ..channel.channel import Channel
 from ..channel.rcs.rcs_channel import RCSChannel
 from ..channel.rcs.rcs_scene import RCSScene
 from ..channel.rt.rt_channel import RTChannel
@@ -31,7 +30,7 @@ from ..sensing.spectrum import (
 )
 from ..sensing.detection import CFARDetector
 from ..sensing.detection.music_estimator import MUSICEstimator
-from ..sensing.detection.music_sensing import MusicSensingEvaluator
+from ..sensing.evaluation import SensingEstimator
 from ..sensing.clutter import MovingTargetIndication, MovingTargetDetection
 from ..zc_source import ZCSource
 
@@ -87,8 +86,8 @@ class SystemComponents:
     """CFAR检测器"""
     music_estimator: Optional[MUSICEstimator] = None
     """MUSIC bin 检峰器"""
-    music_evaluator: Optional[MusicSensingEvaluator] = None
-    """MUSIC 感知评估（估计 + RMSE 匹配）"""
+    sensing_estimator: Optional[SensingEstimator] = None
+    """MUSIC bin 峰 → 物理量换算"""
 
     @classmethod
     def build_from_params(
@@ -310,10 +309,11 @@ class SystemComponents:
                 kwargs["music_estimator"] = SystemComponents._build_music_estimator(
                     device
                 )
-                kwargs["music_evaluator"] = SystemComponents._build_music_evaluator(
+                sensing_estimator = SystemComponents._build_sensing_estimator(
                     sensing_performance,
                     device,
                 )
+                kwargs["sensing_estimator"] = sensing_estimator
 
         return kwargs
 
@@ -323,9 +323,9 @@ class SystemComponents:
         return MUSICEstimator(device=device)
 
     @staticmethod
-    def _build_music_evaluator(
+    def _build_sensing_estimator(
         sensing_performance: SensingPerformance,
         device: str,
-    ) -> MusicSensingEvaluator:
-        """构建 MUSIC 感知评估器（bin→物理量与 RMSE，不含检峰）。"""
-        return MusicSensingEvaluator(sensing_performance, device)
+    ) -> SensingEstimator:
+        """构建感知估计器（bin→物理量换算，不含检峰）。"""
+        return SensingEstimator(sensing_performance, device)

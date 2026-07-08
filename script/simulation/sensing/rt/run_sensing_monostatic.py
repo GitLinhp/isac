@@ -5,6 +5,7 @@ import argparse
 import torch
 
 from isac import PROJECT_ROOT
+from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
 from isac.utils import load_config, set_random_seed
 
@@ -99,17 +100,17 @@ def main() -> None:
 
     # --- MUSIC 检峰 → 物理量换算与 RMSE 评估 ---
     geom = comps.rt_simulator.rx_target_tx_geometric
-    num_doppler_bins = int(torch.squeeze(h_dd).shape[0])
-    peaks_delay, peaks_doppler, peaks_power = comps.music_estimator(h_dd)
-    comps.music_evaluator.evaluate(
-        peaks_delay,
-        peaks_doppler,
-        peaks_power,
-        num_doppler_bins=num_doppler_bins,
+    peaks = comps.music_estimator(h_dd)
+    estimate = comps.sensing_estimator(
+        peaks,
+        sens_mode="monostatic",
+        metric_mode=args.metric_mode,
+    )
+    match_peaks_and_compute_radial_rmse(
+        est_ranges=estimate.est_ranges,
+        est_velocities=estimate.est_velocities,
         true_ranges=geom.range_tensor,
         true_velocities=geom.vel_tensor,
-        metric_mode=args.metric_mode,
-        sens_mode="monostatic",
         label="单基地感知",
     )
 

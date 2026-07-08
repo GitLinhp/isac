@@ -1,5 +1,5 @@
 from .cfar import CFARDetector
-from ..types import MetricMode, SensMode
+from ...data_structures.types import MetricMode, SensMode
 
 # 向后兼容别名
 metric_mode = MetricMode

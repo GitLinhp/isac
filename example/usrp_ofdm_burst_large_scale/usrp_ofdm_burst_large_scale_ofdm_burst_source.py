@@ -93,7 +93,7 @@ class blk(gr.basic_block):
         self._burst_active = False
         self._burst_idx = 0
         self._next_burst_at = time.monotonic() + self._startup_delay_s
-
+        
         # 懒加载：共享 System、参考频域网格、时域突发缓冲
         self._system: System | None = None
         self._x_rg: Any = None

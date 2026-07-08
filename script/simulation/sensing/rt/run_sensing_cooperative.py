@@ -16,6 +16,7 @@ import torch
 from tabulate import tabulate
 
 from isac import PROJECT_ROOT
+from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.sensing.localization import (
     localize_xy_z0_colocated_tx_mono_bistatic,
     position_rmse_xy,
@@ -183,34 +184,35 @@ def main() -> None:
             distance_label = "径向距离"
             velocity_label = "径向速度"
 
-        num_doppler_bins = int(torch.squeeze(h_dd_tx).shape[0])
-        peaks_delay, peaks_doppler, peaks_power = system.components.music_estimator(
+        peaks = system.components.music_estimator(
             h_dd_tx,
             num_sources=1,
         )
 
-        result = system.components.music_evaluator.evaluate(
-            peaks_delay,
-            peaks_doppler,
-            peaks_power,
-            num_doppler_bins=num_doppler_bins,
-            true_ranges=true_range,
-            true_velocities=true_velocity,
+        estimate = system.components.sensing_estimator(
+            peaks,
             metric_mode=args.metric_mode,
             sens_mode=sens_mode,
             log_peaks=False,
-            label=(
-                f"协同感知 — RX {rx_name} / TX {tx_name} "
-                f"({path_label}, sens_mode={sens_mode})"
-            ),
-            distance_axis_label=distance_label,
-            velocity_axis_label=velocity_label,
-            verbose=False,
         )
-        rmse_range = result.rmse_range_m
-        rmse_velocity = result.rmse_velocity_mps
-        est_range_m = result.est_range_m
-        est_velocity_mps = result.est_velocity_mps
+
+        rmse_range, rmse_velocity, est_range_m, est_velocity_mps, _ = (
+            match_peaks_and_compute_radial_rmse(
+                est_ranges=estimate.est_ranges,
+                est_velocities=estimate.est_velocities,
+                true_ranges=true_range,
+                true_velocities=true_velocity,
+                label=(
+                    f"协同感知 — RX {rx_name} / TX {tx_name} "
+                    f"({path_label}, sens_mode={sens_mode})"
+                ),
+                distance_axis_label=distance_label,
+                velocity_axis_label=velocity_label,
+                verbose=False,
+            )
+        )
+        rmse_range_m = rmse_range
+        rmse_velocity_mps = rmse_velocity
 
         true_r = float(true_range.reshape(-1)[0].item())
         true_v = float(true_velocity.reshape(-1)[0].item())

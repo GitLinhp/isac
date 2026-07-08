@@ -26,20 +26,16 @@ def _music_velocity(
     if comps.moving_target_indication is not None:
         h_work = comps.moving_target_indication(h_work, axis=-2)
     h_dd = comps.delay_doppler_spectrum(h_work)
-    num_doppler_bins = int(torch.squeeze(h_dd).shape[0])
-    peaks_delay, peaks_doppler, peaks_power = comps.music_estimator(
+    peaks = comps.music_estimator(
         h_dd,
         num_sources=1,
     )
-    _, velocities, _ = comps.music_evaluator.estimate(
-        peaks_delay,
-        peaks_doppler,
-        peaks_power,
-        num_doppler_bins=num_doppler_bins,
+    estimate = comps.sensing_estimator(
+        peaks,
         sens_mode=sens_mode,
     )
-    assert velocities.numel() > 0
-    return float(velocities.reshape(-1)[0].item())
+    assert estimate.est_velocities.numel() > 0
+    return float(estimate.est_velocities.reshape(-1)[0].item())
 
 
 def test_rt_monostatic_cfr_per_tx_velocity_sign_matches_geometry():
@@ -122,18 +118,14 @@ def test_static_target_sensing_velocity_stays_positive():
 
     h_freq = comps.ls_channel_estimator(x_rg, y_rg)
     h_dd = comps.delay_doppler_spectrum(h_freq)
-    num_doppler_bins = int(torch.squeeze(h_dd).shape[0])
-    peaks_delay, peaks_doppler, peaks_power = comps.music_estimator(
+    peaks = comps.music_estimator(
         h_dd,
         num_sources=1,
     )
-    _, est_velocities, _ = comps.music_evaluator.estimate(
-        peaks_delay,
-        peaks_doppler,
-        peaks_power,
-        num_doppler_bins=num_doppler_bins,
+    estimate = comps.sensing_estimator(
+        peaks,
         sens_mode="monostatic",
         log_peaks=False,
     )
-    est_v = float(est_velocities.reshape(-1)[0].item())
+    est_v = float(estimate.est_velocities.reshape(-1)[0].item())
     assert est_v * true_v > 0.0

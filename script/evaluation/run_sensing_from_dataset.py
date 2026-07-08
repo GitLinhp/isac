@@ -129,30 +129,27 @@ def _evaluate_episode(
     true_velocity = torch.tensor(vel_mps, dtype=torch.float64, device=system.device)
 
     if setup.label == "MUSIC":
-        num_doppler_bins = int(torch.squeeze(h_dd).shape[0])
-        peaks_delay, peaks_doppler, peaks_power = comps.music_estimator(
+        peaks = comps.music_estimator(
             h_dd,
             num_sources=1,
         )
-        result = comps.music_evaluator.evaluate(
-            peaks_delay,
-            peaks_doppler,
-            peaks_power,
-            num_doppler_bins=num_doppler_bins,
-            true_ranges=true_range.reshape(-1),
-            true_velocities=true_velocity.reshape(-1),
+        estimate = comps.sensing_estimator(
+            peaks,
             metric_mode=setup.metric_mode,
             sens_mode="monostatic",
             log_peaks=False,
+        )
+        rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
+            est_ranges=estimate.est_ranges,
+            est_velocities=estimate.est_velocities,
+            true_ranges=true_range.reshape(-1),
+            true_velocities=true_velocity.reshape(-1),
             label=f"episode {i}",
             verbose=False,
         )
-        rmse_range_m = result.rmse_range_m
-        rmse_velocity_mps = result.rmse_velocity_mps
     else:
         assert setup.cnn_model is not None
         est_ranges, est_velocities = _estimate_with_model(h_dd, setup.cnn_model)
-
         rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
             est_ranges=est_ranges,
             est_velocities=est_velocities,

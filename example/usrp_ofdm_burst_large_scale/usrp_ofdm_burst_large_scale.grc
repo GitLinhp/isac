@@ -491,7 +491,7 @@ blocks:
       \u5BF9\u9F50 monostatic\uFF09+ transmit()\uFF0C\u7F13\u5B58\u65F6\u57DF\u7A81\
       \u53D1\u4E0E x_rg\u3002\"\"\"\n        torch.set_num_threads(1)\n\n        self._system\
       \ = create_system(\n            self._config_file,\n            device=self._device,\n\
-      \            seed=self._seed,\n            batch_size=1,\n            ofdm_overrides=self._ofdm_overrides(),\n\
+      \            seed=self._seed,\n            ofdm_overrides=self._ofdm_overrides(),\n\
       \        )\n        _, self._x_rg, x_time = self._system.transmit()\n      \
       \  set_last_x_rg(self._system, self._x_rg)\n\n        burst = x_time.squeeze().detach().cpu().numpy().astype(np.complex64,\
       \ copy=False)\n        burst_buffer = (burst * self._tx_amp).astype(np.complex64,\
