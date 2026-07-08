@@ -17,8 +17,7 @@
 | `set_random_seed` | CLI 解析后固定 NumPy / PyTorch / Sionna 随机性，保证可复现采集。 |
 | `load_config` | 加载 TOML 配置，构建 `System`。 |
 | `RoiKinematicsSampler` | 批量预采样 `(位置, 速度, 姿态)`，循环中 `pop()` 消费。 |
-| `accept_episode_kinematics` | 过滤障碍物内无效位置（`scene_filter`）；定义于 `isac.collection.utils`。 |
-| `scene_slug_from_rt_simulator` | 从 RT 场景文件名生成输出文件 slug（HDF5、CSV、PNG 前缀）。 |
+| `getattr(rt_simulator.rt_simulator_params, "filename", "None")` | 输出文件前缀（HDF5、CSV、PNG），直接取自 RT 场景 `filename`。 |
 | `paths_intersect_target` | 判断 RT 路径是否与目标 mesh 有交互。 |
 | `los_truth_from_kinematics` | 计算几何真值（距离、径向速度），写入 CSV。 |
 | `csv_vec3` / `csv_float2_scalar` | CSV 中位置/速度与标量真值的格式化。 |
@@ -106,7 +105,6 @@ flowchart LR
 
 | 函数 | 功能概要 |
 | ---- | -------- |
-| `scene_slug_from_rt_simulator` | 将 `rt_simulator_params.filename` 规范为输出文件名片段（空/`none` → `scene`）。 |
 | `paths_cfr_numpy` | 在 OFDM 子载波频率网格上调用 RT `paths.cfr`，返回 numpy CFR。 |
 | `paths_cir_numpy` | 与 OFDM 符号对齐的 CIR；`cir_a` 末维 `[Re, Im]`，`tau` 为时延 (s)。 |
 | `paths_cfr_per_tx_torch` | 按 TX 切片 6D CFR，得到各发射机到 RX 的 `(S, F)` torch 张量字典。 |

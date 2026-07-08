@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Tuple, Union
+from typing import Union
 
 import numpy as np
 import torch
 
 from .geometry import delay_to_range, doppler_to_velocity
 from .spectrum.sensing_performance import SensingPerformance
-from ..data_structures.types import MetricMode, RoiSlices, SensMode
+from ..data_structures.types import SensMode
 from ..utils.type_converter import convert
 
 ArrayLike = Union[np.ndarray, torch.Tensor, float, int]
@@ -79,6 +79,30 @@ class SpectrumMetric:
         v_mps = doppler_to_velocity(fd_hz, fc, sens_mode)
         return tau_s, fd_hz, range_m.reshape(-1), v_mps.reshape(-1)
 
+    def physical_to_local_bins(
+        self,
+        range_m: ArrayLike,
+        velocity_mps: ArrayLike,
+        *,
+        num_doppler_bins: int,
+        sens_mode: SensMode = "monostatic",
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """物理量 → ROI 局部 bin（与 :meth:`local_bins_to_range_velocity` 互逆）。"""
+        sp = self.sensing_performance
+        range_res = float(getattr(sp, f"range_resolution_{sens_mode}"))
+        vel_res = float(getattr(sp, f"velocity_resolution_{sens_mode}"))
+        center = self.doppler_center(num_doppler_bins)
+
+        r = convert(
+            range_m, "torch", dtype=torch.float64, device=torch.device("cpu")
+        ).reshape(-1)
+        v = convert(
+            velocity_mps, "torch", dtype=torch.float64, device=torch.device("cpu")
+        ).reshape(-1)
+        delay_bin = r / range_res
+        doppler_bin = center - v / vel_res
+        return delay_bin, doppler_bin
+
     def global_bin_to_tau_fd(
         self,
         delay_bin: ArrayLike,
@@ -92,68 +116,3 @@ class SpectrumMetric:
         tau_s = delay_ns * 1e-9
         fd_hz = sp.doppler_bins[dop.astype(int)]
         return tau_s, fd_hz
-
-    def roi_delay_bin_count(
-        self,
-        max_range_m: float,
-        sens_mode: SensMode = "monostatic",
-    ) -> int:
-        """物理最大距离 (m) → 时延维 bin 数（含零时延）。
-
-        单基地 ``max_range_m`` 为径向距离上界；双基地为折叠路径长度上界。
-        bin 计数使用 ``range_resolution_{sens_mode}``。
-        """
-        dr = getattr(self.sensing_performance, f"range_resolution_{sens_mode}")
-        return max(1, int(max_range_m / dr) + 1)
-
-    def roi_doppler_half_bins(
-        self,
-        max_velocity_mps: float,
-        sens_mode: SensMode = "monostatic",
-    ) -> int:
-        """物理最大速度半幅 (m/s) → 多普勒半宽 bin 数。
-
-        bin 计数使用 ``velocity_resolution_{sens_mode}``。
-        """
-        dv = getattr(self.sensing_performance, f"velocity_resolution_{sens_mode}")
-        return max(1, int(round(max_velocity_mps / dv)))
-
-    def bin_slices(
-        self,
-        n_doppler: int,
-        n_delay: int,
-        max_range_m: float,
-        max_velocity_mps: float,
-        sens_mode: SensMode = "monostatic",
-    ) -> RoiSlices:
-        """由 ROI 物理量与谱尺寸计算 ``(dop_start, dop_end, delay_start, delay_end)``。"""
-        delay_bins = min(
-            n_delay, self.roi_delay_bin_count(max_range_m, sens_mode=sens_mode)
-        )
-        dop_half = min(
-            n_doppler // 2,
-            self.roi_doppler_half_bins(max_velocity_mps, sens_mode=sens_mode),
-        )
-        dop_center = n_doppler // 2
-        dop_start = max(0, dop_center - dop_half)
-        dop_end = min(n_doppler, dop_center + dop_half)
-        return dop_start, dop_end, 0, delay_bins
-
-    def axes_for_roi(
-        self,
-        roi_slices: RoiSlices,
-        metric_mode: MetricMode,
-        sens_mode: SensMode = "monostatic",
-    ) -> Tuple[np.ndarray, np.ndarray, str, str]:
-        """为 ROI 裁切谱返回 ``(x_axis, y_axis, x_label, y_label)``。"""
-        dop_start, dop_end, delay_start, delay_end = roi_slices
-        sp = self.sensing_performance
-
-        if metric_mode == "dd":
-            x_axis = sp.delay_bins[delay_start:delay_end]
-            y_axis = sp.doppler_bins[dop_start:dop_end]
-            return x_axis, y_axis, "Delay (ns)", "Doppler (Hz)"
-
-        x_axis = getattr(sp, f"range_bins_{sens_mode}")[delay_start:delay_end]
-        y_axis = getattr(sp, f"velocity_bins_{sens_mode}")[dop_start:dop_end]
-        return x_axis, y_axis, "Range (m)", "Velocity (m/s)"

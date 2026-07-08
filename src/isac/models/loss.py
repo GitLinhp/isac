@@ -1,10 +1,13 @@
-"""单基地感知复合损失：分辨率 bin 空间分维度 MSE 加权。"""
+"""单基地感知复合损失：ROI 局部 bin 空间分维度 MSE 加权。"""
 
 from dataclasses import dataclass
 from typing import Literal
 
 import torch
 import torch.nn as nn
+
+from ..sensing.metric import SpectrumMetric
+from ..sensing.spectrum.sensing_performance import SensingPerformance
 
 
 @dataclass(frozen=True)
@@ -17,10 +20,9 @@ class MonostaticSensingLossConfig:
 
 
 class MonostaticSensingLoss(nn.Module):
-    """单基地距离/速度复合损失（bin 空间）。
+    """单基地距离/速度复合损失（ROI 局部 bin 空间）。
 
-    对距离 bin、多普勒 bin 预测与标签分别计算 MSE，
-    ``forward`` 返回加权复合 MSE 标量。
+    对 ``peaks_delay``、``peaks_doppler`` 预测与标签分别计算 MSE。
     """
 
     def __init__(self, cfg: MonostaticSensingLossConfig | None = None) -> None:
@@ -43,22 +45,33 @@ class MonostaticSensingLoss(nn.Module):
             )
 
     @staticmethod
-    def target_bins_from_physical_labels(
+    def target_local_bins_from_physical(
         range_m: torch.Tensor,
         velocity_mps: torch.Tensor,
         *,
-        range_resolution: float,
-        velocity_resolution: float,
+        num_doppler_bins: int,
+        sensing_performance: SensingPerformance,
     ) -> torch.Tensor:
-        """将物理标签转为 ``(B, 2)`` bin 监督目标。"""
-        from .model_design import MonostaticDelayDopplerCNN
-
-        return MonostaticDelayDopplerCNN.physical_to_bins(
+        """将物理标签转为 ``(B, 2)`` ROI 局部 bin 监督目标。"""
+        metric = SpectrumMetric(sensing_performance)
+        delay_bin, doppler_bin = metric.physical_to_local_bins(
             range_m,
             velocity_mps,
-            range_resolution=range_resolution,
-            velocity_resolution=velocity_resolution,
+            num_doppler_bins=num_doppler_bins,
+            sens_mode="monostatic",
         )
+        return torch.stack([delay_bin, doppler_bin], dim=-1).to(
+            dtype=range_m.dtype,
+            device=range_m.device,
+        )
+
+    @staticmethod
+    def target_local_bins_from_peaks(
+        peaks_delay: torch.Tensor,
+        peaks_doppler: torch.Tensor,
+    ) -> torch.Tensor:
+        """由 ``peaks_delay`` / ``peaks_doppler`` 构造 ``(B, 2)`` 监督目标。"""
+        return torch.stack([peaks_delay, peaks_doppler], dim=-1)
 
     def forward(
         self,
@@ -67,9 +80,9 @@ class MonostaticSensingLoss(nn.Module):
     ) -> torch.Tensor:
         self._validate_inputs(y_pred_bins, y_target_bins)
         err = y_pred_bins - y_target_bins
-        mse_range = err[:, 0].pow(2).mean()
-        mse_velocity = err[:, 1].pow(2).mean()
+        mse_delay = err[:, 0].pow(2).mean()
+        mse_doppler = err[:, 1].pow(2).mean()
         return (
-            self.cfg.range_weight * mse_range
-            + self.cfg.velocity_weight * mse_velocity
+            self.cfg.range_weight * mse_delay
+            + self.cfg.velocity_weight * mse_doppler
         )

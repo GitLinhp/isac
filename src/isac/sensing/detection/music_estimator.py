@@ -319,8 +319,7 @@ class MUSICEstimator:
         返回
         ----
         :class:`~isac.data_structures.types.MusicPeaks`：
-        ``peaks_delay``/``peaks_doppler`` 为索引张量，``peaks_power`` 为 ``float32``，
-        ``num_doppler_bins`` 为裁切谱多普勒维长度。
+        ``peaks_delay``/``peaks_doppler`` 为裁切谱局部 bin 索引。
         """
         # 1. 校验并准备裁切谱
         spectrum, cfar_mask, num_doppler_bins, num_delay_bins = self._prepare_spectrum(
@@ -336,7 +335,7 @@ class MUSICEstimator:
             threshold,
         )
         if noise_subspace is None:
-            return self._return_empty_peaks(num_doppler_bins)
+            return self._return_empty_peaks()
 
         # 3. 候选检峰 → MUSIC 评分 → 贪心选峰
         return self._score_and_select_peaks(
@@ -386,9 +385,9 @@ class MUSICEstimator:
             num_delay_bins,
         )
 
-    def _return_empty_peaks(self, num_doppler_bins: int) -> MusicPeaks:
+    def _return_empty_peaks(self) -> MusicPeaks:
         """协方差分解失败时返回空 :class:`~isac.data_structures.types.MusicPeaks`。"""
-        return MusicPeaks.empty(self.device, num_doppler_bins=num_doppler_bins)
+        return MusicPeaks.empty(self.device)
 
     def _noise_subspace_from_spectrum(
         self,
@@ -480,7 +479,7 @@ class MUSICEstimator:
         )
 
         num_output = _resolve_num_output_peaks(num_sources)
-        sel_scores, sel_dop, sel_delay = _greedy_select_peaks(
+        _, sel_dop, sel_delay = _greedy_select_peaks(
             scores,
             candidates[:, 0],
             candidates[:, 1],
@@ -490,6 +489,4 @@ class MUSICEstimator:
         return MusicPeaks(
             peaks_delay=sel_delay,
             peaks_doppler=sel_dop,
-            peaks_power=sel_scores,
-            num_doppler_bins=num_doppler_bins,
         )

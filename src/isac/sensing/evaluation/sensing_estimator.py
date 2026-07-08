@@ -6,7 +6,7 @@
 典型流水线：
 
 1. :class:`~isac.sensing.detection.music_estimator.MUSICEstimator` 对裁切 DD 谱检峰，
-   输出 :class:`~isac.data_structures.types.MusicPeaks`（含 ``num_doppler_bins``）；
+   输出 :class:`~isac.data_structures.types.MusicPeaks`；
 2. 本模块 :class:`SensingEstimator` 将 ``MusicPeaks`` 换算为
    :class:`~isac.data_structures.types.SensingEstimate`；
 3. 下游 :func:`~isac.sensing.evaluation.sensing_evaluator.match_peaks_and_compute_radial_rmse`
@@ -23,8 +23,8 @@ import torch
 from tabulate import tabulate
 
 from ...data_structures.types import MetricMode, MusicPeaks, SensingEstimate, SensMode
-from ...utils.numerical import linear_to_db
 from ..metric import SpectrumMetric
+from ..spectrum.dd_spectrum_roi import DelayDopplerRoi
 from ..spectrum.sensing_performance import SensingPerformance
 
 # metric_mode → 谱峰日志表头（dd: 时延-多普勒；rv: 距离-速度）
@@ -35,7 +35,6 @@ _PEAK_TABLE_HEADERS: dict[MetricMode, list[str]] = {
         "多普勒索引",
         "时延 (ns)",
         "多普勒 (Hz)",
-        "Score (dB)",
     ],
     "rv": [
         "峰值",
@@ -43,7 +42,6 @@ _PEAK_TABLE_HEADERS: dict[MetricMode, list[str]] = {
         "多普勒bin",
         "距离 (m)",
         "速度 (m/s)",
-        "Score (dB)",
     ],
 }
 
@@ -57,7 +55,8 @@ class SensingEstimator:
 
     换算委托 :class:`~isac.sensing.metric.SpectrumMetric`：
     局部 bin → (τ, f_d) → (距离 m, 速度 m/s)，其中多普勒中心由
-    ``peaks.num_doppler_bins`` 决定（``center = num_doppler_bins / 2``）。
+    共享 :class:`~isac.sensing.spectrum.dd_spectrum_roi.DelayDopplerRoi` 的
+    ``num_doppler_bins`` 决定（须在 ``delay_doppler_spectrum`` 裁切之后调用）。
 
     ``metric_mode`` 仅影响日志表头与展示列，不改变返回值。
     ``sens_mode`` 影响单基地往返 / 双基地单程的物理尺度。
@@ -67,6 +66,7 @@ class SensingEstimator:
         self,
         sensing_performance: SensingPerformance,
         device: Union[str, torch.device],
+        dd_spectrum_roi: DelayDopplerRoi,
     ):
         """初始化感知估计器。
 
@@ -77,8 +77,12 @@ class SensingEstimator:
             载频等，供 :class:`~isac.sensing.metric.SpectrumMetric` 做 bin→物理量换算。
         - device :
             换算结果张量的目标设备（``SpectrumMetric`` 默认在 CPU 换算，此处再 ``.to(device)``）。
+        - dd_spectrum_roi :
+            与 :class:`~isac.sensing.spectrum.DelayDopplerSpectrum` 共享的 ROI 实例；
+            ``__call__`` 读取其 ``num_doppler_bins``（要求 DD 谱已裁切）。
         """
         self.sensing_performance = sensing_performance
+        self._dd_spectrum_roi = dd_spectrum_roi
         self._metric = SpectrumMetric(sensing_performance)
         self.device = (
             torch.device(device) if isinstance(device, str) else device
@@ -98,9 +102,7 @@ class SensingEstimator:
         ----
         - peaks :
             :class:`~isac.data_structures.types.MusicPeaks`：``peaks_delay`` /
-            ``peaks_doppler`` 为裁切谱局部 bin 索引，``peaks_power`` 为 MUSIC 评分，
-            ``num_doppler_bins`` 为裁切谱多普勒维长度（由 ``MUSICEstimator`` 从谱
-            ``squeeze(...).shape[0]`` 写入）。
+            ``peaks_doppler`` 为裁切谱局部 bin 索引。
         - sens_mode :
             物理换算尺度：``monostatic`` 为往返路径，``bistatic`` 为单程折叠路径长。
         - metric_mode :
@@ -111,14 +113,13 @@ class SensingEstimator:
         返回
         ----
         :class:`~isac.data_structures.types.SensingEstimate`：
-        ``est_ranges`` / ``est_velocities`` 为 1D ``float64`` 张量，
-        ``peaks_power`` 原样透传自 ``MusicPeaks``。
+        ``est_ranges`` / ``est_velocities`` 为 1D ``float64`` 张量。
         """
-        # 局部 bin → (τ, f_d, 距离, 速度)；多普勒中心取自 peaks.num_doppler_bins
+        num_doppler_bins = self._dd_spectrum_roi.num_doppler_bins
         tau_s, fd_hz, range_m, v_mps = self._metric.local_bins_to_range_velocity(
             peaks.peaks_delay,
             peaks.peaks_doppler,
-            num_doppler_bins=peaks.num_doppler_bins,
+            num_doppler_bins=num_doppler_bins,
             sens_mode=sens_mode,
         )
         if peaks.peaks_delay.numel() > 0:
@@ -141,7 +142,6 @@ class SensingEstimator:
         return SensingEstimate(
             est_ranges=range_m.reshape(-1),
             est_velocities=v_mps.reshape(-1),
-            peaks_power=peaks.peaks_power,
         )
 
     def _log_peak_table(
@@ -151,29 +151,17 @@ class SensingEstimator:
         *,
         physics: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> None:
-        """将估计谱峰格式化为表格并打印。
-
-        参数
-        ----
-        - peaks :
-            原始 bin 索引与功率（表格前两列物理量为 bin，后两列由 ``metric_mode`` 选择）。
-        - metric_mode :
-            ``dd`` 展示时延 (ns) / 多普勒 (Hz)；``rv`` 展示距离 (m) / 速度 (m/s)。
-        - physics :
-            ``(tau_s, fd_hz, range_m, v_mps)``，与 ``peaks`` 等长的换算结果。
-        """
+        """将估计谱峰格式化为表格并打印。"""
         print(f"使用MUSIC算法检测到 {peaks.peaks_delay.numel()} 个谱峰:")
 
         peaks_delay_np = peaks.peaks_delay.cpu().numpy()
         peaks_doppler_np = peaks.peaks_doppler.cpu().numpy()
-        peaks_power_np = peaks.peaks_power.cpu().numpy()
         tau_s, fd_hz, range_m, v_mps = physics
         tau_ns_np = (tau_s * 1e9).detach().cpu().numpy().reshape(-1)
         fd_hz_np = fd_hz.detach().cpu().numpy().reshape(-1)
         range_m_np = range_m.detach().cpu().numpy().reshape(-1)
         v_mps_np = v_mps.detach().cpu().numpy().reshape(-1)
 
-        # 按 metric_mode 选择日志展示的物理量列
         use_dd = metric_mode == "dd"
         phys_a_np = tau_ns_np if use_dd else range_m_np
         phys_b_np = fd_hz_np if use_dd else v_mps_np
@@ -186,10 +174,9 @@ class SensingEstimator:
                 int(round(float(doppler_idx))),
                 f"{float(phys_a_np[i]):.2f}",
                 f"{float(phys_b_np[i]):.2f}",
-                f"{linear_to_db(float(power), is_power=True, return_type='float'):.2f}",
             ]
-            for i, (delay_idx, doppler_idx, power) in enumerate(
-                zip(peaks_delay_np, peaks_doppler_np, peaks_power_np)
+            for i, (delay_idx, doppler_idx) in enumerate(
+                zip(peaks_delay_np, peaks_doppler_np)
             )
         ]
         print(tabulate(table_data, headers=headers, tablefmt="simple_grid") + "\n")

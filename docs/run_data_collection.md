@@ -152,7 +152,7 @@ target(position, velocity, orientation)
 ### 几何真值
 
 - **CSV**：`los_truth_from_kinematics` 写入 `true_range_m`、`true_radial_velocity_mps`（`RxTargetTxGeometric` 几何）
-- **训练标签**：`RTDataset.__getitem__` 通过 `monostatic_labels_from_kinematics` 从 HDF5 运动学重算
+- **训练标签**：`RTDataset.__getitem__` 通过 `monostatic_range_velocity` 从 HDF5 运动学重算
 
 ---
 
@@ -160,7 +160,7 @@ target(position, velocity, orientation)
 
 输出根目录：`data/`（[`src/isac/__init__.py`](../src/isac/__init__.py) 中 `DEFAULT_COLLECTION_OUT_DIR`）。
 
-`scene_slug` 来自 RT 场景 `filename`（默认配置为 `empty_room`）。
+`scene_slug` 来自 RT 场景 `filename`（默认配置为 `empty_room`），脚本内直接取值：`getattr(rt_simulator.rt_simulator_params, "filename", "None")`。
 
 | 文件                                          | 说明                         |
 | --------------------------------------------- | ---------------------------- |

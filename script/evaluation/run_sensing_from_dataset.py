@@ -18,7 +18,7 @@ MUSIC 或 CNN 估计 → 与训练标签对齐的 RMSE。
 
 真值来源
 --------
-- MUSIC / CNN 均使用 ``monostatic_labels_from_kinematics``（与训练标签一致）
+- MUSIC / CNN 均使用 ``monostatic_range_velocity``（与训练标签一致）
 """
 
 from __future__ import annotations
@@ -38,17 +38,16 @@ from isac import (
 )
 from isac.collection import RTDataset
 from isac.sensing import match_peaks_and_compute_radial_rmse
+from isac.sensing.geometry import monostatic_range_velocity
 from isac.models import (
     MonostaticCnnCheckpointMeta,
     MonostaticDelayDopplerCNN,
     dd_spectrum_to_features,
     load_monostatic_cnn_checkpoint,
-    monostatic_labels_from_kinematics,
     read_monostatic_cnn_checkpoint_meta,
 )
 from isac.system import System
 from isac.utils import load_config, set_random_seed
-from isac.collection.utils import scene_slug_from_rt_simulator
 
 
 @dataclass
@@ -80,21 +79,6 @@ def _resolve_inputs(
     return h5_path, model_path, ckpt_meta, ckpt_meta.config_file
 
 
-@torch.no_grad()
-def _estimate_with_model(
-    h_dd: torch.Tensor,
-    model: MonostaticDelayDopplerCNN,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """CNN 推理：h_dd → ROI 特征 → 距离/速度估计。"""
-    model_device = next(model.parameters()).device
-    features = dd_spectrum_to_features(h_dd)
-    pred = model(features.unsqueeze(0).to(model_device))
-    return (
-        pred[0, 0].reshape(-1).to(dtype=torch.float64),
-        pred[0, 1].reshape(-1).to(dtype=torch.float64),
-    )
-
-
 def _setup_estimator(
     estimator: str,
     model_path: Path,
@@ -112,6 +96,7 @@ def _setup_estimator(
     return EstimatorSetup("CNN", cnn_model, metric_mode)
 
 
+@torch.no_grad()
 def _evaluate_episode(
     i: int,
     dataset: RTDataset,
@@ -124,7 +109,7 @@ def _evaluate_episode(
 
     pos = dataset.target_position[i]
     vel = dataset.target_velocity[i]
-    range_m, vel_mps = monostatic_labels_from_kinematics(pos, vel, dataset.bs_pos)
+    range_m, vel_mps = monostatic_range_velocity(pos, vel, dataset.bs_pos)
     true_range = torch.tensor(range_m, dtype=torch.float64, device=system.device)
     true_velocity = torch.tensor(vel_mps, dtype=torch.float64, device=system.device)
 
@@ -133,31 +118,28 @@ def _evaluate_episode(
             h_dd,
             num_sources=1,
         )
-        estimate = comps.sensing_estimator(
-            peaks,
-            metric_mode=setup.metric_mode,
-            sens_mode="monostatic",
-            log_peaks=False,
-        )
-        rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
-            est_ranges=estimate.est_ranges,
-            est_velocities=estimate.est_velocities,
-            true_ranges=true_range.reshape(-1),
-            true_velocities=true_velocity.reshape(-1),
-            label=f"episode {i}",
-            verbose=False,
-        )
     else:
         assert setup.cnn_model is not None
-        est_ranges, est_velocities = _estimate_with_model(h_dd, setup.cnn_model)
-        rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
-            est_ranges=est_ranges,
-            est_velocities=est_velocities,
-            true_ranges=true_range.reshape(-1),
-            true_velocities=true_velocity.reshape(-1),
-            label=f"episode {i}",
-            verbose=False,
-        )
+        model_device = next(setup.cnn_model.parameters()).device
+        features = dd_spectrum_to_features(h_dd)
+        peaks = setup.cnn_model(features.unsqueeze(0).to(model_device))
+
+    if comps.sensing_estimator is None:
+        raise ValueError("感知评估需要 TOML [music] 段以构建 SensingEstimator")
+    estimate = comps.sensing_estimator(
+        peaks,
+        metric_mode=setup.metric_mode,
+        sens_mode="monostatic",
+        log_peaks=False,
+    )
+    rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
+        est_ranges=estimate.est_ranges,
+        est_velocities=estimate.est_velocities,
+        true_ranges=true_range.reshape(-1),
+        true_velocities=true_velocity.reshape(-1),
+        label=f"episode {i}",
+        verbose=False,
+    )
     return rmse_range_m, rmse_velocity_mps
 
 
@@ -296,7 +278,7 @@ def main() -> None:
         raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
 
     target_name, _ = next(iter(rt_simulator.rt_targets.items()))
-    scene_slug = scene_slug_from_rt_simulator(rt_simulator)
+    scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
     print(f"目标: {target_name}, 场景: {scene_slug}, 配置: {config_path}")
 
     setup = _setup_estimator(

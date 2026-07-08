@@ -8,6 +8,7 @@
     "reportAssignmentType": "none"
   },
   "pylint.args": [
-    "--disable=missing-module-docstring,missing-class-docstring,missing-function-docstring"
+    "--disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,not-callable",
+    "--generated-members=numpy.*,torch.*"
   ]
 }

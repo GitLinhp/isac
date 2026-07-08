@@ -1,11 +1,12 @@
-"""SpectrumMetric 坐标换算单元测试。"""
+"""SpectrumMetric 与 DelayDopplerRoi 坐标换算单元测试。"""
 
 import pytest
 import torch
 from types import SimpleNamespace
 
 from isac.sensing.metric import SpectrumMetric
-from isac.sensing.spectrum import SensingPerformance
+from isac.sensing.spectrum import DelayDopplerRoi, SensingPerformance
+
 
 def _sp() -> SimpleNamespace:
     return SimpleNamespace(
@@ -36,17 +37,34 @@ def _sensing_performance() -> SensingPerformance:
     return SensingPerformance(rg, carrier_frequency=6e9)
 
 
+def _roi(
+    sp: SensingPerformance,
+    max_range_m: float = 310.0,
+    max_velocity_mps: float = 150.0,
+) -> DelayDopplerRoi:
+    return DelayDopplerRoi(
+        max_range_m=max_range_m,
+        max_velocity_mps=max_velocity_mps,
+        sensing_performance=sp,
+    )
+
+
 def test_roi_bin_counts_match_dd_spectrum():
-    m = _metric_stub()
-    assert m.roi_delay_bin_count(310.0) == 128
-    assert m.roi_doppler_half_bins(150.0) == 128
+    roi = DelayDopplerRoi(
+        max_range_m=310.0,
+        max_velocity_mps=150.0,
+        sensing_performance=_sp(),  # type: ignore[arg-type]
+    )
+    assert roi.delay_bin_count() == 128
+    assert roi.doppler_half_bins() == 128
 
 
 def test_bin_slices_inverse_physical_limits():
-    m = _metric_stub()
-    sp = _sp()
-    roi = m.bin_slices(512, 2048, max_range_m=310.0, max_velocity_mps=150.0)
-    dop_start, dop_end, _, delay_end = roi
+    sp = _sensing_performance()
+    roi = _roi(sp)
+    h_full = torch.zeros(512, 2048)
+    slices = roi.bin_slices(h_full)
+    dop_start, dop_end, _, delay_end = slices
     max_range_m = (delay_end - 1) * sp.range_resolution_monostatic
     max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_monostatic
     assert max_range_m == pytest.approx(309.96, rel=1e-3)
@@ -56,13 +74,11 @@ def test_bin_slices_inverse_physical_limits():
 def test_local_bins_match_global_axes_after_symmetric_roi():
     sp = _sensing_performance()
     m = SpectrumMetric(sp)
-    roi = m.bin_slices(
-        sp.rg.num_ofdm_symbols,
-        sp.rg.fft_size,
-        max_range_m=310.0,
-        max_velocity_mps=150.0,
+    roi = _roi(sp)
+    slices = roi.bin_slices(
+        torch.zeros(sp.rg.num_ofdm_symbols, sp.rg.fft_size),
     )
-    dop_start, dop_end, delay_start, delay_end = roi
+    dop_start, dop_end, delay_start, delay_end = slices
     num_doppler = dop_end - dop_start
 
     local_delays = [0, 10, 50]
@@ -84,14 +100,12 @@ def test_local_bins_match_global_axes_after_symmetric_roi():
 def test_local_bins_match_range_velocity_axes(sens_mode: str):
     sp = _sensing_performance()
     m = SpectrumMetric(sp)
-    roi = m.bin_slices(
-        sp.rg.num_ofdm_symbols,
-        sp.rg.fft_size,
-        max_range_m=310.0,
-        max_velocity_mps=150.0,
+    roi = _roi(sp)
+    slices = roi.bin_slices(
+        torch.zeros(sp.rg.num_ofdm_symbols, sp.rg.fft_size),
         sens_mode=sens_mode,  # type: ignore[arg-type]
     )
-    dop_start, dop_end, delay_start, delay_end = roi
+    dop_start, dop_end, delay_start, delay_end = slices
     num_doppler = dop_end - dop_start
 
     local_delays = torch.tensor([0, 20], dtype=torch.float64)
@@ -113,22 +127,18 @@ def test_local_bins_match_range_velocity_axes(sens_mode: str):
 
 def test_axes_for_roi_dd_and_rv():
     sp = _sensing_performance()
-    m = SpectrumMetric(sp)
-    roi = m.bin_slices(
-        sp.rg.num_ofdm_symbols,
-        sp.rg.fft_size,
-        max_range_m=310.0,
-        max_velocity_mps=150.0,
-    )
-    dop_start, dop_end, delay_start, delay_end = roi
+    roi = _roi(sp)
+    h_full = torch.zeros(sp.rg.num_ofdm_symbols, sp.rg.fft_size)
+    roi.crop(h_full)
+    dop_start, dop_end, delay_start, delay_end = roi.slices  # type: ignore[misc]
 
-    x_dd, y_dd, x_label_dd, y_label_dd = m.axes_for_roi(roi, "dd")
+    x_dd, y_dd, x_label_dd, y_label_dd = roi.axes("dd")
     assert x_label_dd == "Delay (ns)"
     assert y_label_dd == "Doppler (Hz)"
     assert x_dd[0] == pytest.approx(sp.delay_bins[delay_start])
     assert y_dd[0] == pytest.approx(sp.doppler_bins[dop_start])
 
-    x_rv, y_rv, _, _ = m.axes_for_roi(roi, "rv", sens_mode="bistatic")
+    x_rv, y_rv, _, _ = roi.axes("rv", sens_mode="bistatic")
     assert x_rv[0] == pytest.approx(sp.range_bins_bistatic[delay_start])
     assert y_rv[0] == pytest.approx(sp.velocity_bins_bistatic[dop_start])
 
@@ -136,16 +146,44 @@ def test_axes_for_roi_dd_and_rv():
 def test_bin_slices_bistatic_physical_limits():
     """双基地 ROI：TOML 物理上界与裁切后 bistatic RV 轴一致（非 2 倍）。"""
     sp = _sensing_performance()
-    m = SpectrumMetric(sp)
-    roi = m.bin_slices(
-        sp.rg.num_ofdm_symbols,
-        sp.rg.fft_size,
+    roi = DelayDopplerRoi(
         max_range_m=100.0,
         max_velocity_mps=10.0,
+        sensing_performance=sp,
+    )
+    slices = roi.bin_slices(
+        torch.zeros(sp.rg.num_ofdm_symbols, sp.rg.fft_size),
         sens_mode="bistatic",
     )
-    dop_start, dop_end, _, delay_end = roi
+    dop_start, dop_end, _, delay_end = slices
     max_range_m = (delay_end - 1) * sp.range_resolution_bistatic
     max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_bistatic
     assert max_range_m == pytest.approx(97.6, rel=0.05)
     assert max_velocity_mps == pytest.approx(9.36, rel=0.15)
+
+
+def test_physical_to_local_bins_roundtrip():
+    sp = _sensing_performance()
+    m = SpectrumMetric(sp)
+    roi = _roi(sp)
+    slices = roi.bin_slices(
+        torch.zeros(sp.rg.num_ofdm_symbols, sp.rg.fft_size),
+    )
+    num_doppler = slices[1] - slices[0]
+
+    local_delays = torch.tensor([0.0, 20.0, 50.0], dtype=torch.float64)
+    local_dops = torch.tensor([10.0, 64.0, num_doppler - 1], dtype=torch.float64)
+    _, _, range_m, v_mps = m.local_bins_to_range_velocity(
+        local_delays,
+        local_dops,
+        num_doppler_bins=num_doppler,
+        sens_mode="monostatic",
+    )
+    delay_back, dop_back = m.physical_to_local_bins(
+        range_m,
+        v_mps,
+        num_doppler_bins=num_doppler,
+        sens_mode="monostatic",
+    )
+    assert delay_back.numpy() == pytest.approx(local_delays.numpy(), rel=1e-9)
+    assert dop_back.numpy() == pytest.approx(local_dops.numpy(), rel=1e-9)

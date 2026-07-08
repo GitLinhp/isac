@@ -13,12 +13,7 @@ _H5_PATH = DEFAULT_DATASET_H5
 def loaded_dataset() -> RTDataset:
     if not _H5_PATH.is_file():
         pytest.skip(f"数据集不存在: {_H5_PATH}")
-    try:
-        return RTDataset.load(_H5_PATH)
-    except ValueError as exc:
-        if "旧 CFR 格式" in str(exc):
-            pytest.skip("数据集为旧 CFR 格式，请重新采集 h_dd 数据集")
-        raise
+    return RTDataset.load(_H5_PATH)
 
 
 def test_h_dd_is_complex(loaded_dataset: RTDataset) -> None:

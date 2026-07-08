@@ -14,7 +14,7 @@
 符号 doppler 窗 → FFT → ``fftshift``（多普勒维）。
 
 **ROI**：由 TOML ``[dd_spectrum_roi]`` 的 ``max_range_m`` / ``max_velocity_mps`` 配置，
-经 :class:`~isac.sensing.metric.SpectrumMetric` 换算 bin 并裁切。
+经 :class:`~isac.sensing.spectrum.dd_spectrum_roi.DelayDopplerRoi` 换算 bin 并裁切。
 单基地 ROI 为径向距离/速度；双基地为折叠路径长度/速度，须与 ``sens_mode`` 一致。
 
 **展示域**
@@ -35,8 +35,8 @@ import numpy as np
 import plotly.graph_objs as go
 import torch
 
-from ..metric import SpectrumMetric
-from ...data_structures.types import MetricMode, RoiSlices, SensMode
+from ...data_structures.types import MetricMode, SensMode
+from .dd_spectrum_roi import DelayDopplerRoi
 from .sensing_performance import SensingPerformance
 from ...utils import convert
 from ...utils.numerical import linear_to_db
@@ -89,11 +89,11 @@ class DelayDopplerSpectrum:
     """时延多普勒谱计算与 3D 可视化。
 
     对实例调用 ``dd(h_freq)`` 完成 FFT 变换与 ROI 裁切，结果缓存在 ``h_delay_doppler``；
-    ``_roi_slices`` 记录裁切索引 ``(dop_start, dop_end, delay_start, delay_end)``，
-    供 :meth:`visualize` 与 :class:`~isac.sensing.metric.SpectrumMetric` 生成物理坐标轴。
+    ``dd_spectrum_roi.slices`` 记录裁切索引 ``(dop_start, dop_end, delay_start, delay_end)``，
+    供 :meth:`visualize` 生成物理坐标轴。
 
-    **须配置 ROI**：``max_range_m`` 与 ``max_velocity_mps`` 均非 ``None`` 时
-    :meth:`__call__` 才会执行裁切（通常来自 TOML ``[dd_spectrum_roi]``）。
+    **须配置 ROI**：:attr:`dd_spectrum_roi` 非 ``None`` 时 :meth:`__call__` 才会执行裁切
+    （通常来自 TOML ``[dd_spectrum_roi]``）。
     ROI 物理量语义随 ``sens_mode``：单基地为径向距离/速度；双基地为折叠路径长度/速度。
     ``__call__(..., sens_mode=...)`` 与 ``visualize(..., sens_mode=...)`` 须使用同一模式。
 
@@ -111,6 +111,7 @@ class DelayDopplerSpectrum:
         ),
         delay_window: Optional[Union[str, tuple, dict]] = None,
         doppler_window: Optional[Union[str, tuple, dict]] = None,
+        dd_spectrum_roi: Optional[DelayDopplerRoi] = None,
         max_range_m: Optional[float] = None,
         max_velocity_mps: Optional[float] = None,
     ):
@@ -126,78 +127,30 @@ class DelayDopplerSpectrum:
             时延维（子载波 / dim=-1）窗函数配置，传给 :func:`~isac.utils.windows.apply_window`。
         doppler_window :
             多普勒维（符号 / dim=-2）窗函数配置。
+        dd_spectrum_roi :
+            ROI 配置与裁切管理器；若未传且 ``max_range_m``/``max_velocity_mps`` 均给定，
+            则内部构造 ``DelayDopplerRoi``。
         max_range_m :
-            ROI 时延轴上界 (m)，从 0 起；单基地为径向距离，双基地为路径长度。
+            （兼容测试）ROI 时延轴上界 (m)。
         max_velocity_mps :
-            ROI 多普勒半幅 (m/s)，零多普勒中心 ±；量纲与 ``sens_mode`` 一致。
+            （兼容测试）ROI 多普勒半幅 (m/s)。
         """
         self.sensing_performance = sensing_performance
-        self._metric = SpectrumMetric(sensing_performance)
         self.device = device
         self.delay_window = delay_window
         self.doppler_window = doppler_window
-        self.max_range_m = max_range_m
-        self.max_velocity_mps = max_velocity_mps
-        self._roi_slices: Optional[RoiSlices] = None
-
-    # ==================== ROI 配置与切片 ====================
-    @property
-    def has_roi(self) -> bool:
-        """是否已同时配置 ``max_range_m`` 与 ``max_velocity_mps``。"""
-        return self.max_range_m is not None and self.max_velocity_mps is not None
-
-    def _validate_roi(self) -> None:
-        """校验 ROI 已配置且物理量为正。"""
-        if not self.has_roi:
-            raise ValueError(
-                "__call__ 要求配置 max_range_m / max_velocity_mps（[dd_spectrum_roi]）"
+        if (
+            dd_spectrum_roi is None
+            and max_range_m is not None
+            and max_velocity_mps is not None
+        ):
+            dd_spectrum_roi = DelayDopplerRoi(
+                max_range_m=max_range_m,
+                max_velocity_mps=max_velocity_mps,
+                sensing_performance=sensing_performance,
             )
-        assert self.max_range_m is not None and self.max_velocity_mps is not None
-        if self.max_range_m <= 0:
-            raise ValueError(f"max_range_m 须为正，收到 {self.max_range_m}")
-        if self.max_velocity_mps <= 0:
-            raise ValueError(f"max_velocity_mps 须为正，收到 {self.max_velocity_mps}")
-
-    def roi_delay_bins(self, sens_mode: SensMode = "monostatic") -> int:
-        """``max_range_m`` 对应的时延维 bin 数（含零时延 bin）。"""
-        assert self.max_range_m is not None
-        return self._metric.roi_delay_bin_count(self.max_range_m, sens_mode=sens_mode)
-
-    def roi_doppler_half_bins(self, sens_mode: SensMode = "monostatic") -> int:
-        """``max_velocity_mps`` 对应的多普勒半宽 bin 数。"""
-        assert self.max_velocity_mps is not None
-        return self._metric.roi_doppler_half_bins(
-            self.max_velocity_mps, sens_mode=sens_mode
-        )
-
-    def bin_slices(
-        self,
-        h_dd: torch.Tensor,
-        sens_mode: SensMode = "monostatic",
-    ) -> RoiSlices:
-        """由 ROI 物理量与全尺寸谱形状计算裁切切片。
-
-        参数
-        ----
-        h_dd :
-            全 FFT 尺寸 DD 谱，末两维 ``(n_doppler_full, n_delay_full)``。
-
-        返回
-        ----
-        RoiSlices
-            ``(dop_start, dop_end, delay_start, delay_end)``，Python 切片语义
-            ``h_dd[..., dop_start:dop_end, delay_start:delay_end]``。
-        """
-        self._validate_roi()
-        assert self.max_range_m is not None and self.max_velocity_mps is not None
-        n_doppler, n_delay = h_dd.shape[-2], h_dd.shape[-1]
-        return self._metric.bin_slices(
-            n_doppler,
-            n_delay,
-            self.max_range_m,
-            self.max_velocity_mps,
-            sens_mode=sens_mode,
-        )
+        self.dd_spectrum_roi = dd_spectrum_roi
+        self.h_delay_doppler: Optional[torch.Tensor] = None
 
     # ==================== FFT 变换 ====================
     def _transform_freq_to_dd(self, h: torch.Tensor) -> torch.Tensor:
@@ -237,8 +190,13 @@ class DelayDopplerSpectrum:
         ----
         torch.Tensor
             裁切后的复数 DD 谱，末两维 ``(n_doppler_roi, n_delay_roi)``；
-            同时写入实例属性 ``h_delay_doppler`` 与 ``_roi_slices``。
+            同时写入实例属性 ``h_delay_doppler`` 与 ``dd_spectrum_roi.slices``。
         """
+        if self.dd_spectrum_roi is None:
+            raise ValueError(
+                "__call__ 要求配置 dd_spectrum_roi（[dd_spectrum_roi] 或显式传入 DelayDopplerRoi）"
+            )
+
         h = convert(h_freq, "torch", dtype=torch.complex64, device=self.device)
         rg = self.sensing_performance.rg
         s, f = rg.num_ofdm_symbols, rg.fft_size
@@ -250,13 +208,9 @@ class DelayDopplerSpectrum:
             raise ValueError(f"h_freq 末两维须为 ({s}, {f})，收到 {tuple(h.shape)}")
 
         h_delay_doppler = self._transform_freq_to_dd(h)
-
-        self._validate_roi()
-        dop_start, dop_end, delay_start, delay_end = self.bin_slices(
+        h_delay_doppler = self.dd_spectrum_roi.crop(
             h_delay_doppler, sens_mode=sens_mode
         )
-        self._roi_slices = (dop_start, dop_end, delay_start, delay_end)
-        h_delay_doppler = h_delay_doppler[..., dop_start:dop_end, delay_start:delay_end]
 
         self.h_delay_doppler = h_delay_doppler.to(
             device=self.device, dtype=torch.complex64
@@ -277,7 +231,7 @@ class DelayDopplerSpectrum:
     ) -> None:
         """渲染最近一次 :meth:`__call__` 得到的 DD/RV 谱 3D 曲面图。
 
-        须先调用 :meth:`__call__` 以填充 ``h_delay_doppler`` 与 ``_roi_slices``。
+        须先调用 :meth:`__call__` 以填充 ``h_delay_doppler`` 与 ``dd_spectrum_roi.slices``。
 
         参数
         ----
@@ -329,7 +283,7 @@ class DelayDopplerSpectrum:
         """校验已调用 :meth:`__call__` 并缓存谱与 ROI 切片。"""
         if not hasattr(self, "h_delay_doppler"):
             raise ValueError("时延多普勒谱数据未计算，请先调用 __call__ 方法")
-        if self._roi_slices is None:
+        if self.dd_spectrum_roi is None or self.dd_spectrum_roi.slices is None:
             raise ValueError("visualize 要求先通过 __call__ 计算并裁剪 DD 谱")
 
     def _abs_numpy_for_viz(
@@ -391,17 +345,10 @@ class DelayDopplerSpectrum:
         to_db: bool,
         eps: float,
     ) -> SurfaceGrids:
-        """为单路 2D 谱准备曲面数据（绑定实例 ``_metric`` 与 ``_roi_slices``）。
-
-        参数
-        ----
-        h_abs_2d, cfar_2d :
-            形状 ``(n_doppler_roi, n_delay_roi)`` 的幅度与可选 CFAR 阈值。
-        """
-        assert self._roi_slices is not None
+        """为单路 2D 谱准备曲面数据（绑定实例 ``dd_spectrum_roi.slices``）。"""
+        assert self.dd_spectrum_roi is not None and self.dd_spectrum_roi.slices is not None
         return self._prepare_surface_grids(
-            self._metric,
-            self._roi_slices,
+            self.dd_spectrum_roi,
             h_abs_2d,
             cfar_2d,
             metric_mode=metric_mode,
@@ -565,8 +512,7 @@ class DelayDopplerSpectrum:
 
     @staticmethod
     def _prepare_surface_grids(
-        metric: SpectrumMetric,
-        roi_slices: RoiSlices,
+        dd_spectrum_roi: DelayDopplerRoi,
         h_abs_2d: np.ndarray,
         cfar_2d: Optional[np.ndarray],
         *,
@@ -581,9 +527,7 @@ class DelayDopplerSpectrum:
         rv 模式：mpl 仍用 meshgrid；plotly ``Surface`` 要求 ``z.shape == (len(y), len(x))``，
         故 ``z_plot``/``cfar_plot_z`` 相对 ``h_abs_2d`` 转置，``x_plot``/``y_plot`` 改为 1D 轴向量。
         """
-        x_axis, y_axis, x_label, y_label = metric.axes_for_roi(
-            roi_slices, metric_mode, sens_mode
-        )
+        x_axis, y_axis, x_label, y_label = dd_spectrum_roi.axes(metric_mode, sens_mode)
         x_grid, y_grid = np.meshgrid(x_axis, y_axis, indexing="xy")
         z_disp, cfar_disp, z_label, z_title_plotly = (
             DelayDopplerSpectrum._linear_or_db_amplitude(

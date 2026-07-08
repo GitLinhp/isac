@@ -43,10 +43,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from isac.models.preprocess import (
-    dd_spectrum_to_features,
-    monostatic_labels_from_kinematics,
-)
+from isac.models.preprocess import dd_spectrum_to_features
+from isac.sensing.geometry import monostatic_range_velocity
+from isac.sensing.metric import SpectrumMetric
+from isac.data_structures.types import MusicPeaks
 from isac.utils import set_random_seed
 from isac.utils.config_loader import resolve_config_path
 
@@ -62,7 +62,6 @@ from .h5_layout import (
     DATASET_KEY_TARGET_VELOCITY,
     EPISODE_CSV_COLUMNS,
     EPISODE_CSV_SUFFIX,
-    LEGACY_DATASET_KEY_CFR,
     META_KEY_DESCRIPTION,
     SCENE_PNG_SUFFIX,
     collection_dataset_description,
@@ -83,14 +82,8 @@ def _parse_sampling_mode(raw: Any, *, field: str) -> SamplingMode:
 
 # --- HDF5 读写辅助 ---
 def _require_dataset(f: h5py.File, key: str) -> h5py.Dataset:
-    """返回指定名称的 HDF5 dataset；缺失或旧 CFR 格式时抛出明确错误。"""
+    """返回指定名称的 HDF5 dataset；缺失时 ``KeyError``。"""
     if key not in f:
-        if key == DATASET_KEY_H_DD and LEGACY_DATASET_KEY_CFR in f:
-            raise ValueError(
-                "HDF5 为旧 CFR 格式，请重新运行 run_data_collection.py 采集 h_dd 数据集"
-            )
-        if key == DATASET_KEY_H_DD:
-            raise KeyError(f"HDF5 缺少必选数据集 {key!r}（delay_doppler_spectrum）。")
         raise KeyError(f"HDF5 缺少数据集 {key!r}。")
     return cast(h5py.Dataset, f[key])
 
@@ -106,16 +99,14 @@ def _write_hdf5_root_metadata(
     f: h5py.File,
     *,
     n_episodes: int,
-    collection_meta: CollectionMetadata | None,
-    scene_slug: str | None = None,
+    collection_meta: CollectionMetadata,
+    scene_slug: str,
 ) -> None:
     """写入 ``description`` 与采集元数据根属性。"""
-    if collection_meta is not None:
-        if scene_slug is not None:
-            f.attrs[META_KEY_DESCRIPTION] = collection_dataset_description(
-                scene_slug, n_episodes
-            )
-        collection_meta.write_hdf5_attrs(f)
+    f.attrs[META_KEY_DESCRIPTION] = collection_dataset_description(
+        scene_slug, n_episodes
+    )
+    collection_meta.write_hdf5_attrs(f)
 
 
 def _create_vec3_dataset(f: h5py.File, key: str) -> h5py.Dataset:
@@ -215,15 +206,18 @@ class CollectionMetadata:
             f.attrs[key] = _hdf5_serialize(val)
 
     @classmethod
-    def read_hdf5_attrs(cls, f: h5py.File) -> CollectionMetadata | None:
-        """从根属性读取；缺少 ``seed`` 时返回 ``None``。"""
-        if "seed" not in f.attrs:
-            return None
+    def read_hdf5_attrs(cls, f: h5py.File) -> CollectionMetadata:
+        """从根属性读取采集元数据；缺字段时 ``ValueError``。"""
+        missing = [fld.name for fld in fields(cls) if fld.name not in f.attrs]
+        if missing:
+            raise ValueError(
+                f"HDF5 缺少采集元数据根属性: {', '.join(missing)}"
+            )
         kwargs: dict[str, Any] = {}
         for fld in fields(cls):
-            if fld.name not in f.attrs:
-                continue
-            kwargs[fld.name] = _hdf5_deserialize_collection(fld.name, f.attrs[fld.name])
+            kwargs[fld.name] = _hdf5_deserialize_collection(
+                fld.name, f.attrs[fld.name]
+            )
         return cls(**kwargs)
 
 
@@ -375,7 +369,12 @@ class RTDataset(Dataset):
     target_position: np.ndarray
     target_velocity: np.ndarray
     h_dd: np.ndarray
-    collection_meta: CollectionMetadata | None = None
+    collection_meta: CollectionMetadata
+    sensing_performance: Any | None = field(default=None, repr=False, compare=False)
+
+    def bind_sensing_performance(self, sensing_performance: Any) -> None:
+        """绑定感知性能对象，供 ``__getitem__`` 生成 MusicPeaks 局部 bin 标签。"""
+        self.sensing_performance = sensing_performance
 
     def __post_init__(self) -> None:
         self.bs_pos = np.asarray(self.bs_pos, dtype=np.float64).reshape(-1)
@@ -404,19 +403,39 @@ class RTDataset(Dataset):
         返回键
         ------
         - ``features``：``(2, H, W)`` float32 幅相双通道（幅度 dB + 相位）
+        - ``peaks_delay`` / ``peaks_doppler``：ROI 局部 bin 监督 (float32 标量)
         - ``range_m`` / ``velocity_mps``：单基地几何标签 (float32 标量)
         - ``slot``：episode 索引 (int64)
         """
         self._validate_slot_index(idx)
+        if self.sensing_performance is None:
+            raise ValueError(
+                "RTDataset.__getitem__ 须先调用 bind_sensing_performance(sp)"
+            )
         h_dd = torch.from_numpy(self.h_dd[idx])
         features = dd_spectrum_to_features(h_dd)
-        range_m, vel_mps = monostatic_labels_from_kinematics(
+        range_m, vel_mps = monostatic_range_velocity(
             self.target_position[idx],
             self.target_velocity[idx],
             self.bs_pos,
         )
+        num_doppler_bins = h_dd.shape[0]
+        metric = SpectrumMetric(self.sensing_performance)
+        delay_bin, doppler_bin = metric.physical_to_local_bins(
+            range_m,
+            vel_mps,
+            num_doppler_bins=num_doppler_bins,
+            sens_mode="monostatic",
+        )
+        peaks = MusicPeaks.from_local_bins(
+            delay_bin,
+            doppler_bin,
+            device="cpu",
+        )
         return {
             "features": features.to(dtype=torch.float32),
+            "peaks_delay": peaks.peaks_delay[0].to(dtype=torch.float32),
+            "peaks_doppler": peaks.peaks_doppler[0].to(dtype=torch.float32),
             "range_m": torch.tensor(range_m, dtype=torch.float32),
             "velocity_mps": torch.tensor(vel_mps, dtype=torch.float32),
             "slot": torch.tensor(idx, dtype=torch.int64),
@@ -439,7 +458,7 @@ class RTDataset(Dataset):
                 collection_meta=CollectionMetadata.read_hdf5_attrs(f),
             )
 
-
+# 
 def save_collection_artifacts(
     *,
     scene_slug: str,

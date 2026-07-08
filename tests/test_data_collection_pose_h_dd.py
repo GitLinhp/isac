@@ -63,8 +63,9 @@ def _peak_range_velocity_from_h_dd(
     dd = system.components.delay_doppler_spectrum
     assert dd is not None
     sp = dd.sensing_performance
+    assert dd.dd_spectrum_roi is not None
     n_sym = sp.rg.num_ofdm_symbols
-    dop_start, _, delay_start, _ = dd.bin_slices(
+    dop_start, _, delay_start, _ = dd.dd_spectrum_roi.bin_slices(
         torch.zeros(n_sym, sp.rg.fft_size, dtype=torch.complex64)
     )
 

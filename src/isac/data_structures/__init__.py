@@ -21,6 +21,7 @@ from .params import (
 )
 from .system_components import SystemComponents
 from .types import MetricMode, MusicPeaks, RoiSlices, SensingEstimate, SensMode
+from ..sensing.spectrum import DelayDopplerRoi
 
 __all__ = [
     "AntennaArrayParams",
@@ -30,6 +31,7 @@ __all__ = [
     "MTDParams",
     "MTIParams",
     "MusicParams",
+    "DelayDopplerRoi",
     "MetricMode",
     "MusicPeaks",
     "SensingEstimate",

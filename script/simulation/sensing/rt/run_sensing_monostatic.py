@@ -83,7 +83,7 @@ def main() -> None:
         y_rg = y_out
 
     # --- 感知 ---
-    h_dd, estimate = system.sensing(
+    _, estimate = system.sensing(
         x_rg,
         y_rg,
         metric_mode=args.metric_mode,
@@ -91,7 +91,6 @@ def main() -> None:
         visualize_file=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
         to_db=False,
     )
-    print(h_dd.shape)
 
     # --- 性能评估 ---
     geom = comps.rt_simulator.rx_target_tx_geometric

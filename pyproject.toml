@@ -70,8 +70,10 @@ disable = [
     "missing-module-docstring",
     "missing-class-docstring",
     "missing-function-docstring",
+    "not-callable",  # PyTorch 动态绑定（torch.fft.* 等）导致 E1102 误报
 ]
 
 [tool.pylint.typecheck]
 # gnuradio / pmt 为 C 扩展，允许动态成员访问
 extension-pkg-allow-list = ["gnuradio", "pmt"]
+generated-members = ["numpy.*", "torch.*"]

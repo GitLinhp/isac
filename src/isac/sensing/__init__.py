@@ -8,6 +8,7 @@
 
 from ..data_structures.types import MetricMode, MusicPeaks, RoiSlices, SensingEstimate, SensMode
 from .spectrum import (
+    DelayDopplerRoi,
     DelayDopplerSpectrum,
     LSChannelEstimator,
     SensingPerformance,
@@ -33,6 +34,7 @@ from .geometry import (
     compute_vel,
     delay_to_range,
     doppler_to_velocity,
+    monostatic_range_velocity,
     stack_state_field,
 )
 
@@ -40,6 +42,7 @@ __all__ = [
     "SensingPerformance",
     "LSChannelEstimator",
     "DelayDopplerSpectrum",
+    "DelayDopplerRoi",
     "MUSICEstimator",
     "SensingEstimator",
     "match_peaks_and_compute_radial_rmse",
@@ -57,6 +60,7 @@ __all__ = [
     "compute_vel",
     "delay_to_range",
     "doppler_to_velocity",
+    "monostatic_range_velocity",
     "stack_state_field",
     "ground_circle_radius_sq",
     "intersect_circles_xy",

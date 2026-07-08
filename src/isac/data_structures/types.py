@@ -19,35 +19,38 @@ RoiSlices = tuple[int, int, int, int]
 
 @dataclass
 class SensingEstimate:
-    """感知物理量估计结果（距离/速度/功率）。"""
+    """感知物理量估计结果（距离/速度）。"""
 
     est_ranges: torch.Tensor
     est_velocities: torch.Tensor
-    peaks_power: torch.Tensor
 
 
 @dataclass
 class MusicPeaks:
-    """MUSIC 裁切谱 bin 检峰结果（delay/doppler 局部索引 + 功率）。"""
+    """MUSIC 裁切谱 bin 检峰结果（delay/doppler 局部索引）。"""
 
     peaks_delay: torch.Tensor
     peaks_doppler: torch.Tensor
-    peaks_power: torch.Tensor
-    num_doppler_bins: int
-    """裁切谱多普勒维长度（squeeze 后 shape[0]），用于局部 bin → Hz 换算。"""
 
     @classmethod
-    def empty(
-        cls,
-        device: Union[str, torch.device],
-        *,
-        num_doppler_bins: int = 0,
-    ) -> MusicPeaks:
+    def empty(cls, device: Union[str, torch.device]) -> MusicPeaks:
         """协方差分解失败或无峰时返回长度为 0 的空结果。"""
         dev = torch.device(device) if isinstance(device, str) else device
         return cls(
             peaks_delay=torch.empty(0, dtype=torch.float64, device=dev),
             peaks_doppler=torch.empty(0, dtype=torch.float64, device=dev),
-            peaks_power=torch.empty(0, dtype=torch.float32, device=dev),
-            num_doppler_bins=num_doppler_bins,
         )
+
+    @classmethod
+    def from_local_bins(
+        cls,
+        delay_bin: Union[torch.Tensor, float],
+        doppler_bin: Union[torch.Tensor, float],
+        *,
+        device: Union[str, torch.device],
+    ) -> MusicPeaks:
+        """ROI 局部 bin → :class:`MusicPeaks`。"""
+        dev = torch.device(device) if isinstance(device, str) else device
+        d = torch.as_tensor(delay_bin, dtype=torch.float64, device=dev).reshape(-1)
+        dop = torch.as_tensor(doppler_bin, dtype=torch.float64, device=dev).reshape(-1)
+        return cls(peaks_delay=d, peaks_doppler=dop)

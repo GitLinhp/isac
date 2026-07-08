@@ -7,7 +7,6 @@ from pathlib import Path
 EPISODE_CSV_SUFFIX = "_mc_dataset_episodes.csv"
 H5_SUFFIX = "_mc_sionna_dataset.h5"
 SCENE_PNG_SUFFIX = "_scene.png"
-LEGACY_DATASET_KEY_CFR = "channel_frequency_response"
 
 EPISODE_CSV_COLUMNS = (
     "sample_idx",

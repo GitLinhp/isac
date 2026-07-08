@@ -24,7 +24,6 @@ from isac.collection import (
 )
 from isac.system import System
 from isac.utils import load_config
-from isac.collection.utils import scene_slug_from_rt_simulator
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 # 忽略 Sionna 警告
@@ -131,7 +130,7 @@ def main() -> None:
     # 获取 RT 模拟器与目标
     rt_simulator = comps.rt_simulator
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
-    scene_slug = scene_slug_from_rt_simulator(rt_simulator)
+    scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
     print(f"目标: {target_name}, 场景: {scene_slug}")
 
     # 初始化 CSV 缓冲与流式 HDF5 写入

@@ -130,6 +130,32 @@ def compute_vel(
     return torch.where(is_bistatic, vel_bi, vel_mono)
 
 
+def monostatic_range_velocity(
+    target_position: np.ndarray,
+    target_velocity: np.ndarray,
+    bs_position: np.ndarray,
+    *,
+    bs_velocity: np.ndarray | None = None,
+) -> tuple[float, float]:
+    """单基地几何真值：斜距 (m) 与 RX 视线径向速度 (m/s)。"""
+    t_pos = torch.as_tensor(target_position, dtype=torch.float64).reshape(1, 3)
+    t_vel = torch.as_tensor(target_velocity, dtype=torch.float64).reshape(1, 3)
+    r_pos = torch.as_tensor(bs_position, dtype=torch.float64).reshape(1, 3)
+    r_vel = (
+        torch.zeros(1, 3, dtype=torch.float64)
+        if bs_velocity is None
+        else torch.as_tensor(bs_velocity, dtype=torch.float64).reshape(1, 3)
+    )
+    x_stack = r_pos.clone()
+    x_vel = r_vel.clone()
+    is_bistatic = compute_path_type(r_pos, x_stack, n_targets=1)
+    range_m = compute_range(is_bistatic, t_pos, r_pos, x_stack)[0, 0, 0]
+    vel_mps = compute_vel(
+        is_bistatic, t_pos, t_vel, r_pos, r_vel, x_stack, x_vel
+    )[0, 0, 0]
+    return float(range_m.item()), float(vel_mps.item())
+
+
 def delay_to_range(
     tau_s: torch.Tensor,
     carrier_frequency: float,

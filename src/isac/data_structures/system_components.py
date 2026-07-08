@@ -25,6 +25,7 @@ from ..channel.rt.rt_channel import RTChannel
 from ..channel.rt.rt_simulator import RTSimulator
 from ..sensing.spectrum import (
     DelayDopplerSpectrum,
+    DelayDopplerRoi,
     LSChannelEstimator,
     SensingPerformance,
 )
@@ -74,6 +75,8 @@ class SystemComponents:
     # 感知组件
     sensing_performance: Optional[SensingPerformance] = None
     """感知性能（距离/速度分辨率等）；感知链子组件的公共依赖"""
+    dd_spectrum_roi: Optional[DelayDopplerRoi] = None
+    """DD 谱 ROI；由 [dd_spectrum_roi] + sensing_performance 构建，感知链共享"""
     ls_channel_estimator: Optional[LSChannelEstimator] = None
     """频域 LS 信道估计"""
     moving_target_indication: Optional[MovingTargetIndication] = None
@@ -214,7 +217,7 @@ class SystemComponents:
                     "channel": RTChannel(
                         rg=rg,
                         # 延迟绑定：paths() 复用缓存；位姿变更后须先 paths(update=True)
-                        paths=lambda: rt_simulator.paths(),
+                        paths=rt_simulator.paths,
                         rx_names=lambda: list(rt_simulator.rx_states.keys()),
                         tx_names=lambda: list(rt_simulator.tx_states.keys()),
                         device=device,
@@ -249,8 +252,7 @@ class SystemComponents:
         kwargs: dict = {}
         carrier_frequency = system_params.carrier_frequency
         sensing_performance: Optional[SensingPerformance] = None
-        max_range_m: Optional[float] = None
-        max_velocity_mps: Optional[float] = None
+        dd_roi: Optional[DelayDopplerRoi] = None
 
         if system_params.ofdm is not None and carrier_frequency is not None:
             sensing_performance = SensingPerformance(
@@ -263,8 +265,11 @@ class SystemComponents:
             sensing_performance is not None
             and system_params.dd_spectrum_roi is not None
         ):
-            max_range_m = system_params.dd_spectrum_roi.max_range_m
-            max_velocity_mps = system_params.dd_spectrum_roi.max_velocity_mps
+            dd_roi = DelayDopplerRoi.from_params(
+                system_params.dd_spectrum_roi,
+                sensing_performance,
+            )
+            kwargs["dd_spectrum_roi"] = dd_roi
 
         if rg is not None:
             kwargs["ls_channel_estimator"] = LSChannelEstimator(rg)
@@ -290,8 +295,7 @@ class SystemComponents:
                     sensing_performance=sensing_performance,
                     delay_window=system_params.windows.delay_window,
                     doppler_window=system_params.windows.doppler_window,
-                    max_range_m=max_range_m,
-                    max_velocity_mps=max_velocity_mps,
+                    dd_spectrum_roi=dd_roi,
                 )
 
             if system_params.cfar is not None:
@@ -306,26 +310,11 @@ class SystemComponents:
                 )
 
             if system_params.music is not None:
-                kwargs["music_estimator"] = SystemComponents._build_music_estimator(
-                    device
-                )
-                sensing_estimator = SystemComponents._build_sensing_estimator(
+                kwargs["music_estimator"] = MUSICEstimator(device=device)
+                kwargs["sensing_estimator"] = SensingEstimator(
                     sensing_performance,
                     device,
+                    dd_spectrum_roi=dd_roi,
                 )
-                kwargs["sensing_estimator"] = sensing_estimator
 
         return kwargs
-
-    @staticmethod
-    def _build_music_estimator(device: str) -> MUSICEstimator:
-        """构建 MUSIC bin 检峰器。"""
-        return MUSICEstimator(device=device)
-
-    @staticmethod
-    def _build_sensing_estimator(
-        sensing_performance: SensingPerformance,
-        device: str,
-    ) -> SensingEstimator:
-        """构建感知估计器（bin→物理量换算，不含检峰）。"""
-        return SensingEstimator(sensing_performance, device)

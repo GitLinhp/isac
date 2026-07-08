@@ -15,7 +15,7 @@ from .roi_sampling import (
     RoiKinematicsSampler,
     SamplingMode,
 )
-from .utils import scene_slug_from_rt_simulator
+from .sensing_attrs import sensing_attrs_from_system
 
 __all__ = [
     "CollectionMetadata",
@@ -27,7 +27,5 @@ __all__ = [
     "save_collection_artifacts",
     "RoiKinematicsSampler",
     "SamplingMode",
-    "parse_roi_xy",
-    "parse_speed_range",
-    "scene_slug_from_rt_simulator",
+    "sensing_attrs_from_system",
 ]

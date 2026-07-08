@@ -32,6 +32,7 @@ from isac.models import (
     MonostaticDelayDopplerCNN,
     MonostaticSensingLoss,
 )
+from isac.sensing.evaluation import SensingEstimator
 from isac.system import System
 from isac.utils import load_config
 
@@ -80,12 +81,11 @@ def argument_parser() -> argparse.Namespace:
 def _collate_batch(
     samples: list[dict[str, torch.Tensor]],
 ) -> dict[str, torch.Tensor]:
-    """将单样本 dict 堆叠为 batch 张量。
-
-    输入每项含 ``features``、``range_m``、``velocity_mps``、``slot``。
-    """
+    """将单样本 dict 堆叠为 batch 张量。"""
     return {
         "features": torch.stack([s["features"] for s in samples], dim=0),
+        "peaks_delay": torch.stack([s["peaks_delay"] for s in samples], dim=0),
+        "peaks_doppler": torch.stack([s["peaks_doppler"] for s in samples], dim=0),
         "range_m": torch.stack([s["range_m"] for s in samples], dim=0),
         "velocity_mps": torch.stack([s["velocity_mps"] for s in samples], dim=0),
         "slot": torch.stack([s["slot"] for s in samples], dim=0),
@@ -113,6 +113,7 @@ def _checkpoint_payload(
         "velocity_resolution": model.velocity_resolution,
         "max_range_m": model.max_range_m,
         "max_velocity_mps": model.max_velocity_mps,
+        "num_doppler_bins": model.num_doppler_bins,
         "dataset_h5": str(h5_path),
         "config_file": str(config_path),
     }
@@ -150,23 +151,10 @@ def _evaluate(
     model: MonostaticDelayDopplerCNN,
     loader: DataLoader,
     criterion: MonostaticSensingLoss,
+    sensing_estimator: SensingEstimator,
     device: torch.device,
 ) -> tuple[float, float, float]:
-    """验证集评估。
-
-    输入:
-    ----------
-    - model : 已移动至 ``device`` 的 ``MonostaticDelayDopplerCNN``
-    - loader : 验证集 ``DataLoader``
-    - criterion : 已移动至 ``device`` 的 ``MonostaticSensingLoss``
-    - device : 评估设备
-
-    返回:
-    ----------
-    - val_loss : bin 空间复合损失（batch 均值）
-    - rmse_range_m : 距离物理 RMSE (m)
-    - rmse_velocity_mps : 速度物理 RMSE (m/s)
-    """
+    """验证集评估：局部 bin 损失 + 经 SensingEstimator 的物理 RMSE。"""
     model.eval()
     total_loss = 0.0
     range_sq = 0.0
@@ -177,20 +165,25 @@ def _evaluate(
         y_range = batch["range_m"].to(device)
         y_vel = batch["velocity_mps"].to(device)
         y_bins = model.forward_bins(x)
-        target_bins = MonostaticSensingLoss.target_bins_from_physical_labels(
-            y_range,
-            y_vel,
-            range_resolution=model.range_resolution,
-            velocity_resolution=model.velocity_resolution,
+        target_bins = MonostaticSensingLoss.target_local_bins_from_peaks(
+            batch["peaks_delay"].to(device),
+            batch["peaks_doppler"].to(device),
         )
         total_loss += criterion(y_bins, target_bins).item() * x.size(0)
-        pred = model.bins_to_physical(y_bins)
-        range_sq += torch.sum((pred[:, 0] - y_range) ** 2).item()
-        vel_sq += torch.sum((pred[:, 1] - y_vel) ** 2).item()
+
+        for i in range(x.size(0)):
+            peaks = model.bins_to_music_peaks(y_bins[i : i + 1], device=device)
+            estimate = sensing_estimator(
+                peaks,
+                sens_mode="monostatic",
+                log_peaks=False,
+            )
+            range_sq += (estimate.est_ranges[0] - y_range[i]) ** 2
+            vel_sq += (estimate.est_velocities[0] - y_vel[i]) ** 2
         n += x.size(0)
     if n == 0:
         return 0.0, 0.0, 0.0
-    return total_loss / n, (range_sq / n) ** 0.5, (vel_sq / n) ** 0.5
+    return total_loss / n, (range_sq / n).sqrt().item(), (vel_sq / n).sqrt().item()
 
 
 def main() -> None:
@@ -210,8 +203,16 @@ def main() -> None:
     torch.manual_seed(args.seed)
     device = args.device
 
+    config = load_config(config_path)
+    system = System(config=config, device=device)
+    sensing = sensing_attrs_from_system(system)
+    sensing_estimator = system.components.sensing_estimator
+    if sensing_estimator is None:
+        raise ValueError("训练验证 RMSE 需要 TOML [music] 段以构建 SensingEstimator")
+
     # --- 数据集与 DataLoader ---
     full_ds = RTDataset.load(h5_path)
+    full_ds.bind_sensing_performance(system.components.sensing_performance)
     n_val = max(1, int(len(full_ds) * args.val_ratio))
     n_train = len(full_ds) - n_val
     if n_train < 1:
@@ -233,9 +234,6 @@ def main() -> None:
     val_loader = DataLoader(val_ds, shuffle=False, **loader_kwargs)
 
     # --- 模型、损失与优化器 ---
-    config = load_config(config_path)
-    system = System(config=config, device=device)
-    sensing = sensing_attrs_from_system(system)
     in_channels = 2
     model = MonostaticDelayDopplerCNN(
         in_channels=in_channels,
@@ -282,16 +280,12 @@ def main() -> None:
         )
         for batch in batch_bar:
             x = batch["features"].to(device)
-            y_range = batch["range_m"].to(device)
-            y_vel = batch["velocity_mps"].to(device)
 
             optimizer.zero_grad()
             y_bins = model.forward_bins(x)
-            target_bins = MonostaticSensingLoss.target_bins_from_physical_labels(
-                y_range,
-                y_vel,
-                range_resolution=model.range_resolution,
-                velocity_resolution=model.velocity_resolution,
+            target_bins = MonostaticSensingLoss.target_local_bins_from_peaks(
+                batch["peaks_delay"].to(device),
+                batch["peaks_doppler"].to(device),
             )
             loss = criterion(y_bins, target_bins)
             loss.backward()
@@ -301,7 +295,7 @@ def main() -> None:
 
         mean_train_loss = train_loss / max(len(train_loader), 1)
         val_loss, val_rmse_r, val_rmse_v = _evaluate(
-            model, val_loader, criterion, device
+            model, val_loader, criterion, sensing_estimator, device
         )
         tqdm.write(
             f"epoch {epoch:03d} | train_loss={mean_train_loss:.4f} | "
