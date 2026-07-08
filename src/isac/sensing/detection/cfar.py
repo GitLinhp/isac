@@ -236,7 +236,7 @@ def cfar_ca_2d(
     return _same_type_output(out, data)
 
 
-def os_cfar_threshold(k: int, n: int, pfa: float) -> float:
+def os_cfar_threshold(k: int, n: int, pfa: float) -> float | None:
     """
     用割线法计算 OS-CFAR 阈值缩放因子。
 
@@ -258,7 +258,7 @@ def os_cfar_threshold(k: int, n: int, pfa: float) -> float:
         阈值缩放因子
     """
 
-    def fun(k_: int, n_: int, t_os: float, pfa_: float) -> float:
+    def fun(k_: int, n_: int, t_os: float, pfa_: float) -> float | None:
         arr = np.arange(n_, n_ - k_, -1, dtype=float) + t_os
         return (
             _log_factorial(n_)
