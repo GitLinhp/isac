@@ -89,6 +89,7 @@ def test_local_bins_match_range_velocity_axes(sens_mode: str):
         sp.rg.fft_size,
         max_range_m=310.0,
         max_velocity_mps=150.0,
+        sens_mode=sens_mode,  # type: ignore[arg-type]
     )
     dop_start, dop_end, delay_start, delay_end = roi
     num_doppler = dop_end - dop_start
@@ -130,3 +131,21 @@ def test_axes_for_roi_dd_and_rv():
     x_rv, y_rv, _, _ = m.axes_for_roi(roi, "rv", sens_mode="bistatic")
     assert x_rv[0] == pytest.approx(sp.range_bins_bistatic[delay_start])
     assert y_rv[0] == pytest.approx(sp.velocity_bins_bistatic[dop_start])
+
+
+def test_bin_slices_bistatic_physical_limits():
+    """双基地 ROI：TOML 物理上界与裁切后 bistatic RV 轴一致（非 2 倍）。"""
+    sp = _sensing_performance()
+    m = SpectrumMetric(sp)
+    roi = m.bin_slices(
+        sp.rg.num_ofdm_symbols,
+        sp.rg.fft_size,
+        max_range_m=100.0,
+        max_velocity_mps=10.0,
+        sens_mode="bistatic",
+    )
+    dop_start, dop_end, _, delay_end = roi
+    max_range_m = (delay_end - 1) * sp.range_resolution_bistatic
+    max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_bistatic
+    assert max_range_m == pytest.approx(97.6, rel=0.05)
+    assert max_velocity_mps == pytest.approx(9.36, rel=0.15)

@@ -14,7 +14,8 @@
 符号 doppler 窗 → FFT → ``fftshift``（多普勒维）。
 
 **ROI**：由 TOML ``[dd_spectrum_roi]`` 的 ``max_range_m`` / ``max_velocity_mps`` 配置，
-经 :class:`~isac.sensing.metric.SpectrumMetric` 按**单基地径向**尺度换算 bin 并裁切。
+经 :class:`~isac.sensing.metric.SpectrumMetric` 换算 bin 并裁切。
+单基地 ROI 为径向距离/速度；双基地为折叠路径长度/速度，须与 ``sens_mode`` 一致。
 
 **展示域**
 
@@ -93,9 +94,10 @@ class DelayDopplerSpectrum:
 
     **须配置 ROI**：``max_range_m`` 与 ``max_velocity_mps`` 均非 ``None`` 时
     :meth:`__call__` 才会执行裁切（通常来自 TOML ``[dd_spectrum_roi]``）。
-    ROI 物理量按单基地径向距离 / 速度解释，与 ``SpectrumMetric.roi_*`` 一致。
+    ROI 物理量语义随 ``sens_mode``：单基地为径向距离/速度；双基地为折叠路径长度/速度。
+    ``__call__(..., sens_mode=...)`` 与 ``visualize(..., sens_mode=...)`` 须使用同一模式。
 
-    **典型调用**：``h_dd = dd(h_freq)`` → ``dd.visualize(file_name=..., metric_mode=...)``
+    **典型调用**：``h_dd = dd(h_freq, sens_mode=...)`` → ``dd.visualize(..., sens_mode=...)``
 
     **可视化后端**：``matplotlib`` 支持单谱或 ``(rx_num, S, F)`` 多 RX 1×N 子图；
     ``plotly`` 仅 2D 单谱（多 RX 时 :meth:`_resolve_backend` 自动回退 matplotlib）。
@@ -125,9 +127,9 @@ class DelayDopplerSpectrum:
         doppler_window :
             多普勒维（符号 / dim=-2）窗函数配置。
         max_range_m :
-            ROI 时延轴上界 (m)，从 0 起；``None`` 表示未配置 ROI。
+            ROI 时延轴上界 (m)，从 0 起；单基地为径向距离，双基地为路径长度。
         max_velocity_mps :
-            ROI 多普勒半幅 (m/s)，零多普勒中心 ±；``None`` 表示未配置 ROI。
+            ROI 多普勒半幅 (m/s)，零多普勒中心 ±；量纲与 ``sens_mode`` 一致。
         """
         self.sensing_performance = sensing_performance
         self._metric = SpectrumMetric(sensing_performance)
@@ -156,24 +158,23 @@ class DelayDopplerSpectrum:
         if self.max_velocity_mps <= 0:
             raise ValueError(f"max_velocity_mps 须为正，收到 {self.max_velocity_mps}")
 
-    def roi_delay_bins(self) -> int:
-        """``max_range_m`` 对应的时延维 bin 数（含零时延 bin）。
-
-        计数规则：``max(1, int(max_range_m / Δr_mono) + 1)``，
-        ``Δr_mono = range_resolution_monostatic``。
-        """
+    def roi_delay_bins(self, sens_mode: SensMode = "monostatic") -> int:
+        """``max_range_m`` 对应的时延维 bin 数（含零时延 bin）。"""
         assert self.max_range_m is not None
-        return self._metric.roi_delay_bin_count(self.max_range_m)
+        return self._metric.roi_delay_bin_count(self.max_range_m, sens_mode=sens_mode)
 
-    def roi_doppler_half_bins(self) -> int:
-        """``max_velocity_mps`` 对应的多普勒半宽 bin 数（零多普勒两侧各 ``dop_half``）。
-
-        计数规则：``max(1, round(max_velocity_mps / Δv_mono))``。
-        """
+    def roi_doppler_half_bins(self, sens_mode: SensMode = "monostatic") -> int:
+        """``max_velocity_mps`` 对应的多普勒半宽 bin 数。"""
         assert self.max_velocity_mps is not None
-        return self._metric.roi_doppler_half_bins(self.max_velocity_mps)
+        return self._metric.roi_doppler_half_bins(
+            self.max_velocity_mps, sens_mode=sens_mode
+        )
 
-    def bin_slices(self, h_dd: torch.Tensor) -> RoiSlices:
+    def bin_slices(
+        self,
+        h_dd: torch.Tensor,
+        sens_mode: SensMode = "monostatic",
+    ) -> RoiSlices:
         """由 ROI 物理量与全尺寸谱形状计算裁切切片。
 
         参数
@@ -195,6 +196,7 @@ class DelayDopplerSpectrum:
             n_delay,
             self.max_range_m,
             self.max_velocity_mps,
+            sens_mode=sens_mode,
         )
 
     # ==================== FFT 变换 ====================
@@ -215,7 +217,12 @@ class DelayDopplerSpectrum:
         h_dd = torch.fft.fft(h_delay, dim=-2, norm="ortho")
         return torch.fft.fftshift(h_dd, dim=-2)
 
-    def __call__(self, h_freq: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        h_freq: torch.Tensor,
+        *,
+        sens_mode: SensMode = "monostatic",
+    ) -> torch.Tensor:
         """频域信道 → ROI 裁切后的时延多普勒谱。
 
         参数
@@ -223,6 +230,8 @@ class DelayDopplerSpectrum:
         h_freq :
             LS 估计等得到的频域信道，``complex``，形状 ``(S, F)`` 或 ``(rx_num, S, F)``，
             其中 ``S = rg.num_ofdm_symbols``，``F = rg.fft_size``。
+        sens_mode :
+            ROI bin 计数与 RV 轴标定的物理尺度（``monostatic`` / ``bistatic``）。
 
         返回
         ----
@@ -243,7 +252,9 @@ class DelayDopplerSpectrum:
         h_delay_doppler = self._transform_freq_to_dd(h)
 
         self._validate_roi()
-        dop_start, dop_end, delay_start, delay_end = self.bin_slices(h_delay_doppler)
+        dop_start, dop_end, delay_start, delay_end = self.bin_slices(
+            h_delay_doppler, sens_mode=sens_mode
+        )
         self._roi_slices = (dop_start, dop_end, delay_start, delay_end)
         h_delay_doppler = h_delay_doppler[..., dop_start:dop_end, delay_start:delay_end]
 

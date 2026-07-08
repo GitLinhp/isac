@@ -160,12 +160,13 @@ class System:
         comps.sensing_performance()
 
         h_freq = comps.ls_channel_estimator(x_rg, y_rg)
-        h_dd = comps.delay_doppler_spectrum(h_freq)
+        h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=sens_mode)
 
         if visualize_file is not None:
             comps.delay_doppler_spectrum.visualize(
                 file_name=visualize_file,
                 metric_mode=metric_mode,
+                sens_mode=sens_mode,
                 to_db=to_db,
             )
 
