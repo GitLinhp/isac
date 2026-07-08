@@ -136,7 +136,7 @@ class SensingEstimator:
                     physics=(tau_s, fd_hz, range_m, v_mps),
                 )
             else:
-                print("MUSIC算法未检测到谱峰")
+                print("MUSIC算法未检测到谱峰\n")
 
         return SensingEstimate(
             est_ranges=range_m.reshape(-1),
@@ -192,4 +192,4 @@ class SensingEstimator:
                 zip(peaks_delay_np, peaks_doppler_np, peaks_power_np)
             )
         ]
-        print(tabulate(table_data, headers=headers, tablefmt="simple_grid"))
+        print(tabulate(table_data, headers=headers, tablefmt="simple_grid") + "\n")

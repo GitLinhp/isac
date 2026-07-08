@@ -63,7 +63,7 @@ def test_rt_monostatic_cfr_per_tx_velocity_sign_matches_geometry():
         h_pairs[RTChannel.cfr_pair_key(rx_name, "bs1_tx")],
         sens_mode="monostatic",
     )
-    v_res = float(comps.sensing_performance.velocity_resolution)
+    v_res = float(comps.sensing_performance.velocity_resolution_monostatic)
     assert est_v * true_v > 0.0
     assert abs(est_v - true_v) < 2.0 * v_res
 
@@ -93,7 +93,7 @@ def test_rt_bistatic_cfr_per_tx_velocity_sign_matches_geometry():
         h_pairs[RTChannel.cfr_pair_key(rx_name, "bs2_tx")],
         sens_mode="bistatic",
     )
-    v_res = float(comps.sensing_performance.velocity_resolution)
+    v_res = float(comps.sensing_performance.velocity_resolution_monostatic)
     assert est_v * true_v > 0.0
     assert abs(est_v - true_v) < 2.0 * v_res
 

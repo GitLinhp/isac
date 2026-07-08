@@ -2,8 +2,6 @@
 
 import argparse
 
-import torch
-
 from isac import PROJECT_ROOT
 from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
@@ -85,27 +83,17 @@ def main() -> None:
         y_rg = y_out
 
     # --- 感知 ---
-    comps.sensing_performance()
-
-    h_freq = comps.ls_channel_estimator(x_rg, y_rg)
-    # h = comps.moving_target_indication(h)
-    h_dd = comps.delay_doppler_spectrum(h_freq)
-
-    # --- 可视化 ---
-    comps.delay_doppler_spectrum.visualize(
-        file_name=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
+    _, estimate = system.sensing(
+        x_rg,
+        y_rg,
         metric_mode=args.metric_mode,
+        sens_mode="monostatic",
+        visualize_file=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
         to_db=False,
     )
 
-    # --- MUSIC 检峰 → 物理量换算与 RMSE 评估 ---
+    # --- 性能评估 ---
     geom = comps.rt_simulator.rx_target_tx_geometric
-    peaks = comps.music_estimator(h_dd)
-    estimate = comps.sensing_estimator(
-        peaks,
-        sens_mode="monostatic",
-        metric_mode=args.metric_mode,
-    )
     match_peaks_and_compute_radial_rmse(
         est_ranges=estimate.est_ranges,
         est_velocities=estimate.est_velocities,

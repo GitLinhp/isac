@@ -9,8 +9,8 @@ from isac.sensing.spectrum import DelayDopplerSpectrum
 
 def _sp() -> SimpleNamespace:
     return SimpleNamespace(
-        range_resolution=2.44,
-        velocity_resolution=1.171,
+        range_resolution_monostatic=2.44,
+        velocity_resolution_monostatic=1.171,
         rg=SimpleNamespace(num_ofdm_symbols=512, fft_size=2048),
     )
 
@@ -46,8 +46,8 @@ def test_limits_on_full_grid():
     dd = _dd()
     sp = _sp()
     dop_start, dop_end, _, delay_end = dd.bin_slices(torch.zeros(512, 2048))
-    max_range_m = (delay_end - 1) * sp.range_resolution
-    max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution
+    max_range_m = (delay_end - 1) * sp.range_resolution_monostatic
+    max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_monostatic
     assert max_range_m == pytest.approx(309.96, rel=1e-3)
     assert max_velocity_mps == pytest.approx(149.888, rel=1e-3)
 

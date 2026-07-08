@@ -52,7 +52,7 @@ def _synthetic_dd_magnitude(
 ) -> np.ndarray:
     """构造在几何 bin 处有尖峰的 DD 幅度谱 ``(多普勒, 时延)``。"""
     s, f = sp.rg.num_ofdm_symbols, sp.rg.fft_size
-    delay_bin = int(round(range_m / sp.range_resolution))
+    delay_bin = int(round(range_m / sp.range_resolution_monostatic))
     fd_hz = -velocity_mps * 2.0 * sp.carrier_frequency / 3e8
     doppler_bin = int(np.argmin(np.abs(sp.doppler_bins - fd_hz)))
 

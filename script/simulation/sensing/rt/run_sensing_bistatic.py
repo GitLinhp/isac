@@ -1,17 +1,23 @@
-"""双基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
+"""单基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
 
 import argparse
 
 from isac import PROJECT_ROOT
+from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
 from isac.utils import load_config, set_random_seed
+
+SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "sensing_bistatic"
 
 
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="ISAC 系统仿真 — 双基地感知评估")
 
     parser.add_argument(
-        "--config_file", type=str, default="simulation/sensing/sensing_bistatic.toml", help="配置文件路径"
+        "--config_file",
+        type=str,
+        default="simulation/sensing/sensing_bistatic.toml",
+        help="配置文件路径",
     )
     parser.add_argument(
         "--device",
@@ -30,7 +36,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--domain",
         type=str,
-        default="time",
+        default="frequency",
         choices=["frequency", "time"],
         help="信道施加域：frequency 或 time",
     )
@@ -46,47 +52,55 @@ def argument_parser() -> argparse.Namespace:
 
 
 def main() -> None:
+    # --- 参数解析 ---
     args = argument_parser()
     set_random_seed(args.seed)
+
+    # --- 加载配置 ---
     config = load_config(args.config_file)
     system = System(
         config=config,
         device=args.device,
     )
+    comps = system.components
 
-    scene = system.components.rt_simulator
-    domain = args.domain
-
-    script_out_dir = PROJECT_ROOT / "out" / "sensing_bistatic"
-    script_out_dir.mkdir(parents=True, exist_ok=True)
-
-    scene.render_to_file(filename=script_out_dir / "sensing_bistatic_scene.png")
+    # --- 渲染场景 ---
+    comps.rt_simulator.render_to_file(
+        filename=str(SCRIPT_OUT_DIR / "sensing_bistatic_scene.png")
+    )
 
     # --- 发射 ---
     _, x_rg, x_time = system.transmit()
 
     # --- 应用信道 ---
-    snr_db = system.params.channel.snr_db
-    y_out = system.components.channel(x_rg, x_time, domain=domain, snr_db=snr_db)
+    domain = args.domain  # 信道施加域
+    snr_db = system.params.channel.snr_db  # 信噪比
+
+    y_out = comps.channel(x_rg, x_time, domain=domain, snr_db=snr_db)
     if domain == "time":
-        y_rg = system.components.demodulator(y_out).squeeze()
+        y_rg = comps.demodulator(y_out)
     else:
         y_rg = y_out
 
-    h_dd = system.compute_sensing_spectrum(x_rg, y_rg, apply_mti=True)
-    system.components.sensing_performance()
-    system.display_sensing_geometry()
-    system.visualize_sensing_spectrum(
-        h_dd,
-        file=script_out_dir / "sensing_bistatic_delay_doppler_spectrum.png",
-        metric_mode=args.metric_mode,
-    )
-    music = system.estimate_sensing_music(
-        h_dd,
+    # --- 感知 ---
+    _, estimate = system.sensing(
+        x_rg,
+        y_rg,
         metric_mode=args.metric_mode,
         sens_mode="bistatic",
+        visualize_file=SCRIPT_OUT_DIR / "sensing_bistatic_delay_doppler_spectrum.png",
+        to_db=False,
     )
-    system.evaluate_sensing_rmse(*music, label="双基地感知")
+
+    # --- 性能评估 ---
+    geom = comps.rt_simulator.rx_target_tx_geometric
+    match_peaks_and_compute_radial_rmse(
+        est_ranges=estimate.est_ranges,
+        est_velocities=estimate.est_velocities,
+        true_ranges=geom.range_tensor,
+        true_velocities=geom.vel_tensor,
+        label="双基地感知",
+    )
 
 
 if __name__ == "__main__":

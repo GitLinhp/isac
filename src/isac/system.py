@@ -1,10 +1,13 @@
 """ISAC 端到端仿真编排：发射、接收与感知流水线 API。"""
 
+from pathlib import Path
+
 from sionna.phy import config as sn_config
 import torch
 
 from .data_structures import SystemParams
 from .data_structures.system_components import SystemComponents
+from .data_structures.types import MetricMode, SensingEstimate, SensMode
 
 
 class System:
@@ -15,6 +18,10 @@ class System:
     典型通信链::
 
         transmit() → channel(...) → receive(y_time)
+
+    典型感知链::
+
+        transmit() → channel(...) → sensing(x_rg, y_rg)
     """
 
     def __init__(
@@ -113,3 +120,60 @@ class System:
         b_hat = comps.demapper(y, no=no)
 
         return b_hat
+
+    # ==================== 感知 ====================
+    def sensing(
+        self,
+        x_rg: torch.Tensor,
+        y_rg: torch.Tensor,
+        *,
+        metric_mode: MetricMode = "rv",
+        sens_mode: SensMode = "monostatic",
+        visualize_file: Path | str | None = None,
+        to_db: bool = False,
+    ) -> tuple[torch.Tensor, SensingEstimate]:
+        """频域接收 → 信道估计 → 时延多普勒谱 → MUSIC 检峰。
+
+        参数:
+        -------
+        - x_rg : torch.Tensor
+            发射侧频域 OFDM 资源网格
+        - y_rg : torch.Tensor
+            接收侧频域 OFDM 资源网格
+        - metric_mode : {"dd", "rv"}
+            谱图与 MUSIC 日志 metric
+        - sens_mode : {"monostatic", "bistatic"}
+            物理换算尺度
+        - visualize_file : Path | str | None
+            DD 谱输出路径；``None`` 时跳过可视化
+        - to_db : bool
+            可视化是否使用 dB 刻度
+
+        返回:
+        -------
+        - h_dd : torch.Tensor
+            裁切后的时延多普勒谱
+        - estimate : SensingEstimate
+            MUSIC 峰换算后的距离/速度估计
+        """
+        comps = self.components
+        comps.sensing_performance()
+
+        h_freq = comps.ls_channel_estimator(x_rg, y_rg)
+        h_dd = comps.delay_doppler_spectrum(h_freq)
+
+        if visualize_file is not None:
+            comps.delay_doppler_spectrum.visualize(
+                file_name=visualize_file,
+                metric_mode=metric_mode,
+                to_db=to_db,
+            )
+
+        peaks = comps.music_estimator(h_dd)
+        estimate = comps.sensing_estimator(
+            peaks,
+            sens_mode=sens_mode,
+            metric_mode=metric_mode,
+        )
+
+        return h_dd, estimate

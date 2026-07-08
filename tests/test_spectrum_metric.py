@@ -9,8 +9,8 @@ from isac.sensing.spectrum import SensingPerformance
 
 def _sp() -> SimpleNamespace:
     return SimpleNamespace(
-        range_resolution=2.44,
-        velocity_resolution=1.171,
+        range_resolution_monostatic=2.44,
+        velocity_resolution_monostatic=1.171,
         delay_resolution=2.44 / (3e8 / 2),
         doppler_resolution=1.171 * (3e8 / 2) / 6e9,
         carrier_frequency=6e9,
@@ -47,8 +47,8 @@ def test_bin_slices_inverse_physical_limits():
     sp = _sp()
     roi = m.bin_slices(512, 2048, max_range_m=310.0, max_velocity_mps=150.0)
     dop_start, dop_end, _, delay_end = roi
-    max_range_m = (delay_end - 1) * sp.range_resolution
-    max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution
+    max_range_m = (delay_end - 1) * sp.range_resolution_monostatic
+    max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_monostatic
     assert max_range_m == pytest.approx(309.96, rel=1e-3)
     assert max_velocity_mps == pytest.approx(149.888, rel=1e-3)
 
@@ -104,8 +104,8 @@ def test_local_bins_match_range_velocity_axes(sens_mode: str):
 
     global_delays = (local_delays + delay_start).numpy().astype(int)
     global_dops = (local_dops + dop_start).numpy().astype(int)
-    expected_r = sp.range_bins_for(sens_mode)[global_delays]
-    expected_v = sp.velocity_bins_for(sens_mode)[global_dops]
+    expected_r = getattr(sp, f"range_bins_{sens_mode}")[global_delays]
+    expected_v = getattr(sp, f"velocity_bins_{sens_mode}")[global_dops]
     assert range_m.numpy() == pytest.approx(expected_r, rel=1e-9)
     assert v_mps.numpy() == pytest.approx(expected_v, rel=1e-6)
 
@@ -128,5 +128,5 @@ def test_axes_for_roi_dd_and_rv():
     assert y_dd[0] == pytest.approx(sp.doppler_bins[dop_start])
 
     x_rv, y_rv, _, _ = m.axes_for_roi(roi, "rv", sens_mode="bistatic")
-    assert x_rv[0] == pytest.approx(sp.range_bins_for("bistatic")[delay_start])
-    assert y_rv[0] == pytest.approx(sp.velocity_bins_for("bistatic")[dop_start])
+    assert x_rv[0] == pytest.approx(sp.range_bins_bistatic[delay_start])
+    assert y_rv[0] == pytest.approx(sp.velocity_bins_bistatic[dop_start])

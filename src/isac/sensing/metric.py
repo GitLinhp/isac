@@ -90,12 +90,12 @@ class SpectrumMetric:
 
     def roi_delay_bin_count(self, max_range_m: float) -> int:
         """物理最大距离 (m) → 时延维 bin 数。"""
-        dr = self.sensing_performance.range_resolution
+        dr = self.sensing_performance.range_resolution_monostatic
         return max(1, int(max_range_m / dr) + 1)
 
     def roi_doppler_half_bins(self, max_velocity_mps: float) -> int:
         """物理最大速度 (m/s) → 多普勒半宽 bin 数。"""
-        dv = self.sensing_performance.velocity_resolution
+        dv = self.sensing_performance.velocity_resolution_monostatic
         return max(1, int(round(max_velocity_mps / dv)))
 
     def bin_slices(
@@ -128,8 +128,8 @@ class SpectrumMetric:
             y_axis = sp.doppler_bins[dop_start:dop_end]
             return x_axis, y_axis, "Delay (ns)", "Doppler (Hz)"
 
-        x_axis = sp.range_bins_for(sens_mode)[delay_start:delay_end]
-        y_axis = sp.velocity_bins_for(sens_mode)[dop_start:dop_end]
+        x_axis = getattr(sp, f"range_bins_{sens_mode}")[delay_start:delay_end]
+        y_axis = getattr(sp, f"velocity_bins_{sens_mode}")[dop_start:dop_end]
         return x_axis, y_axis, "Range (m)", "Velocity (m/s)"
 
 

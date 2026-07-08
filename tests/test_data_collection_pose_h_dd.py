@@ -74,8 +74,8 @@ def _peak_range_velocity_from_h_dd(
     delay_bin = delay_start + t_local
     dop_bin = dop_start + d_local
 
-    delay_resolution = 2.0 * sp.range_resolution / c
-    doppler_resolution = sp.velocity_resolution * 2.0 * sp.carrier_frequency / c
+    delay_resolution = 2.0 * sp.range_resolution_monostatic / c
+    doppler_resolution = sp.velocity_resolution_monostatic * 2.0 * sp.carrier_frequency / c
     tau_s = delay_bin * delay_resolution
     fd_hz = (dop_bin - n_sym // 2) * doppler_resolution
 
@@ -122,8 +122,8 @@ def test_h_dd_peak_aligns_with_geometry_truth(collection_system: System) -> None
     est_range, est_vel = _peak_range_velocity_from_h_dd(collection_system, h_dd)
 
     sp = collection_system.components.delay_doppler_spectrum.sensing_performance
-    range_tol = 3.0 * sp.range_resolution
-    vel_tol = 3.0 * sp.velocity_resolution
+    range_tol = 3.0 * sp.range_resolution_monostatic
+    vel_tol = 3.0 * sp.velocity_resolution_monostatic
 
     assert est_range == pytest.approx(float(true_range.item()), abs=range_tol)
     assert est_vel == pytest.approx(float(true_velocity.item()), abs=vel_tol)

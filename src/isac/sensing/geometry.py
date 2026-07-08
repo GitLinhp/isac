@@ -143,7 +143,7 @@ def delay_to_range(
     ``carrier_frequency`` 与速度换算共用同一 ``SensingPerformance`` 标量；本函数当前换算**不依赖**频率，
     仅校验为正数，以保持参数列表与物理配置对齐。
 
-    - ``monostatic``：``tau_s * c / 2``，与 ``SensingPerformance.range_resolution = c * delay_resolution / 2``
+    - ``monostatic``：``tau_s * c / 2``，与 ``SensingPerformance.range_resolution_monostatic = c * delay_resolution / 2``
       及 ``k · Δr`` 网格一致（\(Δτ\) 对应往返）。
     - ``bistatic``：``tau_s * c``，折叠路径单程几何长度 \(cτ\)（与 MUSIC ``sens_mode='bistatic'`` 配套）。
 

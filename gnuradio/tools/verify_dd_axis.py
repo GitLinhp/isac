@@ -84,7 +84,7 @@ def main() -> int:
     peak = np.unravel_index(int(np.argmax(np.abs(iq) ** 2)), iq.shape)
     dop_bin, delay_bin = peak
 
-    range_res = float(sp.range_resolution)
+    range_res = float(sp.range_resolution_monostatic)
     dop_res = float(sp.doppler_resolution)
     half = OFDM_SYMBOLS // 2
     dop_bin_raw = OFDM_SYMBOLS - 1 - dop_bin
@@ -112,7 +112,7 @@ def main() -> int:
     print(f"错误轴 [v_max,-v_max] (Qwt 非法):   velocity_display={v_bad:.1f} m/s")
     print(f"距离轴 [0,R_max]:               range_display={r_disp:.1f} m")
     print(
-        f"分辨率: Δr={range_res:.2f} m, Δv={float(sp.velocity_resolution):.3f} m/s, "
+        f"分辨率: Δr={range_res:.2f} m, Δv={float(sp.velocity_resolution_monostatic):.3f} m/s, "
         f"v_max={v_max:.1f}"
     )
 
@@ -121,8 +121,8 @@ def main() -> int:
     err_v_old = abs(v_old - TARGET_VELOCITY_MPS)
     err_v_new = abs(v_new - TARGET_VELOCITY_MPS)
 
-    ok_phys = err_r <= 10 * range_res and abs(err_v) <= 2 * float(sp.velocity_resolution)
-    ok_axis = err_v_new <= 2 * float(sp.velocity_resolution) and err_v_new < err_v_old
+    ok_phys = err_r <= 10 * range_res and abs(err_v) <= 2 * float(sp.velocity_resolution_monostatic)
+    ok_axis = err_v_new <= 2 * float(sp.velocity_resolution_monostatic) and err_v_new < err_v_old
 
     print()
     if ok_phys:
