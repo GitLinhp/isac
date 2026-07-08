@@ -43,10 +43,11 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from isac.data_structures.types import MusicPeaks
 from isac.models.preprocess import dd_spectrum_to_features
 from isac.sensing.geometry import monostatic_range_velocity
 from isac.sensing.metric import SpectrumMetric
-from isac.data_structures.types import MusicPeaks
+from isac.sensing.spectrum.sensing_performance import SensingPerformance
 from isac.utils import set_random_seed
 from isac.utils.config_loader import resolve_config_path
 
@@ -93,20 +94,6 @@ def _read_array_datasets(f: h5py.File) -> dict[str, np.ndarray]:
     return {
         attr: _require_dataset(f, h5_key)[:] for h5_key, attr in ARRAY_DATASET_SPECS
     }
-
-
-def _write_hdf5_root_metadata(
-    f: h5py.File,
-    *,
-    n_episodes: int,
-    collection_meta: CollectionMetadata,
-    scene_slug: str,
-) -> None:
-    """写入 ``description`` 与采集元数据根属性。"""
-    f.attrs[META_KEY_DESCRIPTION] = collection_dataset_description(
-        scene_slug, n_episodes
-    )
-    collection_meta.write_hdf5_attrs(f)
 
 
 def _create_vec3_dataset(f: h5py.File, key: str) -> h5py.Dataset:
@@ -213,12 +200,12 @@ class CollectionMetadata:
             raise ValueError(
                 f"HDF5 缺少采集元数据根属性: {', '.join(missing)}"
             )
-        kwargs: dict[str, Any] = {}
-        for fld in fields(cls):
-            kwargs[fld.name] = _hdf5_deserialize_collection(
-                fld.name, f.attrs[fld.name]
-            )
-        return cls(**kwargs)
+        return cls(
+            **{
+                fld.name: _hdf5_deserialize_collection(fld.name, f.attrs[fld.name])
+                for fld in fields(cls)
+            }
+        )
 
 
 @dataclass
@@ -230,8 +217,9 @@ class RTDatasetWriter:
     compression: str | None = "lzf"
     _file: h5py.File | None = field(default=None, repr=False)
     _h_dd_ds: h5py.Dataset | None = field(default=None, repr=False)
-    _pos_ds: h5py.Dataset | None = field(default=None, repr=False)
-    _vel_ds: h5py.Dataset | None = field(default=None, repr=False)
+    _kinematics_datasets: tuple[h5py.Dataset, h5py.Dataset] | None = field(
+        default=None, repr=False
+    )
     _writer_count: int = 0
     _finalized: bool = False
 
@@ -284,20 +272,20 @@ class RTDatasetWriter:
         h_dd_arr = np.asarray(h_dd, dtype=np.complex64)
         pos_row = np.asarray(pos, dtype=np.float64).reshape(-1)
         vel_row = np.asarray(vel, dtype=np.float64).reshape(-1)
-        if self._file is None:
-            self._open_writer(h_dd_arr)
+        self._ensure_open(h_dd_arr)
         idx = self._writer_count
         self._resize_writer(idx + 1)
         assert self._h_dd_ds is not None
-        assert self._pos_ds is not None
-        assert self._vel_ds is not None
+        assert self._kinematics_datasets is not None
         self._h_dd_ds[idx] = h_dd_arr
-        self._pos_ds[idx] = pos_row
-        self._vel_ds[idx] = vel_row
+        for ds, row in zip(self._kinematics_datasets, (pos_row, vel_row)):
+            ds[idx] = row
         self._writer_count += 1
 
-    def _open_writer(self, h_dd: np.ndarray) -> None:
+    def _ensure_open(self, h_dd: np.ndarray) -> None:
         """首次 ``append_episode`` 时创建 HDF5 文件与可扩展 datasets。"""
+        if self._file is not None:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._file = h5py.File(self.path, "w")
         self._file.create_dataset(DATASET_KEY_BS_POS, data=self.bs_pos)
@@ -315,17 +303,18 @@ class RTDatasetWriter:
             dtype=h_dd.dtype,
             **h_dd_kwargs,
         )
-        self._pos_ds = _create_vec3_dataset(self._file, DATASET_KEY_TARGET_POSITION)
-        self._vel_ds = _create_vec3_dataset(self._file, DATASET_KEY_TARGET_VELOCITY)
+        self._kinematics_datasets = (
+            _create_vec3_dataset(self._file, DATASET_KEY_TARGET_POSITION),
+            _create_vec3_dataset(self._file, DATASET_KEY_TARGET_VELOCITY),
+        )
 
     def _resize_writer(self, new_count: int) -> None:
         """将 h_dd / 运动学 datasets 第一维扩展至 ``new_count``。"""
         assert self._h_dd_ds is not None
-        assert self._pos_ds is not None
-        assert self._vel_ds is not None
+        assert self._kinematics_datasets is not None
         self._h_dd_ds.resize((new_count,) + self._h_dd_ds.shape[1:])
-        self._pos_ds.resize((new_count, 3))
-        self._vel_ds.resize((new_count, 3))
+        for ds in self._kinematics_datasets:
+            ds.resize((new_count, 3))
 
     def finalize(
         self,
@@ -338,12 +327,10 @@ class RTDatasetWriter:
             raise ValueError("RTDatasetWriter 无 episode 数据")
         if self._finalized:
             return
-        _write_hdf5_root_metadata(
-            self._file,
-            n_episodes=self._writer_count,
-            collection_meta=collection_meta,
-            scene_slug=scene_slug,
+        self._file.attrs[META_KEY_DESCRIPTION] = collection_dataset_description(
+            scene_slug, self._writer_count
         )
+        collection_meta.write_hdf5_attrs(self._file)
         self._file.close()
         self._file = None
         self._finalized = True
@@ -357,7 +344,7 @@ class RTDataset(Dataset):
 
     读取 / 训练
     -----------
-    - ``RTDataset.load(path)``
+    - ``RTDataset.load(path, sensing_performance=sp)``
     - ``len(dataset)`` → episode 条数
     - ``dataset[i]`` → ``dict`` 含 ``features``、``range_m``、``velocity_mps``、``slot``
     - ``spectrum_tensor(i)`` → 单条复数 h_dd（评估用）
@@ -370,19 +357,35 @@ class RTDataset(Dataset):
     target_velocity: np.ndarray
     h_dd: np.ndarray
     collection_meta: CollectionMetadata
-    sensing_performance: Any | None = field(default=None, repr=False, compare=False)
+    sensing_performance: SensingPerformance | None = field(
+        default=None, repr=False, compare=False
+    )
+    _spectrum_metric: SpectrumMetric | None = field(
+        default=None, repr=False, compare=False
+    )
 
-    def bind_sensing_performance(self, sensing_performance: Any) -> None:
-        """绑定感知性能对象，供 ``__getitem__`` 生成 MusicPeaks 局部 bin 标签。"""
+    def bind_sensing_performance(self, sensing_performance: SensingPerformance) -> None:
+        """绑定感知性能对象（推荐在 ``load(..., sensing_performance=sp)`` 中传入）。"""
         self.sensing_performance = sensing_performance
+        self._spectrum_metric = SpectrumMetric(sensing_performance)
 
     def __post_init__(self) -> None:
         self.bs_pos = np.asarray(self.bs_pos, dtype=np.float64).reshape(-1)
+        if self.sensing_performance is not None:
+            self._spectrum_metric = SpectrumMetric(self.sensing_performance)
 
     def _validate_slot_index(self, idx: int) -> None:
         n = len(self)
         if idx < 0 or idx >= n:
             raise IndexError(f"index {idx} out of range for {n} slots")
+
+    def _require_spectrum_metric(self) -> SpectrumMetric:
+        if self._spectrum_metric is None:
+            raise ValueError(
+                "RTDataset.__getitem__ 须传入 sensing_performance；"
+                "请使用 RTDataset.load(path, sensing_performance=sp)"
+            )
+        return self._spectrum_metric
 
     def __len__(self) -> int:
         return int(self.h_dd.shape[0])
@@ -397,21 +400,7 @@ class RTDataset(Dataset):
             t = t.to(device)
         return t
 
-    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        """CNN 训练样本 dict。
-
-        返回键
-        ------
-        - ``features``：``(2, H, W)`` float32 幅相双通道（幅度 dB + 相位）
-        - ``peaks_delay`` / ``peaks_doppler``：ROI 局部 bin 监督 (float32 标量)
-        - ``range_m`` / ``velocity_mps``：单基地几何标签 (float32 标量)
-        - ``slot``：episode 索引 (int64)
-        """
-        self._validate_slot_index(idx)
-        if self.sensing_performance is None:
-            raise ValueError(
-                "RTDataset.__getitem__ 须先调用 bind_sensing_performance(sp)"
-            )
+    def _training_sample(self, idx: int) -> dict[str, torch.Tensor]:
         h_dd = torch.from_numpy(self.h_dd[idx])
         features = dd_spectrum_to_features(h_dd)
         range_m, vel_mps = monostatic_range_velocity(
@@ -419,12 +408,10 @@ class RTDataset(Dataset):
             self.target_velocity[idx],
             self.bs_pos,
         )
-        num_doppler_bins = h_dd.shape[0]
-        metric = SpectrumMetric(self.sensing_performance)
-        delay_bin, doppler_bin = metric.physical_to_local_bins(
+        delay_bin, doppler_bin = self._require_spectrum_metric().physical_to_local_bins(
             range_m,
             vel_mps,
-            num_doppler_bins=num_doppler_bins,
+            num_doppler_bins=h_dd.shape[0],
             sens_mode="monostatic",
         )
         peaks = MusicPeaks.from_local_bins(
@@ -441,12 +428,33 @@ class RTDataset(Dataset):
             "slot": torch.tensor(idx, dtype=torch.int64),
         }
 
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        """CNN 训练样本 dict。
+
+        返回键
+        ------
+        - ``features``：``(2, H, W)`` float32 幅相双通道（幅度 dB + 相位）
+        - ``peaks_delay`` / ``peaks_doppler``：ROI 局部 bin 监督 (float32 标量)
+        - ``range_m`` / ``velocity_mps``：单基地几何标签 (float32 标量)
+        - ``slot``：episode 索引 (int64)
+        """
+        self._validate_slot_index(idx)
+        return self._training_sample(idx)
+
     def __repr__(self) -> str:
         return f"RTDataset(n={len(self)}, h_dd_shape={self.h_dd.shape})"
 
     @classmethod
-    def load(cls, filepath: str | Path) -> RTDataset:
-        """从 HDF5 加载至内存。"""
+    def load(
+        cls,
+        filepath: str | Path,
+        *,
+        sensing_performance: SensingPerformance | None = None,
+    ) -> RTDataset:
+        """从 HDF5 加载至内存。
+
+        CNN 训练时建议传入 ``sensing_performance``，以便 ``__getitem__`` 生成谱 bin 标签。
+        """
         filepath = Path(filepath)
         with h5py.File(filepath, "r") as f:
             arrays = _read_array_datasets(f)
@@ -456,9 +464,11 @@ class RTDataset(Dataset):
                 target_velocity=arrays["target_velocity"],
                 h_dd=arrays["h_dd"],
                 collection_meta=CollectionMetadata.read_hdf5_attrs(f),
+                sensing_performance=sensing_performance,
             )
 
-# 
+
+# --- 采集产物 ---
 def save_collection_artifacts(
     *,
     scene_slug: str,

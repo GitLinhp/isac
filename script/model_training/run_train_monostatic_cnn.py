@@ -211,8 +211,10 @@ def main() -> None:
         raise ValueError("训练验证 RMSE 需要 TOML [music] 段以构建 SensingEstimator")
 
     # --- 数据集与 DataLoader ---
-    full_ds = RTDataset.load(h5_path)
-    full_ds.bind_sensing_performance(system.components.sensing_performance)
+    full_ds = RTDataset.load(
+        h5_path,
+        sensing_performance=system.components.sensing_performance,
+    )
     n_val = max(1, int(len(full_ds) * args.val_ratio))
     n_train = len(full_ds) - n_val
     if n_train < 1:

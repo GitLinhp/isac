@@ -250,9 +250,16 @@ sample_idx, position, velocity, true_range_m, true_radial_velocity_mps
 ```python
 from isac.collection import RTDataset
 from isac import DEFAULT_DATASET_H5
+from isac.system import System
+from isac.utils import load_config
 
-dataset = RTDataset.load(DEFAULT_DATASET_H5)
-# 或: RTDataset.load("data/empty_room_mc_sionna_dataset.h5")
+config = load_config(DEFAULT_DATASET_H5.parent / "data_collection.toml")
+system = System(config=config, device="cpu")
+dataset = RTDataset.load(
+    DEFAULT_DATASET_H5,
+    sensing_performance=system.components.sensing_performance,
+)
+# 或: RTDataset.load("data/empty_room_mc_sionna_dataset.h5", sensing_performance=sp)
 ```
 
 ### 6.2 单条样本（CNN 训练）
@@ -261,12 +268,16 @@ dataset = RTDataset.load(DEFAULT_DATASET_H5)
 
 ```python
 {
-    "features": Tensor,      # (C, H, W) float32，幅度 dB ± 可选相位
-    "range_m": Tensor,       # 单基地几何标签
+    "features": Tensor,       # (C, H, W) float32，幅度 dB ± 可选相位
+    "peaks_delay": Tensor,    # ROI 局部 delay bin 监督
+    "peaks_doppler": Tensor,  # ROI 局部 doppler bin 监督
+    "range_m": Tensor,        # 单基地几何标签
     "velocity_mps": Tensor,
-    "slot": Tensor,          # episode 索引
+    "slot": Tensor,           # episode 索引
 }
 ```
+
+`__getitem__` 须在 ``load(..., sensing_performance=sp)`` 时绑定感知性能对象。
 
 `dataset.spectrum_tensor(i)` 返回单条复数 `h_dd`（评估脚本用）。
 
@@ -283,7 +294,7 @@ config = load_config(DEFAULT_DATASET_H5.parent / "data_collection.toml")
 sensing = sensing_attrs_from_system(System(config=config, device="cpu"))
 # sensing: max_range_m, max_velocity_mps, range_resolution, velocity_resolution
 
-dataset.collection_meta  # CollectionMetadata | None
+dataset.collection_meta  # CollectionMetadata
 dataset.bs_pos           # (3,) ndarray
 len(dataset)             # episode 条数
 ```

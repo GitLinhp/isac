@@ -5,15 +5,30 @@ import torch
 
 from isac import DEFAULT_DATASET_H5
 from isac.collection import RTDataset
+from isac.sensing.spectrum import SensingPerformance
 
 _H5_PATH = DEFAULT_DATASET_H5
+
+
+def _sensing_performance() -> SensingPerformance:
+    from sionna.phy.ofdm import ResourceGrid
+
+    rg = ResourceGrid(
+        num_ofdm_symbols=512,
+        fft_size=2048,
+        subcarrier_spacing=30e3,
+        cyclic_prefix_length=32,
+        dc_null=False,
+        device="cpu",
+    )
+    return SensingPerformance(rg, carrier_frequency=6e9)
 
 
 @pytest.fixture
 def loaded_dataset() -> RTDataset:
     if not _H5_PATH.is_file():
         pytest.skip(f"数据集不存在: {_H5_PATH}")
-    return RTDataset.load(_H5_PATH)
+    return RTDataset.load(_H5_PATH, sensing_performance=_sensing_performance())
 
 
 def test_len_matches_h_dd_shape(loaded_dataset: RTDataset) -> None:
