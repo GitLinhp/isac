@@ -33,6 +33,13 @@
 下游评估
 --------
 训练完成后可用 ``script/evaluation/run_sensing_from_dataset.py --estimator model`` 回放 RMSE。
+
+checkpoint 约定
+--------------
+仅写入 ``model_state_dict``、``in_channels``、``base_channels``、``dropout``；
+ROI / 分辨率等感知参数由 TOML 提供，不序列化到 checkpoint。
+
+详见 ``docs/monostatic_delay_doppler_cnn.md``。
 """
 
 from __future__ import annotations
@@ -67,7 +74,10 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TrainInputs:
-    """校验后的训练输入路径。"""
+    """校验后的训练输入路径。
+
+    ``config_path`` 固定为 ``h5_path.parent / "data_collection.toml"``。
+    """
 
     h5_path: Path
     config_path: Path
@@ -75,12 +85,13 @@ class TrainInputs:
 
 @dataclass(frozen=True)
 class TrainPaths:
-    """训练产物输出路径。"""
+    """训练产物输出路径。
 
-    best_model: Path
-    checkpoint_dir: Path
-    training_curve: Path
-    checkpoint_final: Path
+    - ``best_model``：``val_loss`` 最优 checkpoint（``--output``）
+    - ``checkpoint_dir``：周期性 ``checkpoint_XXX.pth`` 目录
+    - ``training_curve``：损失与 RMSE 曲线 PNG
+    - ``checkpoint_final``：最终 epoch 权重
+    """
 
 
 def argument_parser() -> argparse.Namespace:
@@ -92,6 +103,7 @@ def argument_parser() -> argparse.Namespace:
         description="ISAC — 训练单基地时延–多普勒 CNN（h_dd → 距离/速度）"
     )
 
+    # --- 数据与划分 ---
     data_group = parser.add_argument_group("数据与划分")
     data_group.add_argument(
         "--dataset_h5",
@@ -103,6 +115,7 @@ def argument_parser() -> argparse.Namespace:
         "--val_ratio", type=float, default=0.2, help="验证集比例"
     )
 
+    # --- 训练超参 ---
     train_group = parser.add_argument_group("训练超参")
     train_group.add_argument("--epochs", type=int, default=200, help="训练轮数")
     train_group.add_argument("--batch_size", type=int, default=64, help="批大小")
@@ -117,6 +130,7 @@ def argument_parser() -> argparse.Namespace:
     )
     train_group.add_argument("--seed", type=int, default=42, help="随机种子")
 
+    # --- 输出与检查点 ---
     out_group = parser.add_argument_group(
         "输出与检查点",
         "val_loss 最优写入 --output；每 save_every epoch 写周期性 checkpoint 并刷新训练曲线",
@@ -156,7 +170,11 @@ def _resolve_train_inputs(args: argparse.Namespace) -> TrainInputs:
 def _preflight_training(
     system: System,
 ) -> tuple[SensingEstimator, SensingPerformance]:
-    """校验标签生成与物理 RMSE 评估所需组件已构建。"""
+    """校验标签生成与物理 RMSE 评估所需组件已构建。
+
+    - ``SensingEstimator``（TOML ``[music]``）：验证集物理 RMSE
+    - ``SensingPerformance``（TOML ``[ofdm]`` 等）：``kinematics_to_target_bins`` 标签
+    """
     sensing_estimator = system.components.sensing_estimator
     if sensing_estimator is None:
         raise ValueError("训练验证 RMSE 需要 TOML [music] 段以构建 SensingEstimator")
@@ -174,7 +192,10 @@ def _preflight_training(
 def _collate_batch(
     samples: list[dict[str, torch.Tensor]],
 ) -> dict[str, torch.Tensor]:
-    """将单样本 dict 堆叠为 batch 张量。"""
+    """将单样本 dict 堆叠为 batch 张量。
+
+    键与 ``RTDataset.__getitem__`` 一致；``bs_pos`` 每样本重复存储，训练时取 ``[0]``。
+    """
     return {
         "spectrum_tensor": torch.stack(
             [s["spectrum_tensor"] for s in samples], dim=0
@@ -318,7 +339,9 @@ def _evaluate(
     )
 
 
-# train/val 划分与 DataLoader 构建
+# --- train/val 划分与 DataLoader 构建 ---
+
+
 def _build_dataloaders(
     full_ds: RTDataset,
     args: argparse.Namespace,
@@ -353,7 +376,10 @@ def _build_model_and_optim(
     device: torch.device | str,
     lr: float,
 ) -> tuple[MonostaticDelayDopplerCNN, torch.optim.Optimizer, MonostaticSensingLoss, int]:
-    """构建 CNN、Adam 与 bin 空间损失。"""
+    """构建 CNN、Adam 与 bin 空间损失。
+
+    CNN 仅 ``in_channels=2``，不传入 ``sensing_attrs``；感知参数仅用于标签与日志。
+    """
     in_channels = 2
     model = MonostaticDelayDopplerCNN(in_channels=in_channels).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -399,7 +425,11 @@ def _checkpoint_payload(
     *,
     in_channels: int,
 ) -> dict[str, Any]:
-    """构造 checkpoint 字典（仅权重与结构超参）。"""
+    """构造 checkpoint 字典（仅权重与结构超参）。
+
+    键：``model_state_dict``、``in_channels``、``base_channels``、``dropout``。
+    不含 ``epoch``、``config_file`` 及感知 ROI/分辨率字段。
+    """
     return {
         "model_state_dict": model.state_dict(),
         "in_channels": in_channels,
