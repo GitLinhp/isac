@@ -4,8 +4,10 @@
 构建入口：``SystemComponents.build_from_params``。
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from sionna.phy.mimo import StreamManagement
@@ -19,10 +21,12 @@ from sionna.phy.ofdm import (
 )
 
 from .params.system_params import SystemParams
-from ..channel.rcs.rcs_channel import RCSChannel
-from ..channel.rcs.rcs_scene import RCSScene
-from ..channel.rt.rt_channel import RTChannel
-from ..channel.rt.rt_simulator import RTSimulator
+
+if TYPE_CHECKING:
+    from ..channel.rcs.rcs_channel import RCSChannel
+    from ..channel.rcs.rcs_scene import RCSScene
+    from ..channel.rt.rt_channel import RTChannel
+    from ..channel.rt.rt_simulator import RTSimulator
 from ..sensing.spectrum import (
     DelayDopplerSpectrum,
     DelayDopplerRoi,
@@ -202,6 +206,11 @@ class SystemComponents:
 
         前置校验由 ``SystemParams._validate_channel_dependencies`` 完成。
         """
+        from ..channel.rcs.rcs_channel import RCSChannel
+        from ..channel.rcs.rcs_scene import RCSScene
+        from ..channel.rt.rt_channel import RTChannel
+        from ..channel.rt.rt_simulator import RTSimulator
+
         channel_cfg = system_params.channel
         carrier_frequency = system_params.carrier_frequency
 

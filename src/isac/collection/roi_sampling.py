@@ -1,4 +1,4 @@
-"""平面 ROI 内位置与速度采样（z=0，速度方向在 xy 平面）。"""
+"""平面 ROI 内位置与速度采样（xy 平面 ROI + 固定 z=roi_z，速度方向在 xy 平面）。"""
 
 from __future__ import annotations
 
@@ -23,12 +23,14 @@ class RoiKinematicsSampler:
         speed_range: list[float] | tuple[float, ...],
         speed_sampling_mode: SamplingMode,
         num_samples: int,
+        roi_z: float = 0.0,
     ) -> None:
         x_lo, x_hi, y_lo, y_hi = self.parse_roi_xy(roi)
         smin, smax = self.parse_speed_range(speed_range)
+        z_fixed = self.parse_roi_z(roi_z)
         n = int(num_samples)
         positions = self._sample_positions(
-            x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode
+            x_lo, x_hi, y_lo, y_hi, n, position_sampling_mode, roi_z=z_fixed
         )
         velocities, orientations = self._sample_velocities(
             smin, smax, n, speed_sampling_mode
@@ -67,6 +69,14 @@ class RoiKinematicsSampler:
         return x_lo, x_hi, y_lo, y_hi
 
     @staticmethod
+    def parse_roi_z(roi_z: float) -> float:
+        """解析 ROI 内固定 z 高度（m）。"""
+        z = float(roi_z)
+        if not np.isfinite(z):
+            raise ValueError("roi_z 须为有限值")
+        return z
+
+    @staticmethod
     def parse_speed_range(
         pair: list[float] | tuple[float, ...],
     ) -> tuple[float, float]:
@@ -88,6 +98,8 @@ class RoiKinematicsSampler:
         y_hi: float,
         num_samples: int,
         sampling_mode: SamplingMode,
+        *,
+        roi_z: float,
     ) -> np.ndarray:
         """在平面 ROI 内采样位置，形状 ``(num_samples, 3)``。"""
         if num_samples <= 0:
@@ -97,19 +109,21 @@ class RoiKinematicsSampler:
         if sampling_mode == "uniform":
             x = np.random.uniform(x_lo, x_hi, size=n)
             y = np.random.uniform(y_lo, y_hi, size=n)
-            z = np.zeros(n, dtype=np.float64)
+            z = np.full(n, roi_z, dtype=np.float64)
             return np.column_stack((x, y, z)).astype(np.float64)
         if sampling_mode == "gaussian":
             center = np.array(
-                [(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, 0.0], dtype=np.float64
+                [(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0, roi_z],
+                dtype=np.float64,
             )
             std = np.array(
-                [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0], dtype=np.float64
+                [(x_hi - x_lo) / 6.0, (y_hi - y_lo) / 6.0, 0.0],
+                dtype=np.float64,
             )
             pts = np.random.normal(loc=center, scale=std, size=(n, 3)).astype(
                 np.float64
             )
-            return np.clip(pts, [x_lo, y_lo, 0.0], [x_hi, y_hi, 0.0])
+            return np.clip(pts, [x_lo, y_lo, roi_z], [x_hi, y_hi, roi_z])
         raise ValueError("sampling_mode 仅支持 'uniform' 或 'gaussian'")
 
     @staticmethod

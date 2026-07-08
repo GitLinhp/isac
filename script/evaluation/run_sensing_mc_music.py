@@ -7,8 +7,8 @@
 流程概要
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
-2. 构建 ``System``，循环更新 RT 目标位姿并过滤 ``paths_intersect_target``。
-3. 每采纳 episode：发射 → 信道 → LS → DD 谱 → MUSIC → 物理换算 → RMSE。
+2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与 ``|true_radial_velocity| > Δv``。
+3. 每采纳 episode：发射 → 信道 → LS → DD 谱 → MUSIC → 物理换算 → RMSE；前 10 条另写出 ``{scene_slug}_scene_XX.png`` 与 DD 谱调试图。
 4. 写出 ``{scene_slug}_mc_sensing_metrics.csv`` 与终端 RMSE 汇总表。
 
 与 ``run_data_collection.py`` 的区别：不写 HDF5，在线做 MUSIC 评估。
@@ -31,7 +31,7 @@ from isac import OUT_DIR
 from isac.collection import CollectionMetadata
 from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
-from isac.utils import load_config
+from isac.utils import load_config, set_random_seed
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 if TYPE_CHECKING:
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from isac.data_structures.system_components import SystemComponents
 
 SCRIPT_OUT_DIR = OUT_DIR / "sensing_mc_music"
+DD_DEBUG_PLOT_COUNT = 10
 
 SENSING_CSV_COLUMNS = [
     "sample_idx",
@@ -111,8 +112,14 @@ def argument_parser() -> argparse.Namespace:
         nargs=4,
         type=float,
         metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
-        default=[-2.5, 2.5, -4.5, 4.5],
-        help="平面 ROI 四元组（m），z 固定为 0",
+        default=[-4.5, 4.5, -2.5, 2.5],
+        help="平面 ROI 四元组（m），xy 平面；z 由 --roi_z 指定",
+    )
+    mc_group.add_argument(
+        "--roi_z",
+        type=float,
+        default=0.5,
+        help="ROI 内目标位置的固定 z 高度（m）",
     )
     mc_group.add_argument(
         "--position_sampling_mode",
@@ -126,7 +133,7 @@ def argument_parser() -> argparse.Namespace:
         nargs=2,
         type=float,
         metavar=("MIN", "MAX"),
-        default=[0.1, 3.0],
+        default=[0.5, 3.0],
         help="速度模值范围 (m/s)",
     )
     mc_group.add_argument(
@@ -145,11 +152,16 @@ def argument_parser() -> argparse.Namespace:
         choices=["dd", "rv"],
         help="谱图与 MUSIC 日志 metric",
     )
+    eval_group.add_argument(
+        "--apply_mti",
+        action="store_true",
+        help="在 LS 估计与 DD 谱之间施加 MTI（须 TOML 含 [mti] 段）",
+    )
 
     return parser.parse_args()
 
 
-def _preflight_checks(system: System) -> RTSimulator:
+def _preflight_checks(system: System, *, apply_mti: bool = False) -> RTSimulator:
     """校验 RT 链路与 MUSIC / SensingEstimator 已就绪。"""
     rt_simulator = system.components.rt_simulator
     if rt_simulator is None:
@@ -158,6 +170,12 @@ def _preflight_checks(system: System) -> RTSimulator:
         raise ValueError("MUSIC 估计需要 TOML [music] 段以构建 MUSICEstimator")
     if system.components.sensing_estimator is None:
         raise ValueError("感知评估需要 TOML [music] 段以构建 SensingEstimator")
+    if apply_mti and system.components.moving_target_indication is None:
+        raise ValueError("--apply_mti 需要 TOML [mti] 段以构建 MovingTargetIndication")
+    if system.components.sensing_performance is None:
+        raise ValueError(
+            "速度分辨率筛选需要 sensing_performance（[ofdm] + carrier_frequency）"
+        )
     return rt_simulator
 
 
@@ -174,6 +192,22 @@ def _render_scene_png(
     )
 
 
+def _render_episode_scene_png(
+    rt_simulator: RTSimulator,
+    *,
+    scene_slug: str,
+    episode_idx: int,
+    out_dir: Path,
+) -> None:
+    """渲染单次采纳 episode 的 RT 场景（含路径）。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rt_simulator.render_to_file(
+        filename=f"{scene_slug}_scene_{episode_idx:02d}.png",
+        output_dir=out_dir,
+        with_paths=True,
+    )
+
+
 def _log_run_context(
     *,
     config_path: str,
@@ -181,11 +215,14 @@ def _log_run_context(
     scene_slug: str,
     num_samples: int,
     metric_mode: str,
+    apply_mti: bool,
 ) -> None:
     """打印场景、配置与评估参数摘要。"""
+    mti_label = "开" if apply_mti else "关"
     print(
         f"目标: {target_name}, 场景: {scene_slug}, 配置: {config_path}\n"
-        f"估计器: MUSIC | metric_mode={metric_mode} | 目标采纳数={num_samples}"
+        f"估计器: MUSIC | metric_mode={metric_mode} | MTI={mti_label} | "
+        f"目标采纳数={num_samples}"
     )
 
 
@@ -202,6 +239,8 @@ def _evaluate_episode(
     metric_mode: str,
     true_range: torch.Tensor,
     true_velocity: torch.Tensor,
+    apply_mti: bool = False,
+    visualize_file: Path | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """单 episode：发射 → 信道 → MUSIC → 物理换算 → 径向 RMSE。"""
     comps = system.components
@@ -210,7 +249,19 @@ def _evaluate_episode(
     y_rg = comps.channel(x_rg, x_time, domain="frequency", snr_db=snr_db)
 
     h_freq = comps.ls_channel_estimator(x_rg, y_rg)
+    if apply_mti:
+        mti = comps.moving_target_indication
+        if mti is None:
+            raise ValueError("apply_mti=True 需要 TOML [mti] 段")
+        h_freq = mti(h_freq)
     h_dd = comps.delay_doppler_spectrum(h_freq)
+    if visualize_file is not None:
+        comps.delay_doppler_spectrum.visualize(
+            file_name=visualize_file,
+            metric_mode=metric_mode,
+            sens_mode="monostatic",
+            to_db=False,
+        )
     peaks = comps.music_estimator(h_dd, num_sources=1)
     estimate = comps.sensing_estimator(
         peaks,
@@ -228,6 +279,49 @@ def _evaluate_episode(
     )
 
 
+def _music_pbar_postfix(
+    *,
+    true_range: torch.Tensor,
+    est_range: torch.Tensor,
+    rmse_range: torch.Tensor,
+    true_velocity: torch.Tensor,
+    est_velocity: torch.Tensor,
+    rmse_velocity: torch.Tensor,
+) -> str:
+    """构造单次 MUSIC 评估的 tqdm postfix（保留两位小数，与 CSV 一致）。"""
+    r_t = csv_float2_scalar(true_range)
+    r_e = csv_float2_scalar(est_range)
+    r_mse = csv_float2_scalar(rmse_range)
+    v_t = csv_float2_scalar(true_velocity)
+    v_e = csv_float2_scalar(est_velocity)
+    v_mse = csv_float2_scalar(rmse_velocity)
+    return f"r({r_t},{r_e},{r_mse}) v({v_t},{v_e},{v_mse})"
+
+
+def _log_dd_debug_plots(scene_slug: str, n_saved: int) -> None:
+    """打印前若干 episode 的 DD 调试图写出摘要。"""
+    if n_saved <= 0:
+        return
+    first = SCRIPT_OUT_DIR / f"{scene_slug}_dd_spectrum_00.png"
+    last = SCRIPT_OUT_DIR / f"{scene_slug}_dd_spectrum_{n_saved - 1:02d}.png"
+    if n_saved == 1:
+        print(f"DD 调试图已写入: {first} (共 1 张)")
+    else:
+        print(f"DD 调试图已写入: {first} ... {last} (共 {n_saved} 张)")
+
+
+def _log_scene_debug_plots(scene_slug: str, n_saved: int) -> None:
+    """打印前若干 episode 的场景调试图写出摘要。"""
+    if n_saved <= 0:
+        return
+    first = SCRIPT_OUT_DIR / f"{scene_slug}_scene_00.png"
+    last = SCRIPT_OUT_DIR / f"{scene_slug}_scene_{n_saved - 1:02d}.png"
+    if n_saved == 1:
+        print(f"场景调试图已写入: {first} (共 1 张)")
+    else:
+        print(f"场景调试图已写入: {first} ... {last} (共 {n_saved} 张)")
+
+
 def _run_mc_loop(
     *,
     system: System,
@@ -236,6 +330,8 @@ def _run_mc_loop(
     target,
     rt_simulator: RTSimulator,
     metric_mode: str,
+    scene_slug: str,
+    apply_mti: bool,
 ) -> tuple[
     list[dict[str, str | int]],
     list[torch.Tensor],
@@ -249,15 +345,15 @@ def _run_mc_loop(
     velocity_rmses: list[torch.Tensor] = []
     accepted = 0
     attempts = 0
-    range_sum = 0.0
-    vel_sum = 0.0
+    v_res = float(system.components.sensing_performance.velocity_resolution_monostatic)
 
     with tqdm(total=collection_meta.num_samples, desc="MUSIC 评估", unit="ep") as pbar:
         while accepted < collection_meta.num_samples:
             if len(sampler) == 0:
                 raise RuntimeError(
                     f"采样池已耗尽：已采纳 {accepted}/{collection_meta.num_samples} 条。"
-                    "请增大 --sampler_pool_factor 或调整过滤条件（scene_filter / 目标路径交互）。"
+                    "请增大 --sampler_pool_factor 或调整过滤条件"
+                    "（scene_filter / 镜面反射 / 径向速度分辨率）。"
                 )
             pos, vel, ori = sampler.pop()
             attempts += 1
@@ -269,18 +365,38 @@ def _run_mc_loop(
             )
             rt_simulator.paths(update=True)
 
-            if not rt_simulator.paths_intersect_target(target):
+            if not rt_simulator.paths_intersect_target_with_interaction(
+                target, "specular"
+            ):
                 continue
 
             geom = rt_simulator.rx_target_tx_geometric
             true_range = geom.range_tensor[0, 0, 0]
             true_velocity = geom.vel_tensor[0, 0, 0]
+            if abs(float(true_velocity.item())) <= v_res:
+                continue
+
+            if accepted < DD_DEBUG_PLOT_COUNT:
+                _render_episode_scene_png(
+                    rt_simulator,
+                    scene_slug=scene_slug,
+                    episode_idx=accepted,
+                    out_dir=SCRIPT_OUT_DIR,
+                )
+
+            viz_path = None
+            if accepted < DD_DEBUG_PLOT_COUNT:
+                viz_path = (
+                    SCRIPT_OUT_DIR / f"{scene_slug}_dd_spectrum_{accepted:02d}.png"
+                )
 
             rmse_range, rmse_vel, est_range, est_vel, _ = _evaluate_episode(
                 system,
                 metric_mode=metric_mode,
                 true_range=true_range,
                 true_velocity=true_velocity,
+                apply_mti=apply_mti,
+                visualize_file=viz_path,
             )
 
             csv_rows.append(
@@ -299,12 +415,16 @@ def _run_mc_loop(
             range_rmses.append(rmse_range)
             velocity_rmses.append(rmse_vel)
             accepted += 1
-            range_sum += rmse_range.item()
-            vel_sum += rmse_vel.item()
             pbar.update(1)
-            pbar.set_postfix(
-                range_rmse=f"{range_sum / accepted:.2f}m",
-                vel_rmse=f"{vel_sum / accepted:.2f}m/s",
+            pbar.set_postfix_str(
+                _music_pbar_postfix(
+                    true_range=true_range,
+                    est_range=est_range,
+                    rmse_range=rmse_range,
+                    true_velocity=true_velocity,
+                    est_velocity=est_vel,
+                    rmse_velocity=rmse_vel,
+                )
             )
 
     acceptance_rate = accepted / attempts if attempts else 0.0
@@ -374,6 +494,7 @@ def _print_rmse_summary(
 def main() -> None:
     """蒙特卡洛 MUSIC 在线评估入口。"""
     args = argument_parser()
+    set_random_seed(args.seed)
     collection_meta = CollectionMetadata.from_args(args)
     sampler = collection_meta.build_sampler()
 
@@ -381,7 +502,7 @@ def main() -> None:
         config=load_config(args.config_file),
         device=args.device,
     )
-    rt_simulator = _preflight_checks(system)
+    rt_simulator = _preflight_checks(system, apply_mti=args.apply_mti)
 
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
@@ -391,6 +512,7 @@ def main() -> None:
         scene_slug=scene_slug,
         num_samples=collection_meta.num_samples,
         metric_mode=args.metric_mode,
+        apply_mti=args.apply_mti,
     )
     _render_scene_png(rt_simulator, scene_slug, SCRIPT_OUT_DIR)
     _log_sensing_performance(system.components)
@@ -402,12 +524,17 @@ def main() -> None:
         target=target,
         rt_simulator=rt_simulator,
         metric_mode=args.metric_mode,
+        scene_slug=scene_slug,
+        apply_mti=args.apply_mti,
     )
 
     print(f"接受率: {acceptance_rate:.1%} ({len(csv_rows)}/{attempts})")
 
     csv_path = SCRIPT_OUT_DIR / f"{scene_slug}_mc_sensing_metrics.csv"
     _write_sensing_csv(csv_path, csv_rows)
+    n_debug_plots = min(len(csv_rows), DD_DEBUG_PLOT_COUNT)
+    _log_scene_debug_plots(scene_slug, n_debug_plots)
+    _log_dd_debug_plots(scene_slug, n_debug_plots)
 
     n_episodes = len(csv_rows)
     print(f"性能评估完成: {n_episodes}/{collection_meta.num_samples} episodes (MUSIC)")

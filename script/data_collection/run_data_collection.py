@@ -109,7 +109,13 @@ def argument_parser() -> argparse.Namespace:
         type=float,
         metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
         default=[-2.5, 2.5, -4.5, 4.5],
-        help="平面 ROI 四元组（m），z 固定为 0",
+        help="平面 ROI 四元组（m），xy 平面；z 由 --roi_z 指定",
+    )
+    mc_group.add_argument(
+        "--roi_z",
+        type=float,
+        default=0.0,
+        help="ROI 内目标位置的固定 z 高度（m）",
     )
     mc_group.add_argument(
         "--position_sampling_mode",

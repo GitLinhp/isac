@@ -46,7 +46,8 @@ class CollectionMetadata:
     字段
     ----
     - ``seed``：随机种子
-    - ``roi``：平面 ROI ``[xmin, xmax, ymin, ymax]``（m），z 固定为 0
+    - ``roi``：平面 ROI ``[xmin, xmax, ymin, ymax]``（m），z 由 ``roi_z`` 指定
+    - ``roi_z``：ROI 内目标位置的固定 z 高度（m）
     - ``position_sampling_mode``：``uniform`` / ``gaussian``
     - ``speed_range``：速度模值 ``[vmin, vmax]``（m/s）
     - ``speed_sampling_mode``：``uniform`` / ``gaussian``
@@ -56,6 +57,7 @@ class CollectionMetadata:
 
     seed: int
     roi: tuple[float, float, float, float]
+    roi_z: float = 0.0
     position_sampling_mode: SamplingMode = "uniform"
     speed_range: tuple[float, float] = (0.0, 0.0)
     speed_sampling_mode: SamplingMode = "uniform"
@@ -75,6 +77,7 @@ class CollectionMetadata:
             speed_range=self.speed_range,
             speed_sampling_mode=self.speed_sampling_mode,
             num_samples=self.pool_size,
+            roi_z=self.roi_z,
         )
 
     @classmethod
@@ -91,6 +94,7 @@ class CollectionMetadata:
         return cls(
             seed=seed,
             roi=RoiKinematicsSampler.parse_roi_xy(args.roi),
+            roi_z=RoiKinematicsSampler.parse_roi_z(args.roi_z),
             position_sampling_mode=_parse_sampling_mode(
                 args.position_sampling_mode,
                 field="position_sampling_mode",
@@ -111,15 +115,22 @@ class CollectionMetadata:
 
     @classmethod
     def read_hdf5_attrs(cls, f: h5py.File) -> CollectionMetadata:
-        """从根属性读取采集元数据；缺字段时 ``ValueError``。"""
-        missing = [fld.name for fld in fields(cls) if fld.name not in f.attrs]
+        """从根属性读取采集元数据；缺 ``roi_z`` 时默认为 0.0。"""
+        missing = [
+            fld.name
+            for fld in fields(cls)
+            if fld.name not in f.attrs and fld.name != "roi_z"
+        ]
         if missing:
             raise ValueError(
                 f"HDF5 缺少采集元数据根属性: {', '.join(missing)}"
             )
-        return cls(
-            **{
-                fld.name: _hdf5_deserialize_collection(fld.name, f.attrs[fld.name])
-                for fld in fields(cls)
-            }
-        )
+        kwargs: dict[str, Any] = {}
+        for fld in fields(cls):
+            if fld.name in f.attrs:
+                kwargs[fld.name] = _hdf5_deserialize_collection(
+                    fld.name, f.attrs[fld.name]
+                )
+            elif fld.name == "roi_z":
+                kwargs[fld.name] = 0.0
+        return cls(**kwargs)

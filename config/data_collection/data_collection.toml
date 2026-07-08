@@ -71,33 +71,46 @@ power_dbm = 44               # 发射功率 (dBm)，对应 Sionna RT Transmitter
 
 # 目标材质参数
 [rt_simulator.target_materials]
-[rt_simulator.target_materials.cube_material]
+# [rt_simulator.target_materials.cube_material]
+# type = "metal"
+# thickness = 0.01
+# color = [0, 0.2, 0.6]
+
+[rt_simulator.target_materials.sphere_material]
 type = "metal"
 thickness = 0.01
 color = [0, 0.2, 0.6]
 
 # 目标参数
 [rt_simulator.targets]
-[rt_simulator.targets.cube]
-fname = "cube"
-material = "cube_material"
-position = [0, 0, 0]
+# [rt_simulator.targets.cube]
+# fname = "cube"
+# material = "cube_material"
+# position = [0, 0, 0]
+# velocity = [0, 0, 0]
+# orientation = [0, 0, 0]
+# # scaling = [0.6, 0.6, 0.6]
+# scaling = [1, 1, 1]
+
+[rt_simulator.targets.sphere]
+fname = "sphere"
+material = "sphere_material"
+position = [0, 0, 0.5]
 velocity = [0, 0, 0]
 orientation = [0, 0, 0]
-# scaling = [0.6, 0.6, 0.6]
-scaling = [1, 1, 1]
+scaling = [0.5, 0.5, 0.5]
 
 # 路径解析器参数
 [rt_simulator.path_solver]
 max_depth = 3               # 最大路径交互次数
 max_num_paths_per_src = 1e6 # 每个信号源的最大路径数
 samples_per_src = 1e6       # 每个信号源的射线采样数
-los = false                  # 是否考虑LOS路径
+los = false                 # 是否考虑LOS路径
 specular_reflection = true  # 是否考虑镜面反射
-diffuse_reflection = false   # 是否考虑漫反射
-refraction = false           # 是否考虑折射
-diffraction = false          # 是否考虑衍射
-edge_diffraction = false     # 是否考虑边缘衍射
+diffuse_reflection = true   # 是否考虑漫反射
+refraction = true           # 是否考虑折射
+diffraction = true          # 是否考虑衍射
+edge_diffraction = true     # 是否考虑边缘衍射
 synthetic_array = true      # 是否使用合成阵列
 seed = 42                   # 随机种子
 
@@ -110,8 +123,8 @@ type = "general_hamming"
 alpha = 0.7
 
 [windows.doppler_window]
-type = "general_hamming"
-alpha = 0.54
+type = "chebwin"
+at = 50
 
 # CFAR 参数
 [cfar]

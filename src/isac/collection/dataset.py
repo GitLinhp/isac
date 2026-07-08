@@ -39,7 +39,7 @@ HDF5 文件布局
 根 attrs:
 
 - ``description``
-- ``seed``, ``roi``, ``position_sampling_mode``, ``speed_range``, ``speed_sampling_mode``、
+- ``seed``, ``roi``, ``roi_z``, ``position_sampling_mode``, ``speed_range``, ``speed_sampling_mode``、
   ``num_samples``, ``sampler_pool_factor``：由 ``CollectionMetadata`` 写入
 
 感知 ROI 与分辨率见同目录 TOML 副本（``[dd_spectrum_roi]``、``[ofdm]``），不写入 HDF5。

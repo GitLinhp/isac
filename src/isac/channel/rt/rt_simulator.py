@@ -14,17 +14,40 @@ from sionna.rt import (
     ITURadioMaterial,
     Paths,
 )
+from sionna.rt.constants import InteractionType
 import sionna.rt.scene
 from mitsuba import Bitmap
 
 # 本地模块
-from ...data_structures.params import RTSimulatorParams
+from ...data_structures.params.channel_params.rt_simulator_params import RTSimulatorParams
 from .rt_scene_filter import RTSceneFilter
 from .rt_transceiver import RTTransceiver
 from .rt_target import RTTarget
 from .rx_target_tx_geometric import RxTargetTxGeometric
 from ... import PROJECT_ROOT
 from . import RT_SCENES_DIR
+
+
+_INTERACTION_TYPE_ALIASES: dict[str, int] = {
+    "none": InteractionType.NONE,
+    "specular": InteractionType.SPECULAR,
+    "diffuse": InteractionType.DIFFUSE,
+    "refraction": InteractionType.REFRACTION,
+    "diffraction": InteractionType.DIFFRACTION,
+}
+
+
+def _normalize_interaction_type(interaction_type: int | str) -> int:
+    if isinstance(interaction_type, str):
+        key = interaction_type.strip().lower()
+        try:
+            return _INTERACTION_TYPE_ALIASES[key]
+        except KeyError as exc:
+            raise ValueError(
+                f"未知 interaction_type={interaction_type!r}；"
+                f"允许: {sorted(_INTERACTION_TYPE_ALIASES)}"
+            ) from exc
+    return int(interaction_type)
 
 
 class RTSimulator:
@@ -356,6 +379,29 @@ class RTSimulator:
     def paths_intersect_target(self, target: RTTarget) -> bool:
         """判断 ``paths`` 是否与目标 mesh 有交互。"""
         return self.paths_intersect_object(int(target.object_id))
+
+    def paths_intersect_object_with_interaction(
+        self,
+        object_id: int,
+        interaction_type: int | str,
+    ) -> bool:
+        """任一路径在任一 bounce 深度与 ``object_id`` 相交且交互类型匹配则返回 True。"""
+        itype = _normalize_interaction_type(interaction_type)
+        p = self.paths()
+        objects = np.asarray(p.objects)
+        interactions = np.asarray(p.interactions)
+        return bool(np.any((objects == object_id) & (interactions == itype)))
+
+    def paths_intersect_target_with_interaction(
+        self,
+        target: RTTarget,
+        interaction_type: int | str,
+    ) -> bool:
+        """判断 ``paths`` 是否与目标 mesh 存在指定交互类型。"""
+        return self.paths_intersect_object_with_interaction(
+            int(target.object_id),
+            interaction_type,
+        )
 
     # ==================== 场景可视化方法 ====================
 

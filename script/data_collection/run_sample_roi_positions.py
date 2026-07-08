@@ -10,7 +10,7 @@
         --speed_sampling_mode gaussian \\
         --seed 0
 
-平面 ROI 为 ``XMIN XMAX YMIN YMAX``，位置 z 固定为 0；速度方向为 xy 平面均匀随机，
+平面 ROI 为 ``XMIN XMAX YMIN YMAX``，位置 z 由 ``--roi_z`` 固定；速度方向为 xy 平面均匀随机，
 速度模值在 ``--speed_range`` 内按 ``--speed_sampling_mode`` 采样。不做 RT 场景或障碍物过滤。
 """
 
@@ -60,7 +60,7 @@ def save_samples_csv(path: Path, rows: list[dict[str, str | int]]) -> None:
 
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="平面 ROI 内采样位置与速度并打印（位置 z=0，速度方向在 xy 平面）"
+        description="平面 ROI 内采样位置与速度并打印（固定 z=--roi_z，速度方向在 xy 平面）"
     )
     parser.add_argument(
         "--num_samples",
@@ -74,7 +74,13 @@ def argument_parser() -> argparse.Namespace:
         type=float,
         metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
         default=[0.0, 80.0, -40.0, 40.0],
-        help="平面 ROI 四元组",
+        help="平面 ROI 四元组（xy 平面；z 由 --roi_z 指定）",
+    )
+    parser.add_argument(
+        "--roi_z",
+        type=float,
+        default=0.0,
+        help="ROI 内目标位置的固定 z 高度（m）",
     )
     parser.add_argument(
         "--position_sampling_mode",
@@ -123,6 +129,7 @@ def main() -> None:
         speed_range=args.speed_range,
         speed_sampling_mode=args.speed_sampling_mode,
         num_samples=args.num_samples,
+        roi_z=args.roi_z,
     )
 
     csv_rows = [

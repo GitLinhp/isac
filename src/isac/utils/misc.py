@@ -12,6 +12,7 @@
 
 import torch
 import numpy as np
+from sionna.phy import config as sn_config
 
 from .type_converter import convert
 
@@ -22,7 +23,7 @@ from .type_converter import convert
 def set_random_seed(seed: int) -> None:
     """统一设置所有随机数生成器的种子
 
-    同时设置 NumPy、TensorFlow 和 PyTorch 的随机种子，确保实验的可重复性。
+    同时设置 NumPy、PyTorch 与 Sionna 全局种子，确保实验的可重复性。
 
     参数:
     -------
@@ -41,7 +42,8 @@ def set_random_seed(seed: int) -> None:
         # 确保 CUDA 操作的确定性（如果支持）
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-    
+
+    sn_config.seed = seed
 
 def csv_float2_scalar(value: object) -> str:
     """将标量格式化为保留两位小数的 CSV 字段字符串。"""
