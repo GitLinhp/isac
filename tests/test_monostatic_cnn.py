@@ -63,6 +63,21 @@ def test_monostatic_cnn_num_layers_invalid():
         MonostaticDelayDopplerCNN(in_channels=2, num_layers=0)
 
 
+def test_monostatic_cnn_base_channels_dropout_roi_input():
+    """ROI 典型尺寸 8×13 与小宽度/高 dropout 配置仍可前向。"""
+    model = MonostaticDelayDopplerCNN(
+        in_channels=2,
+        base_channels=16,
+        num_layers=2,
+        dropout=0.4,
+    )
+    model.eval()
+    h_dd = torch.randn(8, 13, dtype=torch.complex64)
+    with torch.no_grad():
+        bins = model(h_dd)
+    assert bins.shape == (1, 2)
+
+
 def test_dd_features_from_cropped_spectrum():
     h_dd = torch.randn(128, 64, dtype=torch.complex64)
     feat = dd_spectrum_to_features(h_dd)

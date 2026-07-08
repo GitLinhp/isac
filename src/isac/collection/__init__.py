@@ -8,7 +8,9 @@ from .dataset import (
 )
 from .h5_layout import (
     collection_dataset_description,
+    collection_dataset_dir,
     collection_h5_path,
+    format_subcarrier_spacing_slug,
 )
 from .roi_sampling import (
     RoiKinematicsSampler,
@@ -21,7 +23,9 @@ __all__ = [
     "RTDataset",
     "RTDatasetWriter",
     "collection_dataset_description",
+    "collection_dataset_dir",
     "collection_h5_path",
+    "format_subcarrier_spacing_slug",
     "save_collection_artifacts",
     "RoiKinematicsSampler",
     "SamplingMode",

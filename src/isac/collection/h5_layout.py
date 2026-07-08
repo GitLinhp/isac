@@ -22,6 +22,7 @@ DATASET_KEY_TARGET_VELOCITY = "target_velocity"
 DATASET_KEY_BS_POS = "bs_pos"
 
 META_KEY_DESCRIPTION = "description"
+META_KEY_APPLY_MTI = "apply_mti"
 
 COLLECTION_TUPLE_FIELDS = frozenset({"roi", "speed_range"})
 
@@ -31,6 +32,25 @@ ARRAY_DATASET_SPECS: tuple[tuple[str, str], ...] = (
     (DATASET_KEY_TARGET_VELOCITY, "target_velocity"),
     (DATASET_KEY_H_DD, "h_dd"),
 )
+
+
+def format_subcarrier_spacing_slug(subcarrier_spacing_hz: float) -> str:
+    """将子载波间隔 (Hz) 格式化为目录名片段，例如 30000 -> ``30kHz``。"""
+    khz = subcarrier_spacing_hz / 1e3
+    if abs(khz - round(khz)) < 1e-6:
+        return f"{int(round(khz))}kHz"
+    text = f"{khz:.2f}".rstrip("0").rstrip(".")
+    return f"{text.replace('.', 'p')}kHz"
+
+
+def collection_dataset_dir(
+    scene_slug: str,
+    subcarrier_spacing_hz: float,
+    base_dir: Path,
+) -> Path:
+    """返回采集产物子目录 ``{base_dir}/{scene_slug}_{scs_slug}``。"""
+    scs_slug = format_subcarrier_spacing_slug(subcarrier_spacing_hz)
+    return base_dir / f"{scene_slug}_{scs_slug}"
 
 
 def collection_h5_path(scene_slug: str, out_dir: Path) -> Path:

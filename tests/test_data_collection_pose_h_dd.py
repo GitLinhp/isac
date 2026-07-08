@@ -31,6 +31,7 @@ def _simulate_episode_h_dd(
     pos: np.ndarray,
     vel: np.ndarray,
     snr_db: float | None = None,
+    apply_mti: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None:
     """更新目标位姿并跑完整采集链；过滤未通过时返回 ``None``。"""
     rt_simulator = system.components.rt_simulator
@@ -38,19 +39,25 @@ def _simulate_episode_h_dd(
     ori = cartesian_direction_to_yaw_pitch_roll(vel.reshape(1, 3))[0]
 
     target(position=pos, velocity=vel, orientation=ori)
-    if not rt_simulator.scene_filter(pos):
-        return None
     rt_simulator.paths(update=True)
-    if not rt_simulator.paths_intersect_target(target):
+    if not rt_simulator.paths_intersect_target_with_interaction(target, "specular"):
         return None
 
     geom = rt_simulator.rx_target_tx_geometric
     true_range = geom.range_tensor[0, 0, 0]
     true_velocity = geom.vel_tensor[0, 0, 0]
+    v_res = float(
+        system.components.sensing_performance.velocity_resolution_monostatic
+    )
+    if abs(float(true_velocity.item())) <= v_res:
+        return None
+
     comps = system.components
     _, x_rg, x_time = system.transmit()
     y_rg = comps.channel(x_rg, x_time, domain="frequency", snr_db=snr_db)
     h_freq = comps.ls_channel_estimator(x_rg, y_rg)
+    if apply_mti:
+        h_freq = comps.moving_target_indication(h_freq)
     h_dd = comps.delay_doppler_spectrum(h_freq)
     return h_dd, true_range, true_velocity
 
@@ -85,10 +92,10 @@ def _peak_range_velocity_from_h_dd(
 
 def test_h_dd_changes_with_pose_update(collection_system: System) -> None:
     """不同位姿下 h_dd 不应完全相同（无跨 episode 缓存）。"""
-    pos1 = np.array([1.0, 1.5, 0.0], dtype=np.float64)
-    vel1 = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-    pos2 = np.array([-1.0, -1.5, 0.0], dtype=np.float64)
-    vel2 = np.array([0.0, 2.0, 0.0], dtype=np.float64)
+    pos1 = np.array([1.0, 1.5, 0.5], dtype=np.float64)
+    vel1 = np.array([2.0, 0.0, 0.0], dtype=np.float64)
+    pos2 = np.array([-1.0, -1.5, 0.5], dtype=np.float64)
+    vel2 = np.array([0.0, 2.5, 0.0], dtype=np.float64)
 
     result1 = _simulate_episode_h_dd(
         collection_system, pos=pos1, vel=vel1, snr_db=None
@@ -107,8 +114,8 @@ def test_h_dd_changes_with_pose_update(collection_system: System) -> None:
 
 def test_h_dd_peak_aligns_with_geometry_truth(collection_system: System) -> None:
     """h_dd 主峰与 rx_target_tx_geometric 在 3 bin 容差内对齐。"""
-    pos = np.array([1.2, -0.8, 0.0], dtype=np.float64)
-    vel = np.array([1.5, -0.5, 0.0], dtype=np.float64)
+    pos = np.array([1.2, -0.8, 0.5], dtype=np.float64)
+    vel = np.array([2.0, -1.0, 0.0], dtype=np.float64)
 
     result = _simulate_episode_h_dd(
         collection_system, pos=pos, vel=vel, snr_db=None
@@ -131,16 +138,18 @@ def test_consecutive_sampler_episodes_have_distinct_h_dd(
 ) -> None:
     """连续 pop 5 条采样 kinematics，至少 2 条采纳 episode 的 h_dd 互不相同。"""
     sampler = RoiKinematicsSampler(
-        roi=[-2.5, 2.5, -4.5, 4.5],
+        roi=[-4.5, 4.5, -2.5, 2.5],
         position_sampling_mode="uniform",
-        speed_range=[0.1, 3.0],
+        speed_range=[0.5, 3.0],
         speed_sampling_mode="uniform",
-        num_samples=50,
+        num_samples=200,
+        roi_z=0.5,
     )
 
     h_dd_list: list[torch.Tensor] = []
     attempts = 0
-    while len(h_dd_list) < 5 and attempts < 50:
+    max_attempts = 200
+    while len(h_dd_list) < 5 and attempts < max_attempts:
         if len(sampler) == 0:
             break
         pos, vel, _ = sampler.pop()

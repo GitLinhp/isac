@@ -8,7 +8,7 @@
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
 2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与 ``|true_radial_velocity| > Δv``。
-3. 每采纳 episode：发射 → 信道 → LS → DD 谱 → MUSIC → 物理换算 → RMSE；前 10 条另写出 ``{scene_slug}_scene_XX.png`` 与 DD 谱调试图。
+3. 每采纳 episode：发射 → 信道 → LS →（默认 MTI）→ DD 谱 →（默认 CFAR 门限）→ MUSIC → 物理换算 → RMSE；前 10 条另写出 ``{scene_slug}_scene_XX.png`` 与 DD 谱调试图。
 4. 写出 ``{scene_slug}_mc_sensing_metrics.csv`` 与终端 RMSE 汇总表。
 
 与 ``run_data_collection.py`` 的区别：不写 HDF5，在线做 MUSIC 评估。
@@ -154,14 +154,27 @@ def argument_parser() -> argparse.Namespace:
     )
     eval_group.add_argument(
         "--apply_mti",
-        action="store_true",
-        help="在 LS 估计与 DD 谱之间施加 MTI（须 TOML 含 [mti] 段）",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="在 LS 估计与 DD 谱之间施加 MTI（须 TOML 含 [mti] 段）；默认开，可用 --no-apply_mti 关闭",
+    )
+    eval_group.add_argument(
+        "--apply_cfar",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="在裁切 DD 谱上对 |h_dd| 做 2D CFAR 并传入 MUSIC 候选门限（须 TOML 含 [cfar] 段）；"
+        "默认开，可用 --no-apply_cfar 关闭",
     )
 
     return parser.parse_args()
 
 
-def _preflight_checks(system: System, *, apply_mti: bool = False) -> RTSimulator:
+def _preflight_checks(
+    system: System,
+    *,
+    apply_mti: bool = False,
+    apply_cfar: bool = False,
+) -> RTSimulator:
     """校验 RT 链路与 MUSIC / SensingEstimator 已就绪。"""
     rt_simulator = system.components.rt_simulator
     if rt_simulator is None:
@@ -172,11 +185,27 @@ def _preflight_checks(system: System, *, apply_mti: bool = False) -> RTSimulator
         raise ValueError("感知评估需要 TOML [music] 段以构建 SensingEstimator")
     if apply_mti and system.components.moving_target_indication is None:
         raise ValueError("--apply_mti 需要 TOML [mti] 段以构建 MovingTargetIndication")
+    if apply_cfar and system.components.cfar_detector is None:
+        raise ValueError("--apply_cfar 需要 TOML [cfar] 段以构建 CFARDetector")
     if system.components.sensing_performance is None:
         raise ValueError(
             "速度分辨率筛选需要 sensing_performance（[ofdm] + carrier_frequency）"
         )
     return rt_simulator
+
+
+def _cfar_input_from_spectrum(
+    h_dd: torch.Tensor,
+    *,
+    detector: str,
+) -> torch.Tensor:
+    """按 CFAR detector 类型从复数 DD 谱构造实数检测输入。"""
+    h_abs = torch.abs(h_dd)
+    if detector == "squarelaw":
+        return h_abs.square()
+    if detector == "linear":
+        return h_abs
+    raise ValueError(f"未知 CFAR detector: {detector!r}")
 
 
 def _render_scene_png(
@@ -216,12 +245,14 @@ def _log_run_context(
     num_samples: int,
     metric_mode: str,
     apply_mti: bool,
+    apply_cfar: bool,
 ) -> None:
     """打印场景、配置与评估参数摘要。"""
     mti_label = "开" if apply_mti else "关"
+    cfar_label = "开" if apply_cfar else "关"
     print(
         f"目标: {target_name}, 场景: {scene_slug}, 配置: {config_path}\n"
-        f"估计器: MUSIC | metric_mode={metric_mode} | MTI={mti_label} | "
+        f"估计器: MUSIC | metric_mode={metric_mode} | MTI={mti_label} | CFAR={cfar_label} | "
         f"目标采纳数={num_samples}"
     )
 
@@ -240,6 +271,7 @@ def _evaluate_episode(
     true_range: torch.Tensor,
     true_velocity: torch.Tensor,
     apply_mti: bool = False,
+    apply_cfar: bool = False,
     visualize_file: Path | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """单 episode：发射 → 信道 → MUSIC → 物理换算 → 径向 RMSE。"""
@@ -255,14 +287,30 @@ def _evaluate_episode(
             raise ValueError("apply_mti=True 需要 TOML [mti] 段")
         h_freq = mti(h_freq)
     h_dd = comps.delay_doppler_spectrum(h_freq)
+
+    cfar_th: torch.Tensor | None = None
+    if apply_cfar:
+        cfar = comps.cfar_detector
+        if cfar is None:
+            raise ValueError("apply_cfar=True 需要 TOML [cfar] 段")
+        cfar_input = _cfar_input_from_spectrum(h_dd, detector=cfar.detector)
+        cfar_result = cfar(cfar_input, mode="2d")
+        if isinstance(cfar_result, torch.Tensor):
+            cfar_th = cfar_result.to(device=h_dd.device, dtype=h_dd.real.dtype)
+        else:
+            cfar_th = torch.as_tensor(
+                cfar_result, device=h_dd.device, dtype=h_dd.real.dtype
+            )
+
     if visualize_file is not None:
         comps.delay_doppler_spectrum.visualize(
             file_name=visualize_file,
+            cfar=cfar_th,
             metric_mode=metric_mode,
             sens_mode="monostatic",
             to_db=False,
         )
-    peaks = comps.music_estimator(h_dd, num_sources=1)
+    peaks = comps.music_estimator(h_dd, num_sources=1, cfar=cfar_th)
     estimate = comps.sensing_estimator(
         peaks,
         metric_mode=metric_mode,
@@ -332,6 +380,7 @@ def _run_mc_loop(
     metric_mode: str,
     scene_slug: str,
     apply_mti: bool,
+    apply_cfar: bool,
 ) -> tuple[
     list[dict[str, str | int]],
     list[torch.Tensor],
@@ -396,6 +445,7 @@ def _run_mc_loop(
                 true_range=true_range,
                 true_velocity=true_velocity,
                 apply_mti=apply_mti,
+                apply_cfar=apply_cfar,
                 visualize_file=viz_path,
             )
 
@@ -502,7 +552,11 @@ def main() -> None:
         config=load_config(args.config_file),
         device=args.device,
     )
-    rt_simulator = _preflight_checks(system, apply_mti=args.apply_mti)
+    rt_simulator = _preflight_checks(
+        system,
+        apply_mti=args.apply_mti,
+        apply_cfar=args.apply_cfar,
+    )
 
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
@@ -513,6 +567,7 @@ def main() -> None:
         num_samples=collection_meta.num_samples,
         metric_mode=args.metric_mode,
         apply_mti=args.apply_mti,
+        apply_cfar=args.apply_cfar,
     )
     _render_scene_png(rt_simulator, scene_slug, SCRIPT_OUT_DIR)
     _log_sensing_performance(system.components)
@@ -526,6 +581,7 @@ def main() -> None:
         metric_mode=args.metric_mode,
         scene_slug=scene_slug,
         apply_mti=args.apply_mti,
+        apply_cfar=args.apply_cfar,
     )
 
     print(f"接受率: {acceptance_rate:.1%} ({len(csv_rows)}/{attempts})")

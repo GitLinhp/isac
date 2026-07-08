@@ -11,7 +11,7 @@ normalize = true
 [ofdm]
 num_symbols = 512          # 符号数
 fft_size = 2048            # FFT 大小
-subcarrier_spacing = 30e3  # 子载波间隔(Hz)
+subcarrier_spacing = 60e3  # 子载波间隔(Hz)
 cyclic_prefix_length = 512 # 循环前缀长度
 l_min = -6                 # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
 
@@ -117,23 +117,24 @@ seed = 42                   # 随机种子
 [mti]
 filter_order = 1 # MTI 脉冲对消阶数
 
-# 时延/多普勒窗参数
-[windows.delay_window]
-type = "general_hamming"
-alpha = 0.7
+# 时延/多普勒窗参数（可选）：整段注释或子键缺省时不加窗（矩形窗）
+# [windows.delay_window]
+# type = "general_hamming"
+# alpha = 0.7
 
-[windows.doppler_window]
-type = "chebwin"
-at = 50
+# [windows.doppler_window]
+# type = "chebwin"
+# at = 50
 
-# CFAR 参数
+# CFAR 参数（2D，用于 ROI 裁切 DD 谱；当前 ROI 约 8×13 bin）
 [cfar]
 type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/cfar.py）
 # k = 24               # 仅 type=os 时需要：有序统计索引
-guard = 2           # 保护单元
-trailing = 20       # 参考单元
+# 分轴 guard/trailing：[多普勒, 时延]；窗长 = (g+t)*2+1 → 本配置 7×11，适配小 ROI
+guard = [1, 1]      # 保护单元（分轴）
+trailing = [2, 4]   # 参考单元（分轴）
 pfa = 1e-4          # 虚警率
-detector = "linear" # 检测器: linear | squarelaw
+detector = "linear" # 检测器: linear（|h_dd|）| squarelaw（|h_dd|²）
 # offset = 0.0         # 阈值缩放；不设置则按 pfa 自动计算
 
 # MUSIC 参数

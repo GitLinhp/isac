@@ -1,7 +1,25 @@
 """
 CFAR 检测（CA / OS，一维 / 二维，Torch 实现）
 
-与历史 ``processing`` 模块函数行为一致；统一运行时入口为 ``CFARDetector.__call__``。
+与历史 ``processing`` 模块函数行为一致。推荐运行时入口为
+``CFARDetector.__call__(data, mode="2d")``；也可直接调用 ``cfar_ca_2d`` /
+``cfar_os_2d`` 等底层函数。
+
+输入 / 输出契约
+----------------
+- **输入**：实数 ``numpy.ndarray`` 或 ``torch.Tensor``；**禁止复数**。
+  ``detector="linear"`` 时期望幅度 ``|x|``；``detector="squarelaw"`` 时期望功率 ``|x|²``。
+- **2D 形状**：严格 ``(axis0, axis1)``，例如 DD 谱幅度 ``|h_dd|`` 的
+  ``(n_doppler, n_delay)``。
+- **输出**：与输入 **同 shape、同 backend**（NumPy 进 NumPy 出，Torch 进 Torch 出）
+  的自适应 **阈值面**，不是 0/1 检测掩码；判决示例 ``detection = data > threshold``。
+- **配置**：TOML ``[cfar]`` 经 ``SystemComponents`` 构建 ``cfar_detector``；
+  可视化可传入 ``DelayDopplerSpectrum.visualize(..., cfar=threshold)``。
+
+CA vs OS（2D 边界）
+-------------------
+- **CA**：参考窗内样本 **均值** × 缩放因子；边界用 ``conv2d`` + **常数 0 填充**。
+- **OS**：参考窗排序后取第 **k** 个 × 缩放因子；边界用 ``remainder`` **循环索引**补窗。
 """
 
 from typing import List, Literal, Optional, Union
@@ -18,12 +36,14 @@ from ...utils import convert
 
 # -------------------------- 辅助函数 --------------------------
 def _same_type_output(data: torch.Tensor, like: Union[NDArray, torch.Tensor]):
+    """将 Torch 结果转回与 ``like`` 相同的容器类型（Tensor 或 NumPy）。"""
     if isinstance(like, torch.Tensor):
         return data
     return convert(data, "numpy")
 
 
 def _is_complex(data: Union[NDArray, torch.Tensor]) -> bool:
+    """判断输入是否为复数 dtype（CFAR 仅接受实数幅度/功率）。"""
     if isinstance(data, torch.Tensor):
         return bool(torch.is_complex(data))
     return bool(np.iscomplexobj(data))
@@ -34,6 +54,7 @@ def _log_factorial(n: int) -> float:
 
 
 def _conv1d_same(data_1d: torch.Tensor, kernel_1d: torch.Tensor) -> torch.Tensor:
+    """same-length 一维卷积；边界常数 0 填充（用于 1D CA-CFAR 滑窗）。"""
     x = data_1d.unsqueeze(0).unsqueeze(0)
     k = kernel_1d.flip(0).unsqueeze(0).unsqueeze(0)
     pad = kernel_1d.numel() // 2
@@ -44,6 +65,7 @@ def _conv1d_same(data_1d: torch.Tensor, kernel_1d: torch.Tensor) -> torch.Tensor
 def _guard_trailing_1d(
     guard: Union[int, List[int]], trailing: Union[int, List[int]]
 ) -> tuple[int, int]:
+    """从标量或列表形式的 guard/trailing 取 1D CFAR 用的首元素。"""
     ga = np.array(guard, dtype=int).ravel()
     ta = np.array(trailing, dtype=int).ravel()
     return int(ga[0]), int(ta[0])
@@ -61,6 +83,9 @@ def cfar_ca_1d(
     """
     一维 CA-CFAR（Cell Averaging）。
 
+    支持 1D ``(N,)`` 或 2D ``(H, W)`` 输入。对 2D 数据沿 ``axis`` 逐行/逐列做 1D 滑窗：
+    ``axis=0`` 时沿第 0 维（每列独立）；``axis=1`` 时沿第 1 维（每行独立）。
+
     参数:
     -------
     - data:
@@ -72,7 +97,7 @@ def cfar_ca_1d(
     - pfa:
         虚警率
     - axis:
-        计算轴，支持 0 或 1
+        计算轴，支持 0 或 1（仅 ``data.ndim == 2`` 时有效）
     - detector:
         ``linear`` 或 ``squarelaw``
     - offset:
@@ -81,7 +106,7 @@ def cfar_ca_1d(
     返回:
     -------
     - cfar:
-        与输入同形状的 CFAR 阈值
+        与输入同形状的 CFAR 阈值面（非布尔检测结果）
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
@@ -128,10 +153,14 @@ def cfar_ca_2d(
     """
     二维 CA-CFAR（Cell Averaging）。
 
+    输入须为严格 2D ``(axis0, axis1)``。``guard``/``trailing`` 为标量时两轴同值；
+    为 ``[g0, g1]`` / ``[t0, t1]`` 时分别对应 ``data.shape[0]`` / ``shape[1]``。
+    边界处采用 ``conv2d`` + **常数 0 填充**（非循环索引）。
+
     参数:
     -------
     - data:
-        幅度/功率数据（二维）
+        幅度/功率数据（二维实数）
     - guard:
         保护单元，可为标量或 ``[axis0, axis1]``
     - trailing:
@@ -146,7 +175,16 @@ def cfar_ca_2d(
     返回:
     -------
     - cfar:
-        与输入同形状的 CFAR 阈值
+        形状 ``(H, W)`` 的 CFAR 阈值面，与 ``data`` 同 shape、同 backend
+
+    示例:
+    -----
+    ::
+
+        det = CFARDetector("ca", guard=2, trailing=20, pfa=1e-4, detector="linear")
+        h_abs = np.abs(h_dd)  # (n_doppler, n_delay)
+        threshold = det(h_abs, mode="2d")
+        peaks = h_abs > threshold
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
@@ -189,6 +227,7 @@ def cfar_ca_2d(
     k4d = cfar_win.flip(0, 1).unsqueeze(0).unsqueeze(0)
     pad_h = cfar_win.shape[0] // 2
     pad_w = cfar_win.shape[1] // 2
+    # 2D CA：边界常数 0 填充，参考窗为矩形环（中心 guard 区置零）
     y = F.conv2d(
         F.pad(x4d, (pad_w, pad_w, pad_h, pad_h), mode="constant", value=0), k4d
     )
@@ -262,6 +301,7 @@ def cfar_os_1d(
     """
     一维 OS-CFAR（Ordered Statistic）。
 
+    支持 1D 或 2D 输入；对 2D 沿 ``axis`` 逐行/逐列独立滑窗（语义同 ``cfar_ca_1d``）。
     边界单元使用循环索引（rollover）补齐窗口。
 
     参数:
@@ -269,13 +309,15 @@ def cfar_os_1d(
     - data:
         幅度/功率数据
     - guard:
-        保护单元数
+        单侧保护单元数
     - trailing:
-        参考单元数
+        单侧参考单元数
     - k:
-        统计量索引
+        有序统计索引（0-based，取自参考窗排序后的第 k 个样本）
     - pfa:
         虚警率
+    - axis:
+        计算轴，支持 0 或 1（仅 ``data.ndim == 2`` 时有效）
     - detector:
         ``linear`` 或 ``squarelaw``
     - offset:
@@ -284,7 +326,7 @@ def cfar_os_1d(
     返回:
     -------
     - cfar:
-        与输入同形状的 CFAR 阈值
+        与输入同形状的 CFAR 阈值面
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
@@ -348,18 +390,19 @@ def cfar_os_2d(
     """
     二维 OS-CFAR（Ordered Statistic）。
 
-    边界单元使用循环索引（rollover）补齐窗口。
+    输入须为严格 2D ``(axis0, axis1)``。``guard``/``trailing`` 标量或两轴列表的语义
+    同 ``cfar_ca_2d``。边界处用 ``remainder`` **循环索引**补窗（与 CA-2D 零填充不同）。
 
     参数:
     -------
     - data:
-        幅度/功率数据
+        幅度/功率数据（二维实数）
     - guard:
-        保护单元数
+        保护单元，标量或 ``[axis0, axis1]``
     - trailing:
-        参考单元数
+        参考单元，标量或 ``[axis0, axis1]``
     - k:
-        统计量索引
+        有序统计索引（取自参考环内排序后的第 k 个样本）
     - pfa:
         虚警率
     - detector:
@@ -370,7 +413,14 @@ def cfar_os_2d(
     返回:
     -------
     - cfar:
-        与输入同形状的 CFAR 阈值
+        形状 ``(H, W)`` 的 CFAR 阈值面，与 ``data`` 同 shape、同 backend
+
+    示例:
+    -----
+    ::
+
+        det = CFARDetector("os", guard=2, trailing=20, k=24, pfa=1e-4)
+        threshold = det(np.abs(h_dd), mode="2d")
     """
     if _is_complex(data):
         raise ValueError("Input data should not be complex.")
@@ -416,6 +466,7 @@ def cfar_os_2d(
         trailing_arr[1] : (trailing_arr[1] + guard_arr[1] * 2 + 1),
     ] = False
 
+    # 2D OS：逐 CUT 取参考环样本，边界 rollover 循环索引
     for idx_0 in range(0, x.shape[0]):
         for idx_1 in range(0, x.shape[1]):
             win_idx_0 = torch.remainder(
@@ -439,7 +490,16 @@ def cfar_os_2d(
 
 
 class CFARDetector:
-    """封装 CA/OS 与 1D/2D CFAR 参数；通过 ``__call__(data, mode=...)`` 计算阈值面。"""
+    """封装 CA/OS 与 1D/2D CFAR 参数，计算自适应阈值面。
+
+    通常由 TOML ``[cfar]`` 经 ``SystemComponents`` 实例化。RD/DD 谱等二维幅度图
+    推荐使用 ``mode="2d"``（默认）。
+
+    属性:
+    -----
+    cfar_type, guard, trailing, pfa, detector, offset, k
+        与构造参数一致；``k`` 仅在 ``cfar_type="os"`` 时使用。
+    """
 
     __slots__ = ("cfar_type", "guard", "trailing", "pfa", "detector", "offset", "k")
 
@@ -453,6 +513,24 @@ class CFARDetector:
         offset: Optional[float] = None,
         k: Optional[int] = None,
     ) -> None:
+        """
+        参数:
+        -------
+        - cfar_type:
+            ``"ca"``（Cell Averaging）或 ``"os"``（Ordered Statistic）
+        - guard:
+            保护单元；2D 可为标量或 ``[axis0, axis1]``
+        - trailing:
+            参考单元；2D 可为标量或 ``[axis0, axis1]``
+        - pfa:
+            虚警率
+        - detector:
+            ``"linear"``（幅度域）或 ``"squarelaw"``（功率域）
+        - offset:
+            手动阈值缩放；``None`` 时由 ``pfa`` 自动推导
+        - k:
+            OS 有序统计索引；``cfar_type="os"`` 时 **必填**
+        """
         t = cfar_type.strip().lower()
         if t not in ("ca", "os"):
             raise ValueError("cfar_type must be 'ca' or 'os'")
@@ -473,6 +551,23 @@ class CFARDetector:
         mode: Literal["1d", "2d"] = "2d",
         axis: int = 0,
     ) -> Union[NDArray, torch.Tensor]:
+        """
+        计算 CFAR 阈值面。
+
+        参数:
+        -------
+        - data:
+            实数幅度/功率；2D 时为 ``(H, W)``，1D 时为 ``(N,)`` 或 ``(H, W)`` 沿轴滑窗
+        - mode:
+            ``"2d"`` 调用 ``cfar_ca_2d`` / ``cfar_os_2d``；
+            ``"1d"`` 调用 ``cfar_ca_1d`` / ``cfar_os_1d``（``guard``/``trailing`` 列表取首元素）
+        - axis:
+            仅 ``mode="1d"`` 且 ``data`` 为 2D 时有效，滑窗轴（0 或 1）
+
+        返回:
+        -------
+        与 ``data`` 同 shape、同 backend 的阈值面；检测判决 ``data > threshold``。
+        """
         if mode == "2d":
             if self.cfar_type == "ca":
                 return cfar_ca_2d(

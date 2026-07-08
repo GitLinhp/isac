@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
+import torch
 from sionna.phy.mimo import StreamManagement
 from sionna.phy.mapping import BinarySource, Mapper, Demapper
 from sionna.phy.ofdm import (
@@ -299,12 +300,29 @@ class SystemComponents:
                     num_filters=system_params.mtd.num_filters,
                 )
 
-            if system_params.windows is not None:
+            needs_dd_spectrum = any(
+                p is not None
+                for p in (
+                    system_params.mti,
+                    system_params.mtd,
+                    system_params.dd_spectrum_roi,
+                    system_params.windows,
+                    system_params.cfar,
+                    system_params.music,
+                )
+            )
+            if needs_dd_spectrum:
+                delay_window = None
+                doppler_window = None
+                if system_params.windows is not None:
+                    delay_window = system_params.windows.delay_window
+                    doppler_window = system_params.windows.doppler_window
                 kwargs["delay_doppler_spectrum"] = DelayDopplerSpectrum(
                     sensing_performance=sensing_performance,
-                    delay_window=system_params.windows.delay_window,
-                    doppler_window=system_params.windows.doppler_window,
+                    delay_window=delay_window,
+                    doppler_window=doppler_window,
                     dd_spectrum_roi=dd_roi,
+                    device=torch.device(device),
                 )
 
             if system_params.cfar is not None:

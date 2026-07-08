@@ -302,6 +302,9 @@ def _build_model_and_optim(
     lr: float,
     weight_decay: float,
     num_layers: int,
+    *,
+    base_channels: int,
+    dropout: float,
 ) -> tuple[MonostaticDelayDopplerCNN, torch.optim.Optimizer, MonostaticSensingLoss, int]:
     """构建 CNN、Adam 与 bin 空间损失。
 
@@ -310,7 +313,10 @@ def _build_model_and_optim(
     """
     in_channels = 2
     model = MonostaticDelayDopplerCNN(
-        in_channels=in_channels, num_layers=num_layers
+        in_channels=in_channels,
+        base_channels=base_channels,
+        num_layers=num_layers,
+        dropout=dropout,
     ).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=lr, weight_decay=weight_decay
@@ -353,8 +359,18 @@ def _log_train_banner(
     sensing: dict[str, Any],
     n_train: int,
     n_val: int,
+    *,
+    num_layers: int,
+    base_channels: int,
+    dropout: float,
+    early_stopping_patience: int,
 ) -> None:
     """打印数据集、ROI 与输出路径摘要。"""
+    early_stop_label = (
+        f"{early_stopping_patience} epoch"
+        if early_stopping_patience > 0
+        else "关"
+    )
     print(
         f"数据集: {inputs.h5_path} | 配置: {inputs.config_path}\n"
         f"训练 {n_train} / 验证 {n_val} | "
@@ -362,6 +378,8 @@ def _log_train_banner(
         f"±max_velocity={sensing['max_velocity_mps']:.1f} m/s | "
         f"Δr={sensing['range_resolution']:.3f} m, "
         f"Δv={sensing['velocity_resolution']:.3f} m/s\n"
+        f"模型 num_layers={num_layers}, base_channels={base_channels}, "
+        f"dropout={dropout}, early_stopping={early_stop_label}\n"
         f"检查点目录: {paths.checkpoint_dir} | 曲线: {paths.training_curve}"
     )
 
@@ -463,6 +481,7 @@ def _run_training_epochs(
 ) -> float:
     """多 epoch 训练、验证、检查点与曲线更新；返回最优 val_loss。"""
     best_val_loss = float("inf")
+    epochs_without_improve = 0
     history: dict[str, list[float]] = {
         "epoch": [],
         "train_loss": [],
@@ -514,7 +533,10 @@ def _run_training_epochs(
         # val_loss 创新低时覆盖 --output（最优模型）
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            epochs_without_improve = 0
             torch.save(payload, paths.best_model)
+        else:
+            epochs_without_improve += 1
 
         is_periodic = epoch % args.save_every == 0
         is_final = epoch == args.epochs
@@ -523,6 +545,16 @@ def _run_training_epochs(
         # 周期性或最终 epoch 刷新训练曲线
         if is_periodic or is_final:
             _plot_training_history(history, paths.training_curve)
+
+        if (
+            args.early_stopping_patience > 0
+            and epochs_without_improve >= args.early_stopping_patience
+        ):
+            tqdm.write(
+                f"early stopping at epoch {epoch} "
+                f"(best val_loss={best_val_loss:.4f})"
+            )
+            break
 
     # 训练结束另存最终 checkpoint 并再次刷新曲线
     torch.save(
@@ -592,6 +624,24 @@ def argument_parser() -> argparse.Namespace:
     train_group.add_argument(
         "--num_layers", type=int, default=3, help="残差编码块数量（>= 1）"
     )
+    train_group.add_argument(
+        "--base_channels",
+        type=int,
+        default=32,
+        help="stem 与首层残差基础通道数",
+    )
+    train_group.add_argument(
+        "--dropout",
+        type=float,
+        default=0.2,
+        help="回归头 Dropout 概率",
+    )
+    train_group.add_argument(
+        "--early_stopping_patience",
+        type=int,
+        default=15,
+        help="val_loss 连续多少 epoch 无改善后早停；0 表示禁用",
+    )
 
     # --- 输出与检查点 ---
     out_group = parser.add_argument_group(
@@ -623,6 +673,12 @@ def main() -> None:
         raise ValueError("save_every 须 >= 1")
     if args.num_layers < 1:
         raise ValueError("num_layers 须 >= 1")
+    if args.base_channels < 1:
+        raise ValueError("base_channels 须 >= 1")
+    if not 0.0 <= args.dropout < 1.0:
+        raise ValueError("dropout 须在 [0, 1) 内")
+    if args.early_stopping_patience < 0:
+        raise ValueError("early_stopping_patience 须 >= 0")
 
     inputs = _resolve_train_inputs(args)
     set_random_seed(args.seed)
@@ -639,12 +695,27 @@ def main() -> None:
     full_ds = RTDataset.load(inputs.h5_path)
     train_loader, val_loader, n_train, n_val = _build_dataloaders(full_ds, args)
     model, optimizer, criterion, in_channels = _build_model_and_optim(
-        device, args.lr, args.weight_decay, args.num_layers
+        device,
+        args.lr,
+        args.weight_decay,
+        args.num_layers,
+        base_channels=args.base_channels,
+        dropout=args.dropout,
     )
     scheduler = _build_lr_scheduler(optimizer, args)
 
     paths = _train_paths(Path(args.output))
-    _log_train_banner(inputs, paths, sensing, n_train, n_val)
+    _log_train_banner(
+        inputs,
+        paths,
+        sensing,
+        n_train,
+        n_val,
+        num_layers=args.num_layers,
+        base_channels=args.base_channels,
+        dropout=args.dropout,
+        early_stopping_patience=args.early_stopping_patience,
+    )
 
     # --- 训练循环：epoch 训练、验证、检查点与曲线 ---
     best_val_loss = _run_training_epochs(

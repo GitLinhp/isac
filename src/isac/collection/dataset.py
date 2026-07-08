@@ -41,6 +41,7 @@ HDF5 文件布局
 - ``description``
 - ``seed``, ``roi``, ``roi_z``, ``position_sampling_mode``, ``speed_range``, ``speed_sampling_mode``、
   ``num_samples``, ``sampler_pool_factor``：由 ``CollectionMetadata`` 写入
+- ``apply_mti``：采集时是否在 LS 与 DD 谱之间施加 MTI（bool；旧数据集缺省视为 False）
 
 感知 ROI 与分辨率见同目录 TOML 副本（``[dd_spectrum_roi]``、``[ofdm]``），不写入 HDF5。
 
@@ -79,6 +80,7 @@ from .h5_layout import (
     DATASET_KEY_TARGET_VELOCITY,
     EPISODE_CSV_COLUMNS,
     EPISODE_CSV_SUFFIX,
+    META_KEY_APPLY_MTI,
     META_KEY_DESCRIPTION,
     SCENE_PNG_SUFFIX,
     collection_dataset_description,
@@ -272,6 +274,7 @@ class RTDatasetWriter:
         *,
         collection_meta: CollectionMetadata,
         scene_slug: str,
+        apply_mti: bool = False,
     ) -> None:
         """写入根属性并关闭 HDF5 文件。
 
@@ -281,6 +284,8 @@ class RTDatasetWriter:
             采集可复现配置，序列化至根 attrs。
         scene_slug
             场景标识，用于生成 ``description`` 文本。
+        apply_mti
+            采集时是否在 LS 与 DD 谱之间施加 MTI。
 
         Raises
         ------
@@ -294,6 +299,7 @@ class RTDatasetWriter:
         self._file.attrs[META_KEY_DESCRIPTION] = collection_dataset_description(
             scene_slug, self._writer_count
         )
+        self._file.attrs[META_KEY_APPLY_MTI] = bool(apply_mti)
         collection_meta.write_hdf5_attrs(self._file)
         self._file.close()
         self._file = None

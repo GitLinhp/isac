@@ -10,7 +10,11 @@ from ..system import System
 
 
 def sensing_attrs_from_system(system: System) -> dict[str, Any]:
-    """返回训练标签与日志用的感知属性（含 ``num_doppler_bins``）。"""
+    """返回训练标签与日志用的感知属性（含 ``num_doppler_bins``）。
+
+    配置 ``[dd_spectrum_roi]`` 时，``num_doppler_bins`` 与 ``max_range_m`` /
+    ``max_velocity_mps`` 为裁切后 ROI 网格的有效上界；未配置时使用全谱 FFT 网格。
+    """
     comps = system.components
     sp = comps.sensing_performance
     dd_roi = comps.dd_spectrum_roi
@@ -26,11 +30,19 @@ def sensing_attrs_from_system(system: System) -> dict[str, Any]:
             dtype=torch.complex64,
         )
         _ = dd_roi.crop(h_full, sens_mode="monostatic")
+        max_range_m, max_velocity_mps = dd_roi.effective_physical_limits(
+            sens_mode="monostatic"
+        )
+        num_doppler_bins = dd_roi.num_doppler_bins
+    else:
+        max_range_m = sp.max_range_monostatic
+        max_velocity_mps = sp.max_velocity_monostatic
+        num_doppler_bins = sp.rg.num_ofdm_symbols
 
     return {
         "range_resolution": sp.range_resolution_monostatic,
         "velocity_resolution": sp.velocity_resolution_monostatic,
-        "max_range_m": sp.max_range_monostatic,
-        "max_velocity_mps": sp.max_velocity_monostatic,
-        "num_doppler_bins": sp.rg.num_ofdm_symbols,
+        "max_range_m": max_range_m,
+        "max_velocity_mps": max_velocity_mps,
+        "num_doppler_bins": num_doppler_bins,
     }

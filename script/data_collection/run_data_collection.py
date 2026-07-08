@@ -7,23 +7,27 @@
 流程概要
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
-2. 构建 ``System``，循环更新 RT 目标位姿并采集 h_dd / 几何真值。
+2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与 ``|true_radial_velocity| > Δv``。
 3. 流式写出 HDF5，事后写出 TOML、CSV 与场景 PNG。
 
 输出目录
 --------
-``data/``（``DEFAULT_COLLECTION_OUT_DIR``），按 ``scene_slug`` 命名：
+``data/{scene_slug}_{scs}/``（``scs`` 为子载波间隔 slug，如 ``30kHz``），其下：
 ``{scene_slug}_mc_sionna_dataset.h5``、``{scene_slug}_mc_dataset_episodes.csv``、
 配置 TOML 副本与 ``{scene_slug}_scene.png``。
 
 采纳条件
 --------
-从预采样池 ``pop`` 位姿后，仅当 ``paths_intersect_target`` 为真时计入 episode；
+从预采样池 ``pop`` 位姿后，须同时满足：
+
+- 存在与目标的 **镜面反射** 路径（``paths_intersect_target_with_interaction(..., "specular")``）
+- ``|true_radial_velocity| > velocity_resolution_monostatic``
+
 池耗尽则 ``RuntimeError``（提示增大 ``--sampler_pool_factor``）。
 
-单 episode 感知链（无 MTI）
----------------------------
-transmit → channel → ls_channel_estimator → delay_doppler_spectrum → append_episode
+单 episode 感知链（默认 MTI）
+-----------------------------
+transmit → channel → ls_channel_estimator →（默认 MTI）→ delay_doppler_spectrum → append_episode
 
 详见 ``docs/run_data_collection.md``。
 """
@@ -40,6 +44,7 @@ from isac import DEFAULT_COLLECTION_OUT_DIR
 from isac.collection import (
     CollectionMetadata,
     RTDatasetWriter,
+    collection_dataset_dir,
     collection_h5_path,
     save_collection_artifacts,
 )
@@ -100,7 +105,7 @@ def argument_parser() -> argparse.Namespace:
     mc_group.add_argument(
         "--sampler_pool_factor",
         type=int,
-        default=5,
+        default=50,
         help="预采样池倍数（池大小 = num_samples × 本参数）",
     )
     mc_group.add_argument(
@@ -108,13 +113,13 @@ def argument_parser() -> argparse.Namespace:
         nargs=4,
         type=float,
         metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
-        default=[-2.5, 2.5, -4.5, 4.5],
+        default=[-4.5, 4.5, -2.5, 2.5],
         help="平面 ROI 四元组（m），xy 平面；z 由 --roi_z 指定",
     )
     mc_group.add_argument(
         "--roi_z",
         type=float,
-        default=0.0,
+        default=0.5,
         help="ROI 内目标位置的固定 z 高度（m）",
     )
     mc_group.add_argument(
@@ -129,7 +134,7 @@ def argument_parser() -> argparse.Namespace:
         nargs=2,
         type=float,
         metavar=("MIN", "MAX"),
-        default=[0.1, 3.0],
+        default=[0.5, 3.0],
         help="速度模值范围 (m/s)",
     )
     mc_group.add_argument(
@@ -138,6 +143,14 @@ def argument_parser() -> argparse.Namespace:
         default="uniform",
         choices=["uniform", "gaussian"],
         help="速度模值采样分布",
+    )
+
+    proc_group = parser.add_argument_group("感知链")
+    proc_group.add_argument(
+        "--apply_mti",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="在 LS 估计与 DD 谱之间施加 MTI（须 TOML 含 [mti] 段）；默认开，可用 --no-apply_mti 关闭",
     )
 
     h5_group = parser.add_argument_group(
@@ -155,6 +168,19 @@ def argument_parser() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _preflight_checks(system: System, *, apply_mti: bool) -> None:
+    """校验 RT 链路与速度分辨率筛选、MTI 依赖已就绪。"""
+    rt_simulator = system.components.rt_simulator
+    if rt_simulator is None:
+        raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
+    if system.components.sensing_performance is None:
+        raise ValueError(
+            "速度分辨率筛选需要 sensing_performance（[ofdm] + carrier_frequency）"
+        )
+    if apply_mti and system.components.moving_target_indication is None:
+        raise ValueError("--apply_mti 需要 TOML [mti] 段以构建 MovingTargetIndication")
+
+
 def main() -> None:
     """蒙特卡洛采集 episode → 流式写出 HDF5 → 写出 TOML / CSV / PNG。"""
     # --- 初始化：CLI → 采集元数据 → System ---
@@ -167,16 +193,26 @@ def main() -> None:
         device=args.device,
     )
     comps = system.components
+    _preflight_checks(system, apply_mti=args.apply_mti)
 
     # --- 场景绑定：RT 目标、scene_slug、参考基站位置 ---
     rt_simulator = comps.rt_simulator
+    assert rt_simulator is not None
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
-    print(f"目标: {target_name}, 场景: {scene_slug}")
+    scs_hz = float(comps.rg.subcarrier_spacing)
+    out_dir = collection_dataset_dir(scene_slug, scs_hz, DEFAULT_COLLECTION_OUT_DIR)
+    mti_label = "开" if args.apply_mti else "关"
+    print(
+        f"目标: {target_name}, 场景: {scene_slug}, 配置: {args.config_file}\n"
+        f"采集 | MTI={mti_label} | 目标采纳数={collection_meta.num_samples}\n"
+        f"采集输出: {out_dir}/"
+    )
 
     csv_rows: list[dict[str, str | int]] = []
     bs_pos = np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64)
-    h5_path = collection_h5_path(scene_slug, DEFAULT_COLLECTION_OUT_DIR)
+    h5_path = collection_h5_path(scene_slug, out_dir)
+    v_res = float(comps.sensing_performance.velocity_resolution_monostatic)
 
     # --- 流式采集循环：pop → 位姿/路径 → 过滤 → 感知链 → append ---
     with RTDatasetWriter.open(
@@ -185,13 +221,13 @@ def main() -> None:
         compression=args.h5_compression,
     ) as dataset:
         accepted = 0  # 已采纳 episode 数
-        attempts = 0  # pop 次数（含被 paths_intersect_target 拒绝的候选）
+        attempts = 0  # pop 次数（含被过滤拒绝的候选）
         pbar = tqdm(total=collection_meta.num_samples, desc="数据采集", unit="ep")
         while accepted < collection_meta.num_samples:
             if len(sampler) == 0:
                 raise RuntimeError(
                     f"采样池已耗尽：已采纳 {accepted}/{collection_meta.num_samples} 条。"
-                    "请增大 --sampler_pool_factor 或调整过滤条件（scene_filter / 目标路径交互）。"
+                    "请增大 --sampler_pool_factor"
                 )
             pos, vel, ori = sampler.pop()
             attempts += 1
@@ -204,14 +240,17 @@ def main() -> None:
             )
             rt_simulator.paths(update=True)
 
-            # 路径未与目标 mesh 交互则跳过（不计入 accepted，但计入 attempts）
-            if not rt_simulator.paths_intersect_target(target):
+            if not rt_simulator.paths_intersect_target_with_interaction(
+                target, "specular"
+            ):
                 continue
 
-            # CSV 几何真值（单基地距离与径向速度）
             geom = rt_simulator.rx_target_tx_geometric
             true_range = geom.range_tensor[0, 0, 0]
             true_velocity = geom.vel_tensor[0, 0, 0]
+            if abs(float(true_velocity.item())) <= v_res:
+                continue
+
             csv_rows.append(
                 {
                     "sample_idx": accepted,
@@ -222,11 +261,13 @@ def main() -> None:
                 }
             )
 
-            # 感知链：OFDM 发射 → 加噪信道 → LS 估计 → DD 谱（含 ROI 裁剪，无 MTI）
+            # 感知链：OFDM 发射 → 加噪信道 → LS 估计 →（可选 MTI）→ DD 谱（含 ROI 裁剪）
             _, x_rg, x_time = system.transmit()
             snr_db = system.params.channel.snr_db
             y_rg = comps.channel(x_rg, x_time, domain="frequency", snr_db=snr_db)
             h_freq = comps.ls_channel_estimator(x_rg, y_rg)
+            if args.apply_mti:
+                h_freq = comps.moving_target_indication(h_freq)
             h_dd = comps.delay_doppler_spectrum(h_freq)
 
             dataset.append_episode(
@@ -247,6 +288,7 @@ def main() -> None:
         dataset.finalize(
             collection_meta=collection_meta,
             scene_slug=scene_slug,
+            apply_mti=args.apply_mti,
         )
 
     # TOML / CSV / 场景 PNG 须在 HDF5 finalize 关闭后写出
@@ -255,7 +297,7 @@ def main() -> None:
         config_file=args.config_file,
         csv_rows=csv_rows,
         rt_simulator=rt_simulator,
-        out_dir=DEFAULT_COLLECTION_OUT_DIR,
+        out_dir=out_dir,
     )
 
 
