@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Union
+from typing import Optional, Union
 
 import torch
 from tabulate import tabulate
@@ -54,9 +54,8 @@ class SensingEstimator:
     换算为 :class:`~isac.data_structures.types.SensingEstimate`。
 
     换算委托 :class:`~isac.sensing.metric.SpectrumMetric`：
-    局部 bin → (τ, f_d) → (距离 m, 速度 m/s)，其中多普勒中心由
-    共享 :class:`~isac.sensing.spectrum.dd_spectrum_roi.DelayDopplerRoi` 的
-    ``num_doppler_bins`` 决定（须在 ``delay_doppler_spectrum`` 裁切之后调用）。
+    局部 bin → (τ, f_d) → (距离 m, 速度 m/s)，其中多普勒中心由 ROI 裁切后的
+    ``num_doppler_bins`` 或全谱时的 ``rg.num_ofdm_symbols`` 决定。
 
     ``metric_mode`` 仅影响日志表头与展示列，不改变返回值。
     ``sens_mode`` 影响单基地往返 / 双基地单程的物理尺度。
@@ -66,7 +65,7 @@ class SensingEstimator:
         self,
         sensing_performance: SensingPerformance,
         device: Union[str, torch.device],
-        dd_spectrum_roi: DelayDopplerRoi,
+        dd_spectrum_roi: Optional[DelayDopplerRoi] = None,
     ):
         """初始化感知估计器。
 
@@ -79,7 +78,7 @@ class SensingEstimator:
             换算结果张量的目标设备（``SpectrumMetric`` 默认在 CPU 换算，此处再 ``.to(device)``）。
         - dd_spectrum_roi :
             与 :class:`~isac.sensing.spectrum.DelayDopplerSpectrum` 共享的 ROI 实例；
-            ``__call__`` 读取其 ``num_doppler_bins``（要求 DD 谱已裁切）。
+            ``None`` 时表示全谱，``__call__`` 使用 ``rg.num_ofdm_symbols`` 作多普勒 bin 数。
         """
         self.sensing_performance = sensing_performance
         self._dd_spectrum_roi = dd_spectrum_roi
@@ -115,7 +114,11 @@ class SensingEstimator:
         :class:`~isac.data_structures.types.SensingEstimate`：
         ``est_ranges`` / ``est_velocities`` 为 1D ``float64`` 张量。
         """
-        num_doppler_bins = self._dd_spectrum_roi.num_doppler_bins
+        num_doppler_bins = (
+            self._dd_spectrum_roi.num_doppler_bins
+            if self._dd_spectrum_roi is not None
+            else self.sensing_performance.rg.num_ofdm_symbols
+        )
         tau_s, fd_hz, range_m, v_mps = self._metric.local_bins_to_range_velocity(
             peaks.peaks_delay,
             peaks.peaks_doppler,

@@ -63,11 +63,7 @@ def _peak_range_velocity_from_h_dd(
     dd = system.components.delay_doppler_spectrum
     assert dd is not None
     sp = dd.sensing_performance
-    assert dd.dd_spectrum_roi is not None
-    n_sym = sp.rg.num_ofdm_symbols
-    dop_start, _, delay_start, _ = dd.dd_spectrum_roi.bin_slices(
-        torch.zeros(n_sym, sp.rg.fft_size, dtype=torch.complex64)
-    )
+    dop_start, _, delay_start, _ = dd._active_slices()
 
     mag = h_dd.abs()
     flat_idx = int(mag.argmax().item())
@@ -78,7 +74,7 @@ def _peak_range_velocity_from_h_dd(
     delay_resolution = 2.0 * sp.range_resolution_monostatic / c
     doppler_resolution = sp.velocity_resolution_monostatic * 2.0 * sp.carrier_frequency / c
     tau_s = delay_bin * delay_resolution
-    fd_hz = (dop_bin - n_sym // 2) * doppler_resolution
+    fd_hz = (dop_bin - sp.rg.num_ofdm_symbols // 2) * doppler_resolution
 
     range_m = float(delay_to_range(tau_s, sp.carrier_frequency, "monostatic"))
     vel_mps = float(

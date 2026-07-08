@@ -84,19 +84,20 @@ material = "cube_material"
 position = [0, 0, 0]
 velocity = [0, 0, 0]
 orientation = [0, 0, 0]
-scaling = [0.6, 0.6, 0.6]
+# scaling = [0.6, 0.6, 0.6]
+scaling = [1, 1, 1]
 
 # 路径解析器参数
 [rt_simulator.path_solver]
 max_depth = 3               # 最大路径交互次数
 max_num_paths_per_src = 1e6 # 每个信号源的最大路径数
 samples_per_src = 1e6       # 每个信号源的射线采样数
-los = true                  # 是否考虑LOS路径
+los = false                  # 是否考虑LOS路径
 specular_reflection = true  # 是否考虑镜面反射
-diffuse_reflection = true   # 是否考虑漫反射
-refraction = true           # 是否考虑折射
-diffraction = true          # 是否考虑衍射
-edge_diffraction = true     # 是否考虑边缘衍射
+diffuse_reflection = false   # 是否考虑漫反射
+refraction = false           # 是否考虑折射
+diffraction = false          # 是否考虑衍射
+edge_diffraction = false     # 是否考虑边缘衍射
 synthetic_array = true      # 是否使用合成阵列
 seed = 42                   # 随机种子
 
@@ -126,7 +127,7 @@ detector = "linear" # 检测器: linear | squarelaw
 [music]
 threshold = 0.1
 
-# 时延–多普勒谱 ROI（物理量裁剪）
+# 时延–多普勒谱 ROI（物理量裁剪）；注释掉本节则采集/回放使用全谱 (num_symbols × fft_size)
 [dd_spectrum_roi]
 max_range_m = 30.0
 max_velocity_mps = 5.0

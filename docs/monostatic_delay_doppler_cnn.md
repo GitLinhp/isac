@@ -95,7 +95,8 @@ flowchart LR
 
 ### 4.2 MonostaticDelayDopplerCNN 主干
 
-默认 `base_channels = 32`（`c = 32`）时的通道与下采样如下：
+默认 `base_channels = 32`、`num_layers = 4`（`c = 32`）时的通道与下采样如下。
+`num_layers` 控制残差编码块数量：首块 stride=1、同宽；第 2–N 块逐层通道加倍并 stride=2 下采样。
 
 | 阶段 | 模块 | 输入→输出通道 | stride | 作用 |
 |------|------|---------------|--------|------|
@@ -113,7 +114,7 @@ flowchart LR
 ```text
 spectrum_tensor (B,H,W) complex
   → spectrum_tensor_to_features → (B,2,H,W) float
-  → stem → layer1 → layer2 → layer3 → layer4 → head
+  → stem → residual × num_layers → head
   → (B, 2)
 ```
 
@@ -122,7 +123,8 @@ spectrum_tensor (B,H,W) complex
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `in_channels` | 2 | 与 `spectrum_tensor_to_features` 输出通道一致 |
-| `base_channels` | 32 | stem 与 layer1 宽度；layer2–4 依次为 `2c`、`4c`、`8c` |
+| `base_channels` | 32 | stem 与首层残差宽度；后续层依次为 `2c`、`4c`、…、`c·2^(num_layers-1)` |
+| `num_layers` | 4 | 残差编码块数量 |
 | `dropout` | 0.2 | 回归头中 Dropout 概率 |
 
 ---
@@ -162,7 +164,8 @@ python script/model_training/run_train_monostatic_cnn.py \
 | 监督标签 | `kinematics_to_target_bins` | 运动学 → `(B, 2)` 局部 bin |
 | `num_doppler_bins` | `sensing_attrs_from_system` | 来自 TOML / `dd_spectrum_roi` |
 | 损失 | `MonostaticSensingLoss` | `peaks_delay`、`peaks_doppler` 分维度 MSE，默认等权 |
-| 优化器 | Adam | 默认 `lr=1e-3` |
+| 优化器 | Adam | 默认 `lr=1e-3`，`weight_decay=1e-4` |
+| 学习率调度 | `ReduceLROnPlateau` | 监控 `val_loss`；`patience=5`，`factor=0.5`，`min_lr=1e-6` |
 
 验证除 bin 空间 `val_loss` 外，脚本内用 `SensingEstimator` 报告物理距离/速度 RMSE（与评估脚本一致）。
 
@@ -209,6 +212,7 @@ python script/evaluation/run_sensing_from_dataset.py \
 | `model_state_dict` | `dict` | `state_dict` 权重 |
 | `in_channels` | `int` | 结构超参 |
 | `base_channels` | `int` | 结构超参 |
+| `num_layers` | `int` | 残差编码块数量（旧 checkpoint 缺省按 4 加载） |
 | `dropout` | `float` | 结构超参 |
 
 定义见 [`model_design.py`](../src/isac/models/model_design.py) 中 `_REQUIRED_CKPT_KEYS`。

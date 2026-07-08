@@ -76,3 +76,12 @@ def test_call_crops_to_roi_shape():
     assert h_dd.shape == _expected_roi_shape(dd)
     assert dd.dd_spectrum_roi is not None
     assert dd.dd_spectrum_roi.slices is not None
+
+
+def test_call_full_spectrum_when_no_roi():
+    dd = DelayDopplerSpectrum(_sp(), dd_spectrum_roi=None)
+    h_freq = torch.randn(512, 2048, dtype=torch.complex64)
+    h_dd = dd(h_freq)
+    assert h_dd.shape == (512, 2048)
+    assert dd._spectrum_slices == (0, 512, 0, 2048)
+    assert dd._active_slices() == (0, 512, 0, 2048)

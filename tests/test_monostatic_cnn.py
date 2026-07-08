@@ -48,6 +48,21 @@ def test_monostatic_cnn_batch_forward():
     assert bins.shape == (4, 2)
 
 
+@pytest.mark.parametrize("num_layers", [1, 2, 4])
+def test_monostatic_cnn_num_layers_forward(num_layers: int):
+    model = MonostaticDelayDopplerCNN(in_channels=2, num_layers=num_layers)
+    model.eval()
+    batch = torch.randn(2, 256, 128, dtype=torch.complex64)
+    with torch.no_grad():
+        bins = model(batch)
+    assert bins.shape == (2, 2)
+
+
+def test_monostatic_cnn_num_layers_invalid():
+    with pytest.raises(ValueError, match="num_layers"):
+        MonostaticDelayDopplerCNN(in_channels=2, num_layers=0)
+
+
 def test_dd_features_from_cropped_spectrum():
     h_dd = torch.randn(128, 64, dtype=torch.complex64)
     feat = dd_spectrum_to_features(h_dd)

@@ -4,7 +4,7 @@
 
     输入 spectrum_tensor（复数裁切谱）
       → spectrum_tensor_to_features
-      → stem + 4 级残差编码
+      → stem + num_layers 级残差编码（默认 4）
       → 回归头（线性）
       → (B, 2) 局部 bin 张量 [peaks_delay, peaks_doppler]
 
@@ -12,13 +12,13 @@
 
 网络结构
 --------
-stem（7×7 conv + pool）→ layer1–4（残差块，通道 32→64→128→256）→
+stem（7×7 conv + pool）→ 残差块 × ``num_layers``（默认通道 32→64→128→256）→
 全局池化 + MLP 回归头 → ``(B, 2)`` 局部 bin。
 
 checkpoint
 ----------
-仅保存 ``model_state_dict`` 与 ``in_channels`` / ``base_channels`` / ``dropout``；
-见 ``_REQUIRED_CKPT_KEYS`` 与 ``load_monostatic_cnn_checkpoint``。
+保存 ``model_state_dict`` 与 ``in_channels`` / ``base_channels`` / ``num_layers`` /
+``dropout``；见 ``_REQUIRED_CKPT_KEYS`` 与 ``load_monostatic_cnn_checkpoint``。
 
 调用方
 ------
@@ -38,6 +38,14 @@ from .preprocess import spectrum_tensor_to_features
 
 # checkpoint 必填键（感知 ROI/分辨率不写入，由 TOML System 提供）
 _REQUIRED_CKPT_KEYS = (
+    "model_state_dict",
+    "in_channels",
+    "base_channels",
+    "num_layers",
+    "dropout",
+)
+# 旧版 checkpoint 可能缺少 num_layers，加载时默认 4
+_CORE_CKPT_KEYS = (
     "model_state_dict",
     "in_channels",
     "base_channels",
@@ -88,7 +96,9 @@ class MonostaticDelayDopplerCNN(nn.Module):
     in_channels : int
         特征通道数，默认 2（幅度 dB + 相位，见 ``spectrum_tensor_to_features``）
     base_channels : int
-        stem 与 layer1 的基础通道数，后续残差层逐层加倍
+        stem 与首层残差的基础通道数，后续残差层逐层加倍
+    num_layers : int
+        残差编码块数量，默认 4；首块 stride=1，其余 stride=2 下采样
     dropout : float
         回归头中的 dropout 概率
     """
@@ -98,11 +108,16 @@ class MonostaticDelayDopplerCNN(nn.Module):
         *,
         in_channels: int = 2,
         base_channels: int = 32,
+        num_layers: int = 4,
         dropout: float = 0.2,
     ) -> None:
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"num_layers 须 >= 1，收到 {num_layers}")
+
         self.in_channels = in_channels
         self.base_channels = base_channels
+        self.num_layers = num_layers
         self.dropout = dropout
         c = base_channels
 
@@ -113,19 +128,27 @@ class MonostaticDelayDopplerCNN(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2, padding=1),
         )
-        # layer1–4：残差编码，逐层加倍通道
-        self.layer1 = ConvResidualBlock(c, c)
-        self.layer2 = ConvResidualBlock(c, c * 2, stride=2)
-        self.layer3 = ConvResidualBlock(c * 2, c * 4, stride=2)
-        self.layer4 = ConvResidualBlock(c * 4, c * 8, stride=2)
+
+        # 残差编码：首层同分辨率，后续逐层加倍通道并下采样
+        layers: list[ConvResidualBlock] = []
+        for i in range(num_layers):
+            if i == 0:
+                layers.append(ConvResidualBlock(c, c))
+            else:
+                in_ch = c * (2 ** (i - 1))
+                out_ch = c * (2**i)
+                layers.append(ConvResidualBlock(in_ch, out_ch, stride=2))
+        self.layers = nn.ModuleList(layers)
+
+        final_ch = c * (2 ** (num_layers - 1))
         # head：全局池化 + 线性回归至 2 维 bin
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(c * 8, c * 4),
+            nn.Linear(final_ch, final_ch // 2),
             nn.ReLU(inplace=True),
             nn.Dropout(p=dropout),
-            nn.Linear(c * 4, 2),
+            nn.Linear(final_ch // 2, 2),
         )
 
     def forward(self, spectrum_tensor: torch.Tensor) -> torch.Tensor:
@@ -142,10 +165,8 @@ class MonostaticDelayDopplerCNN(nn.Module):
             )
 
         x = self.stem(features)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        for layer in self.layers:
+            x = layer(x)
         x = self.head(x)
 
         return x
@@ -157,8 +178,8 @@ def load_monostatic_cnn_checkpoint(
 ) -> MonostaticDelayDopplerCNN:
     """从 checkpoint 加载 CNN 并置 ``eval()`` 模式。
 
-    必填字段见 ``_REQUIRED_CKPT_KEYS``。感知参数（ROI、分辨率等）须由调用方
-    经 ``data_collection.toml`` / ``System`` 单独提供。
+    必填字段见 ``_CORE_CKPT_KEYS``；``num_layers`` 缺省时按 4 处理以兼容旧 checkpoint。
+    感知参数（ROI、分辨率等）须由调用方经 ``data_collection.toml`` / ``System`` 单独提供。
 
     Raises
     ------
@@ -173,13 +194,14 @@ def load_monostatic_cnn_checkpoint(
 
     # 先在 CPU 加载，再校验必填键
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    missing = [key for key in _REQUIRED_CKPT_KEYS if key not in ckpt]
+    missing = [key for key in _CORE_CKPT_KEYS if key not in ckpt]
     if missing:
         raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
 
     model = MonostaticDelayDopplerCNN(
         in_channels=int(ckpt["in_channels"]),
         base_channels=int(ckpt["base_channels"]),
+        num_layers=int(ckpt.get("num_layers", 4)),
         dropout=float(ckpt["dropout"]),
     )
     model.load_state_dict(ckpt["model_state_dict"])

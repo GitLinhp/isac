@@ -36,7 +36,7 @@
 
 checkpoint 约定
 --------------
-仅写入 ``model_state_dict``、``in_channels``、``base_channels``、``dropout``；
+仅写入 ``model_state_dict``、``in_channels``、``base_channels``、``num_layers``、``dropout``；
 ROI / 分辨率等感知参数由 TOML 提供，不序列化到 checkpoint。
 
 详见 ``docs/monostatic_delay_doppler_cnn.md``。
@@ -66,7 +66,7 @@ from isac.models import (
 )
 from isac.sensing.spectrum.sensing_performance import SensingPerformance
 from isac.system import System
-from isac.utils import load_config
+from isac.utils import load_config, set_random_seed
 
 if TYPE_CHECKING:
     from isac.sensing.evaluation.sensing_estimator import SensingEstimator
@@ -93,67 +93,13 @@ class TrainPaths:
     - ``checkpoint_final``：最终 epoch 权重
     """
 
-
-def argument_parser() -> argparse.Namespace:
-    """构造训练脚本的全部 CLI 参数。
-
-    ``data_collection.toml`` 固定解析为 HDF5 同目录下的副本（见 ``_resolve_train_inputs``）。
-    """
-    parser = argparse.ArgumentParser(
-        description="ISAC — 训练单基地时延–多普勒 CNN（h_dd → 距离/速度）"
-    )
-
-    # --- 数据与划分 ---
-    data_group = parser.add_argument_group("数据与划分")
-    data_group.add_argument(
-        "--dataset_h5",
-        type=Path,
-        default=DEFAULT_DATASET_H5,
-        help="HDF5 数据集路径",
-    )
-    data_group.add_argument(
-        "--val_ratio", type=float, default=0.2, help="验证集比例"
-    )
-
-    # --- 训练超参 ---
-    train_group = parser.add_argument_group("训练超参")
-    train_group.add_argument("--epochs", type=int, default=200, help="训练轮数")
-    train_group.add_argument("--batch_size", type=int, default=64, help="批大小")
-    train_group.add_argument("--lr", type=float, default=1e-3, help="Adam 学习率")
-    train_group.add_argument(
-        "--device",
-        "-d",
-        type=str,
-        default="cuda:0",
-        choices=["cuda:0", "cpu"],
-        help="训练设备",
-    )
-    train_group.add_argument("--seed", type=int, default=42, help="随机种子")
-
-    # --- 输出与检查点 ---
-    out_group = parser.add_argument_group(
-        "输出与检查点",
-        "val_loss 最优写入 --output；每 save_every epoch 写周期性 checkpoint 并刷新训练曲线",
-    )
-    out_group.add_argument(
-        "--output",
-        type=Path,
-        default=DEFAULT_MONOSTATIC_CNN_MODEL,
-        help="val_loss 最优模型保存路径",
-    )
-    out_group.add_argument(
-        "--save_every",
-        type=int,
-        default=10,
-        help="每隔多少 epoch 保存周期性检查点并更新训练曲线",
-    )
-
-    return parser.parse_args()
+    best_model: Path
+    checkpoint_dir: Path
+    training_curve: Path
+    checkpoint_final: Path
 
 
 # --- 路径解析与预检 ---
-
-
 def _resolve_train_inputs(args: argparse.Namespace) -> TrainInputs:
     """校验 HDF5 与采集配置 TOML 路径。"""
     h5_path = args.dataset_h5.resolve()
@@ -167,28 +113,7 @@ def _resolve_train_inputs(args: argparse.Namespace) -> TrainInputs:
     return TrainInputs(h5_path=h5_path, config_path=config_path)
 
 
-def _preflight_training(
-    system: System,
-) -> tuple[SensingEstimator, SensingPerformance]:
-    """校验标签生成与物理 RMSE 评估所需组件已构建。
-
-    - ``SensingEstimator``（TOML ``[music]``）：验证集物理 RMSE
-    - ``SensingPerformance``（TOML ``[ofdm]`` 等）：``kinematics_to_target_bins`` 标签
-    """
-    sensing_estimator = system.components.sensing_estimator
-    if sensing_estimator is None:
-        raise ValueError("训练验证 RMSE 需要 TOML [music] 段以构建 SensingEstimator")
-
-    sensing_performance = system.components.sensing_performance
-    if sensing_performance is None:
-        raise ValueError("训练标签生成需要 TOML [ofdm] 与 [carrier_frequency]")
-
-    return sensing_estimator, sensing_performance
-
-
 # --- DataLoader 与 batch ---
-
-
 def _collate_batch(
     samples: list[dict[str, torch.Tensor]],
 ) -> dict[str, torch.Tensor]:
@@ -375,16 +300,37 @@ def _build_dataloaders(
 def _build_model_and_optim(
     device: torch.device | str,
     lr: float,
+    weight_decay: float,
+    num_layers: int,
 ) -> tuple[MonostaticDelayDopplerCNN, torch.optim.Optimizer, MonostaticSensingLoss, int]:
     """构建 CNN、Adam 与 bin 空间损失。
 
     CNN 仅 ``in_channels=2``，不传入 ``sensing_attrs``；感知参数仅用于标签与日志。
+    Adam 使用 ``weight_decay`` 作 L2 正则。
     """
     in_channels = 2
-    model = MonostaticDelayDopplerCNN(in_channels=in_channels).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    model = MonostaticDelayDopplerCNN(
+        in_channels=in_channels, num_layers=num_layers
+    ).to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=lr, weight_decay=weight_decay
+    )
     criterion = MonostaticSensingLoss()
     return model, optimizer, criterion, in_channels
+
+
+def _build_lr_scheduler(
+    optimizer: torch.optim.Optimizer,
+    args: argparse.Namespace,
+) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
+    """``val_loss`` 停滞时按 ``lr_factor`` 衰减学习率。"""
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=args.lr_factor,
+        patience=args.lr_patience,
+        min_lr=args.lr_min,
+    )
 
 
 def _train_paths(output: Path) -> TrainPaths:
@@ -427,13 +373,14 @@ def _checkpoint_payload(
 ) -> dict[str, Any]:
     """构造 checkpoint 字典（仅权重与结构超参）。
 
-    键：``model_state_dict``、``in_channels``、``base_channels``、``dropout``。
+    键：``model_state_dict``、``in_channels``、``base_channels``、``num_layers``、``dropout``。
     不含 ``epoch``、``config_file`` 及感知 ROI/分辨率字段。
     """
     return {
         "model_state_dict": model.state_dict(),
         "in_channels": in_channels,
         "base_channels": model.base_channels,
+        "num_layers": model.num_layers,
         "dropout": model.dropout,
     }
 
@@ -506,6 +453,7 @@ def _run_training_epochs(
     model: MonostaticDelayDopplerCNN,
     criterion: MonostaticSensingLoss,
     optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau,
     sensing_estimator: SensingEstimator,
     sensing_performance: SensingPerformance,
     num_doppler_bins: int,
@@ -544,10 +492,15 @@ def _run_training_epochs(
             num_doppler_bins,
             device,
         )
+        prev_lr = optimizer.param_groups[0]["lr"]
+        scheduler.step(val_loss)
+        cur_lr = optimizer.param_groups[0]["lr"]
+        if cur_lr < prev_lr:
+            tqdm.write(f"lr reduced: {prev_lr:.2e} -> {cur_lr:.2e}")
         tqdm.write(
             f"epoch {epoch:03d} | train_loss={mean_train_loss:.4f} | "
             f"val_loss={val_loss:.4f} | RMSE_range={val_rmse_r:.3f} m | "
-            f"RMSE_vel={val_rmse_v:.3f} m/s"
+            f"RMSE_vel={val_rmse_v:.3f} m/s | lr={cur_lr:.2e}"
         )
 
         history["epoch"].append(float(epoch))
@@ -580,20 +533,105 @@ def _run_training_epochs(
     return best_val_loss
 
 
+# ------------------------------------------------------------------------------------------------
+# 参数解析：CLI 参数解析
+# ------------------------------------------------------------------------------------------------
+def argument_parser() -> argparse.Namespace:
+    """构造训练脚本的全部 CLI 参数。
+
+    ``data_collection.toml`` 固定解析为 HDF5 同目录下的副本（见 ``_resolve_train_inputs``）。
+    """
+    parser = argparse.ArgumentParser(
+        description="ISAC — 训练单基地时延–多普勒 CNN（h_dd → 距离/速度）"
+    )
+
+    # --- 数据与划分 ---
+    data_group = parser.add_argument_group("数据与划分")
+    data_group.add_argument(
+        "--dataset_h5",
+        type=Path,
+        default=DEFAULT_DATASET_H5,
+        help="HDF5 数据集路径",
+    )
+    data_group.add_argument(
+        "--val_ratio", type=float, default=0.2, help="验证集比例"
+    )
+
+    # --- 训练超参 ---
+    train_group = parser.add_argument_group("训练超参")
+    train_group.add_argument("--epochs", type=int, default=200, help="训练轮数")
+    train_group.add_argument("--batch_size", type=int, default=64, help="批大小")
+    train_group.add_argument("--lr", type=float, default=1e-3, help="Adam 学习率")
+    train_group.add_argument(
+        "--weight_decay", type=float, default=1e-4, help="Adam L2 系数"
+    )
+    train_group.add_argument(
+        "--lr_patience",
+        type=int,
+        default=5,
+        help="val_loss 连续多少 epoch 无改善后衰减学习率",
+    )
+    train_group.add_argument(
+        "--lr_factor",
+        type=float,
+        default=0.5,
+        help="学习率衰减倍率（lr *= factor）",
+    )
+    train_group.add_argument(
+        "--lr_min", type=float, default=1e-6, help="学习率下限"
+    )
+    train_group.add_argument(
+        "--device",
+        "-d",
+        type=str,
+        default="cuda:0",
+        choices=["cuda:0", "cpu"],
+        help="训练设备",
+    )
+    train_group.add_argument("--seed", type=int, default=42, help="随机种子")
+    train_group.add_argument(
+        "--num_layers", type=int, default=3, help="残差编码块数量（>= 1）"
+    )
+
+    # --- 输出与检查点 ---
+    out_group = parser.add_argument_group(
+        "输出与检查点",
+        "val_loss 最优写入 --output；每 save_every epoch 写周期性 checkpoint 并刷新训练曲线",
+    )
+    out_group.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_MONOSTATIC_CNN_MODEL,
+        help="val_loss 最优模型保存路径",
+    )
+    out_group.add_argument(
+        "--save_every",
+        type=int,
+        default=10,
+        help="每隔多少 epoch 保存周期性检查点并更新训练曲线",
+    )
+
+    return parser.parse_args()
+
+# ------------------------------------------------------------------------------------------------
+# 训练入口：加载数据 → 构建模型 → epoch 循环 → 保存检查点与曲线。
+# ------------------------------------------------------------------------------------------------
 def main() -> None:
-    """训练入口：加载数据 → 构建模型 → epoch 循环 → 保存检查点与曲线。"""
     # --- 初始化：CLI 校验与随机种子 ---
     args = argument_parser()
     if args.save_every < 1:
         raise ValueError("save_every 须 >= 1")
+    if args.num_layers < 1:
+        raise ValueError("num_layers 须 >= 1")
 
     inputs = _resolve_train_inputs(args)
-    torch.manual_seed(args.seed)
+    set_random_seed(args.seed)
     device = args.device
 
     # --- System 预检：标签生成 + 验证 RMSE 所需组件 ---
-    system = System(load_config(inputs.config_path), device=device)
-    sensing_estimator, sensing_performance = _preflight_training(system)
+    system = System(load_config(inputs.config_path), device=device) # 预检系统组件
+    sensing_performance = system.components.sensing_performance # 标签生成所需组件
+    sensing_estimator = system.components.sensing_estimator # 验证 RMSE 所需组件
     sensing = sensing_attrs_from_system(system)  # 标签 num_doppler_bins 与日志用
     num_doppler_bins = int(sensing["num_doppler_bins"])
 
@@ -601,8 +639,9 @@ def main() -> None:
     full_ds = RTDataset.load(inputs.h5_path)
     train_loader, val_loader, n_train, n_val = _build_dataloaders(full_ds, args)
     model, optimizer, criterion, in_channels = _build_model_and_optim(
-        device, args.lr
+        device, args.lr, args.weight_decay, args.num_layers
     )
+    scheduler = _build_lr_scheduler(optimizer, args)
 
     paths = _train_paths(Path(args.output))
     _log_train_banner(inputs, paths, sensing, n_train, n_val)
@@ -615,6 +654,7 @@ def main() -> None:
         model,
         criterion,
         optimizer,
+        scheduler,
         sensing_estimator,
         sensing_performance,
         num_doppler_bins,

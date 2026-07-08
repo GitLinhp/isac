@@ -372,9 +372,9 @@ def main() -> None:
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
     _log_run_context(dataset, inputs.config_path, target_name, scene_slug)
 
-    sensing = (
-        sensing_attrs_from_system(system) if args.estimator == "model" else None
-    )
+    # 初始化 dd_spectrum_roi.slices，供 SensingEstimator 读取 num_doppler_bins
+    sensing_attrs = sensing_attrs_from_system(system)
+    sensing = sensing_attrs if args.estimator == "model" else None
     setup = _setup_estimator(
         args.estimator,
         inputs.model_path,
