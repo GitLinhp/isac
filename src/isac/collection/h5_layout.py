@@ -38,11 +38,6 @@ def collection_h5_path(scene_slug: str, out_dir: Path) -> Path:
     return out_dir / f"{scene_slug}{H5_SUFFIX}"
 
 
-def collection_scene_png_path(scene_slug: str, out_dir: Path) -> Path:
-    """场景渲染图路径 ``{out_dir}/{scene_slug}_scene.png``。"""
-    return out_dir / f"{scene_slug}{SCENE_PNG_SUFFIX}"
-
-
 def collection_dataset_description(scene_slug: str, n_episodes: int) -> str:
     """生成写入根属性 ``description`` 的英文描述。"""
     return (

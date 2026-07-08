@@ -10,7 +10,7 @@ from ..system import System
 
 
 def sensing_attrs_from_system(system: System) -> dict[str, Any]:
-    """返回 ``MonostaticDelayDopplerCNN`` 构造所需字段及 ``num_doppler_bins``。"""
+    """返回训练标签与日志用的感知属性（含 ``num_doppler_bins``）。"""
     comps = system.components
     sp = comps.sensing_performance
     dd_roi = comps.dd_spectrum_roi

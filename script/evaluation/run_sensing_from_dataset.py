@@ -6,19 +6,17 @@
 
 流程概要
 --------
-加载 ``RTDataset``（采集期落盘的 h_dd）→ 构建 ``System`` → 逐 episode 读取 h_dd →
-MUSIC 或 CNN 估计 → 与训练标签对齐的 RMSE。
+加载 ``RTDataset`` → 构建 ``System`` → 逐 episode 读取 ``spectrum_tensor`` →
+MUSIC 或 CNN 估计局部 bin → 转 ``MusicPeaks`` → 与几何真值对齐的 RMSE。
 
-注意：存盘 h_dd 采集时未施加 MTI；MUSIC 评估亦直接使用 h_dd（无法对已存谱补做 MTI）。
+估计器（``--estimator``）
+------------------------
+- ``music``：``MUSICEstimator`` → ``MusicPeaks``
+- ``model``（默认）：``MonostaticDelayDopplerCNN`` → ``(B, 2)`` bin → ``MusicPeaks``
 
-估计器分支（``--estimator``）
-----------------------------
-- ``model``（默认）：``MonostaticDelayDopplerCNN``
-- ``music``：``estimate_sensing_music``
+真值：``monostatic_range_velocity``（与训练标签一致）。
 
-真值来源
---------
-- MUSIC / CNN 均使用 ``monostatic_range_velocity``（与训练标签一致）
+注意：存盘 h_dd 采集时未施加 MTI；回放亦直接使用 h_dd。
 """
 
 from __future__ import annotations
@@ -26,6 +24,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import torch
 from tabulate import tabulate
@@ -36,18 +35,31 @@ from isac import (
     DEFAULT_MONOSTATIC_CNN_MODEL,
     OUT_DIR,
 )
-from isac.collection import RTDataset
+from isac.collection import RTDataset, sensing_attrs_from_system
+from isac.data_structures.types import MusicPeaks
+from isac.models import (
+    MonostaticDelayDopplerCNN,
+    load_monostatic_cnn_checkpoint,
+)
 from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.sensing.geometry import monostatic_range_velocity
-from isac.models import (
-    MonostaticCnnCheckpointMeta,
-    MonostaticDelayDopplerCNN,
-    dd_spectrum_to_features,
-    load_monostatic_cnn_checkpoint,
-    read_monostatic_cnn_checkpoint_meta,
-)
 from isac.system import System
 from isac.utils import load_config, set_random_seed
+
+if TYPE_CHECKING:
+    from isac.channel.rt.rt_simulator import RTSimulator
+    from isac.data_structures.system_components import SystemComponents
+    from isac.sensing.detection.music_estimator import MUSICEstimator
+    from isac.sensing.evaluation.sensing_estimator import SensingEstimator
+
+
+@dataclass(frozen=True)
+class EvalInputs:
+    """校验后的回放输入路径。"""
+
+    h5_path: Path
+    model_path: Path
+    config_path: Path
 
 
 @dataclass
@@ -59,24 +71,69 @@ class EstimatorSetup:
     metric_mode: str
 
 
-# ---------------------------- 辅助函数 ----------------------------
-def _resolve_inputs(
-    args: argparse.Namespace,
-) -> tuple[Path, Path, MonostaticCnnCheckpointMeta, Path]:
-    """校验 HDF5 / checkpoint 路径，并从 checkpoint 解析训练配置。"""
+def _resolve_inputs(args: argparse.Namespace) -> EvalInputs:
+    """校验 HDF5 / checkpoint 路径；TOML 取自 HDF5 同目录 ``data_collection.toml``。"""
     h5_path = args.dataset_h5.resolve()
     if not h5_path.is_file():
         raise FileNotFoundError(f"数据集不存在: {h5_path}")
 
+    config_path = h5_path.parent / "data_collection.toml"
+    if not config_path.is_file():
+        raise FileNotFoundError(f"配置文件不存在: {config_path}")
+
     model_path = args.model_path.resolve()
-    if not model_path.is_file():
+    if args.estimator == "model" and not model_path.is_file():
         raise FileNotFoundError(f"模型 checkpoint 不存在: {model_path}")
 
-    ckpt_meta = read_monostatic_cnn_checkpoint_meta(model_path)
-    if ckpt_meta.config_file is None or not ckpt_meta.config_file.is_file():
-        raise FileNotFoundError(f"checkpoint 缺少有效 config_file: {model_path}")
+    return EvalInputs(
+        h5_path=h5_path,
+        model_path=model_path,
+        config_path=config_path,
+    )
 
-    return h5_path, model_path, ckpt_meta, ckpt_meta.config_file
+
+def _preflight_checks(system: System) -> RTSimulator:
+    """校验 RT 链路与 SensingEstimator 已就绪。"""
+    rt_simulator = system.components.rt_simulator
+    if rt_simulator is None:
+        raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
+    if system.components.sensing_estimator is None:
+        raise ValueError("感知评估需要 TOML [music] 段以构建 SensingEstimator")
+    return rt_simulator
+
+
+def _estimate_peaks(
+    h_dd: torch.Tensor,
+    setup: EstimatorSetup,
+    music_estimator: MUSICEstimator | None,
+) -> MusicPeaks:
+    """MUSIC 或 CNN 统一峰值估计入口。"""
+    if setup.label == "MUSIC":
+        if music_estimator is None:
+            raise ValueError("MUSIC 估计需要 TOML [music] 段以构建 MUSICEstimator")
+        return music_estimator(h_dd, num_sources=1)
+
+    assert setup.cnn_model is not None
+    bins = setup.cnn_model(h_dd)
+    return MusicPeaks.from_local_bins(
+        bins[0, 0], bins[0, 1], device=bins.device
+    )
+
+
+def _episode_ground_truth(
+    dataset: RTDataset,
+    idx: int,
+    device: torch.device | str,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """单 episode 几何真值：斜距与径向速度标量张量。"""
+    range_m, vel_mps = monostatic_range_velocity(
+        dataset.target_position[idx],
+        dataset.target_velocity[idx],
+        dataset.bs_pos,
+    )
+    true_range = torch.tensor(range_m, dtype=torch.float64, device=device)
+    true_velocity = torch.tensor(vel_mps, dtype=torch.float64, device=device)
+    return true_range, true_velocity
 
 
 def _setup_estimator(
@@ -85,82 +142,124 @@ def _setup_estimator(
     device: torch.device | str,
     *,
     metric_mode: str,
+    sensing: dict[str, Any] | None = None,
 ) -> EstimatorSetup:
     """初始化 MUSIC 或 CNN 估计器。"""
     if estimator == "music":
         print(f"估计器: MUSIC | metric_mode={metric_mode}")
         return EstimatorSetup("MUSIC", None, metric_mode)
 
-    cnn_model, cnn_meta = load_monostatic_cnn_checkpoint(model_path, device)
-    _print_cnn_estimator_banner(model_path, cnn_meta)
+    if sensing is None:
+        raise ValueError("CNN 估计器需要 sensing 属性（来自 System / TOML）")
+    cnn_model = load_monostatic_cnn_checkpoint(model_path, device)
+    _print_cnn_estimator_banner(model_path, sensing)
     return EstimatorSetup("CNN", cnn_model, metric_mode)
 
 
 @torch.no_grad()
 def _evaluate_episode(
-    i: int,
+    idx: int,
     dataset: RTDataset,
     system: System,
     setup: EstimatorSetup,
+    sensing_estimator: SensingEstimator,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """单 episode：感知估计 → 真值对齐 → 径向 RMSE。"""
-    h_dd = dataset.spectrum_tensor(i, device=system.device)
-    comps = system.components
-
-    pos = dataset.target_position[i]
-    vel = dataset.target_velocity[i]
-    range_m, vel_mps = monostatic_range_velocity(pos, vel, dataset.bs_pos)
-    true_range = torch.tensor(range_m, dtype=torch.float64, device=system.device)
-    true_velocity = torch.tensor(vel_mps, dtype=torch.float64, device=system.device)
-
-    if setup.label == "MUSIC":
-        peaks = comps.music_estimator(
-            h_dd,
-            num_sources=1,
-        )
-    else:
-        assert setup.cnn_model is not None
-        model_device = next(setup.cnn_model.parameters()).device
-        features = dd_spectrum_to_features(h_dd)
-        peaks = setup.cnn_model(features.unsqueeze(0).to(model_device))
-
-    if comps.sensing_estimator is None:
-        raise ValueError("感知评估需要 TOML [music] 段以构建 SensingEstimator")
-    estimate = comps.sensing_estimator(
+    """单 episode：读谱 → 估峰 → 物理换算 → 径向 RMSE。"""
+    h_dd = dataset.spectrum_tensor(idx, device=system.device)
+    true_range, true_velocity = _episode_ground_truth(
+        dataset, idx, system.device
+    )
+    peaks = _estimate_peaks(
+        h_dd, setup, system.components.music_estimator
+    )
+    estimate = sensing_estimator(
         peaks,
         metric_mode=setup.metric_mode,
         sens_mode="monostatic",
         log_peaks=False,
     )
-    rmse_range_m, rmse_velocity_mps, _, _, _ = match_peaks_and_compute_radial_rmse(
+    return match_peaks_and_compute_radial_rmse(
         est_ranges=estimate.est_ranges,
         est_velocities=estimate.est_velocities,
         true_ranges=true_range.reshape(-1),
         true_velocities=true_velocity.reshape(-1),
-        label=f"episode {i}",
+        label=f"episode {idx}",
         verbose=False,
+    )[:2]
+
+
+def _run_evaluation_loop(
+    dataset: RTDataset,
+    system: System,
+    setup: EstimatorSetup,
+    sensing_estimator: SensingEstimator,
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+    """逐 episode 评估，返回距离/速度 RMSE 列表。"""
+    range_rmses: list[torch.Tensor] = []
+    velocity_rmses: list[torch.Tensor] = []
+    range_sum = 0.0
+    vel_sum = 0.0
+
+    with tqdm(range(len(dataset)), desc="性能评估", unit="ep") as pbar:
+        for i in pbar:
+            rmse_range_m, rmse_velocity_mps = _evaluate_episode(
+                i, dataset, system, setup, sensing_estimator
+            )
+            range_rmses.append(rmse_range_m)
+            velocity_rmses.append(rmse_velocity_mps)
+            range_sum += rmse_range_m.item()
+            vel_sum += rmse_velocity_mps.item()
+            n_ok = len(range_rmses)
+            pbar.set_postfix(
+                range_rmse=f"{range_sum / n_ok:.2f}m",
+                vel_rmse=f"{vel_sum / n_ok:.2f}m/s",
+            )
+
+    return range_rmses, velocity_rmses
+
+
+def _log_run_context(
+    dataset: RTDataset,
+    config_path: Path,
+    target_name: str,
+    scene_slug: str,
+) -> None:
+    """打印数据集、场景与配置摘要。"""
+    print(f"已加载数据集: {dataset}")
+    print(f"目标: {target_name}, 场景: {scene_slug}, 配置: {config_path}")
+
+
+def _render_scene_png(
+    rt_simulator: RTSimulator,
+    scene_slug: str,
+    out_dir: Path,
+) -> None:
+    """将 RT 场景渲染为 PNG。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rt_simulator.render_to_file(
+        filename=f"{scene_slug}_scene.png",
+        output_dir=out_dir,
     )
-    return rmse_range_m, rmse_velocity_mps
+
+
+def _log_sensing_performance(comps: SystemComponents) -> None:
+    """打印感知性能参数表（若已构建 SensingPerformance）。"""
+    if comps.sensing_performance is not None:
+        comps.sensing_performance()
 
 
 def _print_cnn_estimator_banner(
     model_path: Path,
-    meta: MonostaticCnnCheckpointMeta,
+    sensing: dict[str, Any],
 ) -> None:
-    """打印 CNN 估计器与 checkpoint 元数据。"""
-    epoch_line = f"epoch={meta.epoch}, " if meta.epoch is not None else ""
+    """打印 CNN 估计器与 TOML 感知属性摘要。"""
     print(
         f"估计器: CNN | 模型: {model_path}\n"
-        f"  {epoch_line}"
-        f"ROI max_range={meta.max_range_m:.1f} m, "
-        f"±max_velocity={meta.max_velocity_mps:.1f} m/s, "
-        f"Δr={meta.range_resolution:.3f} m, "
-        f"Δv={meta.velocity_resolution:.3f} m/s"
+        f"  ROI max_range={sensing['max_range_m']:.1f} m, "
+        f"±max_velocity={sensing['max_velocity_mps']:.1f} m/s, "
+        f"Δr={sensing['range_resolution']:.3f} m, "
+        f"Δv={sensing['velocity_resolution']:.3f} m/s"
     )
-    if meta.dataset_h5 is not None:
-        print(f"  训练数据集: {meta.dataset_h5}")
-    if meta.config_file is not None:
-        print(f"  训练配置: {meta.config_file}")
 
 
 def _rmse_stats_rows(values: torch.Tensor, *, unit: str, var_unit: str) -> list[list]:
@@ -209,7 +308,6 @@ def _print_rmse_summary(
         )
 
 
-# ---------------------------- CLI ----------------------------
 def argument_parser() -> argparse.Namespace:
     """构造回放脚本的全部 CLI 参数。"""
     parser = argparse.ArgumentParser(
@@ -254,69 +352,47 @@ def argument_parser() -> argparse.Namespace:
         "--model_path",
         type=Path,
         default=DEFAULT_MONOSTATIC_CNN_MODEL,
-        help="checkpoint 路径；所有模式均从此读取训练 TOML，CNN 模式 additionally 加载权重",
+        help="checkpoint 路径（CNN 模式）；TOML 从 HDF5 同目录 data_collection.toml 读取",
     )
 
     return parser.parse_args()
 
 
-# ---------------------------- 主函数 ----------------------------
 def main() -> None:
     """HDF5 h_dd 回放入口：感知估计 + 逐 episode RMSE + 汇总统计表。"""
     args = argument_parser()
-    h5_path, model_path, _ckpt_meta, config_path = _resolve_inputs(args)
+    inputs = _resolve_inputs(args)
 
     set_random_seed(args.seed)
-    dataset = RTDataset.load(h5_path)
-    print(f"已加载数据集: {dataset}")
-
-    system = System(load_config(config_path), device=args.device)
-    comps = system.components
-
-    rt_simulator = comps.rt_simulator
-    if rt_simulator is None:
-        raise ValueError("此脚本要求 channel.type='rt' 且已配置 [rt_simulator]")
+    dataset = RTDataset.load(inputs.h5_path)
+    system = System(load_config(inputs.config_path), device=args.device)
+    rt_simulator = _preflight_checks(system)
 
     target_name, _ = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
-    print(f"目标: {target_name}, 场景: {scene_slug}, 配置: {config_path}")
+    _log_run_context(dataset, inputs.config_path, target_name, scene_slug)
 
+    sensing = (
+        sensing_attrs_from_system(system) if args.estimator == "model" else None
+    )
     setup = _setup_estimator(
         args.estimator,
-        model_path,
+        inputs.model_path,
         system.device,
         metric_mode=args.metric_mode,
+        sensing=sensing,
     )
+    _render_scene_png(rt_simulator, scene_slug, OUT_DIR / "data_loading")
+    _log_sensing_performance(system.components)
 
-    script_out_dir = OUT_DIR / "data_loading"
-    script_out_dir.mkdir(parents=True, exist_ok=True)
-    rt_simulator.render_to_file(
-        filename=f"{scene_slug}_scene.png",
-        output_dir=script_out_dir,
+    sensing_estimator = system.components.sensing_estimator
+    assert sensing_estimator is not None  # _preflight_checks 已保证
+
+    range_rmses, velocity_rmses = _run_evaluation_loop(
+        dataset, system, setup, sensing_estimator
     )
-    comps.sensing_performance()
 
     n_episodes = len(dataset)
-    range_rmses: list[torch.Tensor] = []
-    velocity_rmses: list[torch.Tensor] = []
-    range_sum = 0.0
-    vel_sum = 0.0
-
-    with tqdm(range(n_episodes), desc="性能评估", unit="ep") as pbar:
-        for i in pbar:
-            rmse_range_m, rmse_velocity_mps = _evaluate_episode(
-                i, dataset, system, setup
-            )
-            range_rmses.append(rmse_range_m)
-            velocity_rmses.append(rmse_velocity_mps)
-            range_sum += rmse_range_m.item()
-            vel_sum += rmse_velocity_mps.item()
-            n_ok = len(range_rmses)
-            pbar.set_postfix(
-                range_rmse=f"{range_sum / n_ok:.2f}m",
-                vel_rmse=f"{vel_sum / n_ok:.2f}m/s",
-            )
-
     print(f"性能评估完成: {n_episodes}/{n_episodes} episodes ({setup.label})")
     _print_rmse_summary(
         range_rmses,

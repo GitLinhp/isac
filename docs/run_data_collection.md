@@ -152,7 +152,7 @@ target(position, velocity, orientation)
 ### 几何真值
 
 - **CSV**：`los_truth_from_kinematics` 写入 `true_range_m`、`true_radial_velocity_mps`（`RxTargetTxGeometric` 几何）
-- **训练标签**：`RTDataset.__getitem__` 通过 `monostatic_range_velocity` 从 HDF5 运动学重算
+- **训练标签**：训练脚本经 `kinematics_to_target_bins` 从 HDF5 运动学生成 ROI 局部 bin 监督
 
 ---
 
@@ -250,36 +250,29 @@ sample_idx, position, velocity, true_range_m, true_radial_velocity_mps
 ```python
 from isac.collection import RTDataset
 from isac import DEFAULT_DATASET_H5
-from isac.system import System
-from isac.utils import load_config
 
-config = load_config(DEFAULT_DATASET_H5.parent / "data_collection.toml")
-system = System(config=config, device="cpu")
-dataset = RTDataset.load(
-    DEFAULT_DATASET_H5,
-    sensing_performance=system.components.sensing_performance,
-)
-# 或: RTDataset.load("data/empty_room_mc_sionna_dataset.h5", sensing_performance=sp)
+dataset = RTDataset.load(DEFAULT_DATASET_H5)
+# 或: RTDataset.load("data/empty_room_mc_sionna_dataset.h5")
 ```
 
-### 6.2 单条样本（CNN 训练）
+### 6.2 单条样本（原始谱 + 运动学）
 
-`dataset[i]` 返回：
+`dataset[i]` 返回原始字段，特征与标签在训练脚本经 `isac.models.preprocess` 生成：
 
 ```python
 {
-    "features": Tensor,       # (C, H, W) float32，幅度 dB ± 可选相位
-    "peaks_delay": Tensor,    # ROI 局部 delay bin 监督
-    "peaks_doppler": Tensor,  # ROI 局部 doppler bin 监督
-    "range_m": Tensor,        # 单基地几何标签
-    "velocity_mps": Tensor,
-    "slot": Tensor,           # episode 索引
+    "spectrum_tensor": Tensor,  # (H, W) complex64，ROI 裁切谱
+    "target_position": Tensor,  # (3,) float32
+    "target_velocity": Tensor,  # (3,) float32
+    "bs_pos": Tensor,           # (3,) float32
+    "slot": Tensor,             # episode 索引
 }
 ```
 
-`__getitem__` 须在 ``load(..., sensing_performance=sp)`` 时绑定感知性能对象。
+CNN / MUSIC 估计器均以 `spectrum_tensor` 为输入、返回 `MusicPeaks`。
+训练标签示例：`kinematics_to_target_bins(pos, vel, bs_pos, sensing_performance=sp, ...)`。
 
-`dataset.spectrum_tensor(i)` 返回单条复数 `h_dd`（评估脚本用）。
+`dataset.spectrum_tensor(i)` 返回单条复数 `h_dd`（与 `dataset[i]["spectrum_tensor"]` 一致）。
 
 ### 6.3 元数据访问
 
@@ -303,12 +296,18 @@ len(dataset)             # episode 条数
 
 ```python
 from torch.utils.data import DataLoader
+from isac.models import kinematics_to_target_bins
 
 loader = DataLoader(dataset, batch_size=64, shuffle=True)
 for batch in loader:
-    features = batch["features"]       # (B, C, H, W)
-    range_m = batch["range_m"]           # (B,)
-    velocity_mps = batch["velocity_mps"] # (B,)
+    spectrum = batch["spectrum_tensor"]      # (B, H, W) complex
+    target_bins = kinematics_to_target_bins(
+        batch["target_position"],
+        batch["target_velocity"],
+        batch["bs_pos"][0],
+        sensing_performance=sp,
+        num_doppler_bins=num_doppler_bins,
+    )
 ```
 
 ---

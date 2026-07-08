@@ -1,7 +1,7 @@
 """蒙特卡洛采集流水线：HDF5 数据集、ROI 采样与 episode 过滤。"""
 
+from .collection_metadata import CollectionMetadata
 from .dataset import (
-    CollectionMetadata,
     RTDataset,
     RTDatasetWriter,
     save_collection_artifacts,
@@ -9,7 +9,6 @@ from .dataset import (
 from .h5_layout import (
     collection_dataset_description,
     collection_h5_path,
-    collection_scene_png_path,
 )
 from .roi_sampling import (
     RoiKinematicsSampler,
@@ -23,7 +22,6 @@ __all__ = [
     "RTDatasetWriter",
     "collection_dataset_description",
     "collection_h5_path",
-    "collection_scene_png_path",
     "save_collection_artifacts",
     "RoiKinematicsSampler",
     "SamplingMode",

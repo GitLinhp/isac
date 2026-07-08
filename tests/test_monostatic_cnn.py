@@ -4,7 +4,12 @@ import pytest
 import torch
 
 from isac.data_structures.types import MusicPeaks
-from isac.models import MonostaticDelayDopplerCNN, dd_spectrum_to_features
+from isac.models import (
+    MonostaticDelayDopplerCNN,
+    dd_spectrum_to_features,
+    kinematics_to_target_bins,
+    spectrum_tensor_to_features,
+)
 from isac.sensing.evaluation import SensingEstimator
 from isac.sensing.geometry import monostatic_range_velocity
 from isac.sensing.metric import SpectrumMetric
@@ -26,29 +31,34 @@ def _sensing_performance() -> SensingPerformance:
 
 
 def test_monostatic_cnn_forward_shape():
-    model = MonostaticDelayDopplerCNN(
-        in_channels=2,
-        range_resolution=2.5,
-        velocity_resolution=0.5,
-        max_range_m=317.5,
-        max_velocity_mps=64.0,
-        num_doppler_bins=256,
-    )
+    model = MonostaticDelayDopplerCNN(in_channels=2)
     model.eval()
-    x = torch.randn(1, 2, 256, 128)
+    h_dd = torch.randn(256, 128, dtype=torch.complex64)
     with torch.no_grad():
-        bins = model.forward_bins(x)
-        peaks = model(x)
+        bins = model(h_dd)
     assert bins.shape == (1, 2)
-    assert isinstance(peaks, MusicPeaks)
-    assert peaks.peaks_delay.shape == (1,)
-    assert peaks.peaks_doppler.shape == (1,)
+
+
+def test_monostatic_cnn_batch_forward():
+    model = MonostaticDelayDopplerCNN(in_channels=2)
+    model.eval()
+    batch = torch.randn(4, 256, 128, dtype=torch.complex64)
+    with torch.no_grad():
+        bins = model(batch)
+    assert bins.shape == (4, 2)
 
 
 def test_dd_features_from_cropped_spectrum():
     h_dd = torch.randn(128, 64, dtype=torch.complex64)
     feat = dd_spectrum_to_features(h_dd)
     assert feat.shape == (2, 128, 64)
+
+
+def test_spectrum_tensor_to_features_batch():
+    batch = torch.randn(3, 64, 32, dtype=torch.complex64)
+    feats = spectrum_tensor_to_features(batch)
+    assert feats.shape == (3, 2, 64, 32)
+    assert feats.dtype == torch.float32
 
 
 def test_monostatic_range_velocity():
@@ -58,6 +68,21 @@ def test_monostatic_range_velocity():
     r, v = monostatic_range_velocity(tgt, vel, bs)
     assert abs(r - 30.0) < 1e-6
     assert abs(v - 5.0) < 1e-6
+
+
+def test_kinematics_to_target_bins_shape():
+    sp = _sensing_performance()
+    pos = torch.tensor([[30.0, 0.0, 0.0], [50.0, 0.0, 0.0]])
+    vel = torch.tensor([[5.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
+    bs = torch.tensor([0.0, 0.0, 0.0])
+    bins = kinematics_to_target_bins(
+        pos,
+        vel,
+        bs,
+        sensing_performance=sp,
+        num_doppler_bins=256,
+    )
+    assert bins.shape == (2, 2)
 
 
 def test_kinematics_to_music_peaks_via_sensing_estimator():
