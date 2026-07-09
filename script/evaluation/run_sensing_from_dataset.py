@@ -365,7 +365,7 @@ def main() -> None:
 
     set_random_seed(args.seed)
     dataset = RTDataset.load(inputs.h5_path)
-    system = System(load_config(inputs.config_path), device=args.device)
+    system = System(inputs.config_path, device=args.device)
     rt_simulator = _preflight_checks(system)
 
     target_name, _ = next(iter(rt_simulator.rt_targets.items()))

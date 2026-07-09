@@ -73,7 +73,7 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.subcarrier_spacing = subcarrier_spacing = 30e3
-        self.num_symbols = num_symbols = 32
+        self.num_symbols = num_symbols = 512
         self.fft_size = fft_size = 2048
         self.cp_len = cp_len = 0
         self.tx_amp = tx_amp = 30
@@ -84,13 +84,13 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
         self.startup_delay_s = startup_delay_s = 0.2
         self.samp_rate = samp_rate = fft_size * subcarrier_spacing
         self.ofdm_burst_samples = ofdm_burst_samples = num_symbols * (fft_size + cp_len)
-        self.idle_ms = idle_ms = 400
+        self.idle_ms = idle_ms = 900
         self.gui_update_time_ms = gui_update_time_ms = 10
         self.freq_trig_level = freq_trig_level = -90
         self.device = device = "cuda:0"
         self.config_file = config_file = "simulation/sensing/sensing_monostatic.toml"
-        self.TX_gain = TX_gain = 45
-        self.RX_gain = RX_gain = 35
+        self.TX_gain = TX_gain = 20
+        self.RX_gain = RX_gain = 20
 
         ##################################################
         # Blocks
@@ -117,14 +117,14 @@ class usrp_ofdm_burst_large_scale(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain_range = qtgui.Range(0, 50, 1, 45, 200)
+        self._TX_gain_range = qtgui.Range(0, 50, 1, 20, 200)
         self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "tx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain_win, 0, 0, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain_range = qtgui.Range(0, 50, 1, 35, 200)
+        self._RX_gain_range = qtgui.Range(0, 50, 1, 20, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "rx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain_win, 0, 1, 1, 1)
         for r in range(0, 1):

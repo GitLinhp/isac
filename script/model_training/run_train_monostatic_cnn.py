@@ -685,7 +685,7 @@ def main() -> None:
     device = args.device
 
     # --- System 预检：标签生成 + 验证 RMSE 所需组件 ---
-    system = System(load_config(inputs.config_path), device=device) # 预检系统组件
+    system = System(inputs.config_path, device=device) # 预检系统组件
     sensing_performance = system.components.sensing_performance # 标签生成所需组件
     sensing_estimator = system.components.sensing_estimator # 验证 RMSE 所需组件
     sensing = sensing_attrs_from_system(system)  # 标签 num_doppler_bins 与日志用

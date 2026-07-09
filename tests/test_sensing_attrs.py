@@ -13,7 +13,7 @@ from isac.sensing.evaluation import SensingEstimator
 from isac.sensing.geometry import monostatic_range_velocity
 from isac.sensing.metric import SpectrumMetric
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 
 _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
 
@@ -22,7 +22,7 @@ _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
 def collection_system() -> System:
     sionna.phy.config.device = "cpu"
     set_random_seed(42)
-    return System(config=load_config(_CONFIG), device="cpu")
+    return System(_CONFIG, device="cpu")
 
 
 def test_sensing_attrs_use_roi_limits_when_configured(

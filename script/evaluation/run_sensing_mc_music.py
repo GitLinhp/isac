@@ -548,10 +548,7 @@ def main() -> None:
     collection_meta = CollectionMetadata.from_args(args)
     sampler = collection_meta.build_sampler()
 
-    system = System(
-        config=load_config(args.config_file),
-        device=args.device,
-    )
+    system = System(args.config_file, device=args.device)
     rt_simulator = _preflight_checks(
         system,
         apply_mti=args.apply_mti,

@@ -101,9 +101,8 @@ def test_rt_bistatic_cfr_per_tx_velocity_sign_matches_geometry():
 def test_static_target_sensing_velocity_stays_positive():
     """非 RT 静态目标：System.sensing 不翻转，MUSIC 速度仍与 CLI 真值同号。"""
     set_random_seed(42)
-    config = load_config("simulation/sensing/static_target_simulation.toml")
     system = System(
-        config=config,
+        "simulation/sensing/static_target_simulation.toml",
         device="cpu",
     )
     comps = system.components

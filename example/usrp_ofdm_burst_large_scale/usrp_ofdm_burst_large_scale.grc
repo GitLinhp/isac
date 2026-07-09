@@ -45,7 +45,7 @@ blocks:
     start: '0'
     step: '1'
     stop: '50'
-    value: '35'
+    value: '20'
     widget: counter_slider
   states:
     bus_sink: false
@@ -66,7 +66,7 @@ blocks:
     start: '0'
     step: '1'
     stop: '50'
-    value: '45'
+    value: '20'
     widget: counter_slider
   states:
     bus_sink: false
@@ -160,7 +160,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '400'
+    value: '900'
   states:
     bus_sink: false
     bus_source: false
@@ -172,7 +172,7 @@ blocks:
   id: variable
   parameters:
     comment: OFDM symbol count; GRC overrides TOML
-    value: '32'
+    value: '512'
   states:
     bus_sink: false
     bus_source: false

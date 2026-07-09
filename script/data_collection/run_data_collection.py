@@ -188,10 +188,7 @@ def main() -> None:
     collection_meta = CollectionMetadata.from_args(args)  # 设种子并校验 num_samples 等
     sampler = collection_meta.build_sampler()  # 预生成 pool_size 条候选位姿
 
-    system = System(
-        config=load_config(args.config_file),
-        device=args.device,
-    )
+    system = System(args.config_file, device=args.device)
     comps = system.components
     _preflight_checks(system, apply_mti=args.apply_mti)
 

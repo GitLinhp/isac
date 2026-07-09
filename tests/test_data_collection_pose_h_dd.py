@@ -12,7 +12,7 @@ from isac import PROJECT_ROOT
 from isac.collection import RoiKinematicsSampler
 from isac.sensing.geometry import delay_to_range, doppler_to_velocity
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 from isac.utils.numerical import cartesian_direction_to_yaw_pitch_roll
 
 _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
@@ -22,7 +22,7 @@ _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
 def collection_system() -> System:
     sionna.phy.config.device = "cpu"
     set_random_seed(42)
-    return System(config=load_config(_CONFIG), device="cpu")
+    return System(_CONFIG, device="cpu")
 
 
 def _simulate_episode_h_dd(

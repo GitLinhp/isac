@@ -5,7 +5,7 @@ import argparse
 from isac import PROJECT_ROOT
 from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 
 SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "sensing_bistatic"
 
@@ -57,9 +57,8 @@ def main() -> None:
     set_random_seed(args.seed)
 
     # --- 加载配置 ---
-    config = load_config(args.config_file)
     system = System(
-        config=config,
+        args.config_file,
         device=args.device,
     )
     comps = system.components

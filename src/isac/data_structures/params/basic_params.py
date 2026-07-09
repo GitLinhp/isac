@@ -12,6 +12,8 @@ class SourceParams:
     root_index: int = 1
     normalize: bool = True
     num_bits_per_symbol: Optional[int] = None
+    cache_file: Optional[str] = None
+    """发射波形缓存路径（相对 PROJECT_ROOT 或绝对路径）；None 表示不缓存"""
 
     def __post_init__(self) -> None:
         if self.type not in ("binary", "zc"):
@@ -24,11 +26,17 @@ class SourceParams:
             raise ValueError(f"source.type must be a string, got {type(raw_type)!r}")
         n_bps_raw = config_dict.get("num_bits_per_symbol")
         num_bits_per_symbol = int(n_bps_raw) if n_bps_raw is not None else None
+        raw_cache = config_dict.get("cache_file")
+        if raw_cache is None or (isinstance(raw_cache, str) and not raw_cache.strip()):
+            cache_file = None
+        else:
+            cache_file = str(raw_cache).strip()
         return cls(
             type=raw_type.strip().lower(),
             root_index=int(config_dict.get("root_index", 1)),
             normalize=bool(config_dict.get("normalize", True)),
             num_bits_per_symbol=num_bits_per_symbol,
+            cache_file=cache_file,
         )
 
 
@@ -57,7 +65,7 @@ class OFDMParams:
     subcarrier_spacing: float = 30000.0
     cyclic_prefix_length: int = 0
     l_min: int = -6
-    dc_null: bool = False
+    dc_null: bool = True
 
     @property
     def samp_rate(self) -> int:
@@ -73,5 +81,5 @@ class OFDMParams:
             subcarrier_spacing=float(config_dict.get("subcarrier_spacing", 30000.0)),
             cyclic_prefix_length=int(config_dict.get("cyclic_prefix_length", 0)),
             l_min=l_min,
-            dc_null=bool(config_dict.get("dc_null", False)),
+            dc_null=bool(config_dict.get("dc_null", True)),
         )

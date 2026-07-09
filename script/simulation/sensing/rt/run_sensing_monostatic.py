@@ -1,11 +1,12 @@
 """单基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
 
 import argparse
+import time
 
 from isac import PROJECT_ROOT
 from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 
 SCRIPT_OUT_DIR = PROJECT_ROOT / "out" / "sensing_monostatic"
 
@@ -56,10 +57,9 @@ def main() -> None:
     args = argument_parser()
     set_random_seed(args.seed)
 
-    # --- 加载配置 ---
-    config = load_config(args.config_file)
+    # --- 构建系统 ---
     system = System(
-        config=config,
+        args.config_file,
         device=args.device,
     )
     comps = system.components
@@ -70,7 +70,9 @@ def main() -> None:
     )
 
     # --- 发射 ---
+    t0 = time.perf_counter()
     _, x_rg, x_time = system.transmit()
+    print(f"transmit 耗时: {time.perf_counter() - t0:.3f} s")
 
     # --- 应用信道 ---
     domain = args.domain  # 信道施加域
@@ -88,7 +90,7 @@ def main() -> None:
         y_rg,
         metric_mode=args.metric_mode,
         sens_mode="monostatic",
-        visualize_file=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
+        # visualize_file=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
         to_db=False,
     )
 

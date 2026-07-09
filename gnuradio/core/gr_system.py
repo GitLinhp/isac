@@ -57,10 +57,10 @@ class GrSystemContext:
         set_random_seed(effective.seed)
         sionna.phy.config.device = effective.device
 
-        raw = load_config(effective.config_path)
-        system = System(
-            config=raw,
+        system = System.from_dict(
+            load_config(effective.config_path),
             device=effective.device,
+            config_file=str(effective.config_path),
         )
         system.params = effective.system_params
         system.components = SystemComponents.build_from_params(

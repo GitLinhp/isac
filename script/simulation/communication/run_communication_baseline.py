@@ -2,7 +2,7 @@ import argparse
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 from sionna.phy.utils import compute_ber
 
 
@@ -36,9 +36,8 @@ def argument_parser() -> argparse.Namespace:
 def main() -> None:
     args = argument_parser()  # 解析命令行参数
     set_random_seed(args.seed)  # 设置随机种子
-    config = load_config(args.config_file)
     system = System(  # 创建系统实例
-        config=config,
+        args.config_file,
         device=args.device,
     )
 

@@ -48,7 +48,21 @@ inputs:
   vlen: ${ vlen }
 
 templates:
-  imports: from sionna_dd_spectrogram import SionnaDDSpectrogramPlot
+  imports: |-
+    import sys
+    from pathlib import Path
+    _here = Path(__file__).resolve().parent if "__file__" in dir() else Path.cwd()
+    _gr_root = None
+    for _c in (_here, *_here.parents):
+        if (_c / "gnuradio" / "bootstrap.py").is_file():
+            _gr_root = _c / "gnuradio"
+            break
+    if _gr_root is not None:
+        if str(_gr_root) not in sys.path:
+            sys.path.insert(0, str(_gr_root))
+        from bootstrap import setup_gnuradio_paths
+        setup_gnuradio_paths()
+    from sionna_dd_spectrogram import SionnaDDSpectrogramPlot
   make: SionnaDDSpectrogramPlot(vlen=${vlen}, xlabel=${xlabel}, ylabel=${ylabel}, label=${label}, axis_x=${axis_x}, axis_y=${axis_y}, axis_z=${axis_z}, autoscale_z=${autoscale_z}, len_key=${len_key})
 
 file_format: 1

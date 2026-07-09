@@ -6,6 +6,8 @@ carrier_frequency = 6e9 # 载波频率(Hz)
 type = "zc"
 root_index = 1
 normalize = true
+num_bits_per_symbol = 2
+cache_file = "out/sensing_monostatic/transmit"
 
 # OFDM 参数
 [ofdm]

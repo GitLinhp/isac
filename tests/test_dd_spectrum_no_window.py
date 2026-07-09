@@ -11,7 +11,7 @@ from isac.data_structures.system_components import SystemComponents
 from isac.sensing.spectrum import DelayDopplerSpectrum
 from isac.sensing.spectrum.dd_spectrum_roi import DelayDopplerRoi
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 from isac import PROJECT_ROOT
 
 _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
@@ -74,7 +74,7 @@ def test_dd_spectrum_delay_window_only() -> None:
 def test_dd_spectrum_forward_shape_without_windows() -> None:
     sionna.phy.config.device = "cpu"
     set_random_seed(42)
-    system = System(config=load_config(_CONFIG), device="cpu")
+    system = System(_CONFIG, device="cpu")
     dd = system.components.delay_doppler_spectrum
     assert dd is not None
     assert dd.delay_window is None

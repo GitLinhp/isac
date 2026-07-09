@@ -8,7 +8,6 @@ import torch
 
 from isac import PROJECT_ROOT
 from isac.system import System
-from isac.utils import load_config
 
 _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
 
@@ -16,7 +15,7 @@ _CONFIG = PROJECT_ROOT / "config" / "data_collection" / "data_collection.toml"
 @pytest.fixture
 def rt_channel():
     sionna.phy.config.device = "cpu"
-    system = System(config=load_config(_CONFIG), device="cpu")
+    system = System(_CONFIG, device="cpu")
     channel = system.components.channel
     rg = system.components.rg
     sym_dur = 1 / rg.ofdm_symbol_duration

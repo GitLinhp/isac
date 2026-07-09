@@ -6,14 +6,16 @@ carrier_frequency = 6e9 # 载波频率(Hz)
 type = "zc"
 root_index = 1
 normalize = true
+num_bits_per_symbol = 2
+cache_file = "out/ofdm_burst_source_large_sacle/transmit"
 
 # OFDM 参数
 [ofdm]
 num_symbols = 512          # 符号数
 fft_size = 2048            # FFT 大小
 subcarrier_spacing = 30e3  # 子载波间隔(Hz)
-cyclic_prefix_length = 512 # 循环前缀长度
-l_min = -6                 # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+cyclic_prefix_length = 0 # 循环前缀长度
+l_min = 0                 # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
 
 # 信道参数
 [channel]
@@ -115,5 +117,5 @@ threshold = 0.1
 
 # 时延–多普勒谱 ROI（物理量裁剪）
 [dd_spectrum_roi]
-max_range_m = 310.0
-max_velocity_mps = 150.0
+max_range_m = 50
+max_velocity_mps = 10.0

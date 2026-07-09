@@ -22,7 +22,7 @@ from isac.sensing.localization import (
     position_rmse_xy,
 )
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 from isac.channel import RTChannel
 
 
@@ -79,9 +79,8 @@ def main() -> None:
     """构建系统、按 TX 分离信道并跑协作感知链。"""
     args = argument_parser()
     set_random_seed(args.seed)
-    config = load_config(args.config_file)
     system = System(
-        config=config,
+        args.config_file,
         device=args.device,
     )
 
