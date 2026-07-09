@@ -10,14 +10,14 @@ from .preprocess import (
 from .loss import MonostaticSensingLoss, MonostaticSensingLossConfig
 from .model_design import (
     ConvResidualBlock,
-    MonostaticDelayDopplerCNN,
-    load_monostatic_cnn_checkpoint,
+    SensingCNN,
+    load_sensing_cnn_checkpoint,
 )
 
 __all__ = [
     "ConvResidualBlock",
-    "MonostaticDelayDopplerCNN",
-    "load_monostatic_cnn_checkpoint",
+    "SensingCNN",
+    "load_sensing_cnn_checkpoint",
     "MonostaticSensingLoss",
     "MonostaticSensingLossConfig",
     "dd_spectrum_to_features",

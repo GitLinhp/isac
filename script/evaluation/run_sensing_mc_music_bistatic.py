@@ -1,44 +1,36 @@
-"""蒙特卡洛 ROI 采样 → 在线 MUSIC 估计 → 逐 episode RMSE 统计。
+"""蒙特卡洛 ROI 采样 → 在线双基地 MUSIC 估计 → 逐 episode RMSE 统计。
 
 须在 **ISAC conda 环境**中、从仓库根目录运行::
 
-    python script/evaluation/run_sensing_mc_music.py
+    python script/evaluation/run_sensing_mc_music_bistatic.py
+
+默认加载 ``config/data_collection/data_collection_bistatic.toml``（分离 TX/RX），
+固定 ``sens_mode=bistatic``：距离轴为 **折叠路径长** ``||T-X||+||R-T||``，非单基地斜距。
 
 流程概要
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
-2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与 ``|true_radial_velocity| > Δv``。
-3. 每采纳 episode：发射 → 信道 → LS →（默认 MTI）→ DD 谱 →（默认 CFAR 门限）→ MUSIC → 物理换算 → RMSE；前 10 条另写出 ``{scene_slug}_{sens_mode}_scene_XX.png`` 与 DD 谱调试图。
-4. 写出 ``{scene_slug}_{sens_mode}_mc_sensing_metrics.csv`` 与终端 RMSE 汇总表。
+2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与 ``|true_path_rate| > Δv``。
+3. 每采纳 episode：发射 → 信道 → LS →（默认 MTI）→ DD 谱 →（默认 CFAR 门限）→ MUSIC → 物理换算 → RMSE；前 10 条另写出 ``{scene_slug}_bistatic_*`` 调试图。
+4. 写出 ``{scene_slug}_bistatic_mc_sensing_metrics.csv`` 与终端 RMSE 汇总表。
 
 输出目录
 --------
-``out/sensing_mc_music/{scene_slug}_{sens_mode}/``（单次运行子目录），其下文件名前缀同为 ``{scene_slug}_{sens_mode}_``：
-
-- ``{scene_slug}_{sens_mode}_scene.png``：静态场景渲染
-- ``{scene_slug}_{sens_mode}_scene_XX.png``：前若干采纳 episode 的 RT 路径调试图
-- ``{scene_slug}_{sens_mode}_dd_spectrum_XX.png``：前若干采纳 episode 的 DD 谱调试图
-- ``{scene_slug}_{sens_mode}_mc_sensing_metrics.csv``：逐 episode 真值/估计/RMSE
+``out/sensing_mc_music_bistatic/{scene_slug}_bistatic/``（单次运行子目录），其下文件名前缀同为 ``{scene_slug}_bistatic_``。
 
 采纳条件
 --------
 从预采样池 ``pop`` 位姿后，须同时满足：
 
-- 存在与目标的 **镜面反射** 路径（``paths_intersect_target_with_interaction(..., "specular")``）
-- ``|true_radial_velocity| > velocity_resolution_{sens_mode}``
-
-池耗尽则 ``RuntimeError``（提示增大 ``--sampler_pool_factor``）。
+- 存在与目标的 **镜面反射** 路径
+- ``|true_path_rate| > velocity_resolution_bistatic``
 
 单 episode 评估链（默认 MTI + CFAR）
 ------------------------------------
-transmit → channel → ls_channel_estimator →（可选 MTI）→ delay_doppler_spectrum
-→（可选 2D CFAR）→ MUSICEstimator → SensingEstimator → 径向 RMSE
+transmit → channel → ls_channel_estimator →（可选 MTI）→ delay_doppler_spectrum(sens_mode=bistatic)
+→（可选 2D CFAR）→ MUSICEstimator → SensingEstimator → 折叠路径长/速度 RMSE
 
-``--sens_mode``（``monostatic`` / ``bistatic``）影响 DD 谱物理轴、MUSIC 峰换算、
-速度分辨率筛选门槛、输出子目录与全部输出文件名。
-
-与 ``run_data_collection.py`` 的区别：不写 HDF5，在线做 MUSIC 评估。
-与 ``run_sensing_from_dataset.py`` 的区别：不读 HDF5，内联 MC 仿真链。
+与 ``run_sensing_mc_music.py`` 的区别：双基地 TOML、固定 bistatic 换算与独立输出目录。
 """
 
 from __future__ import annotations
@@ -64,7 +56,9 @@ if TYPE_CHECKING:
     from isac.channel.rt.rt_simulator import RTSimulator
     from isac.data_structures.system_components import SystemComponents
 
-SCRIPT_OUT_BASE = OUT_DIR / "sensing_mc_music"  # 脚本输出根目录；单次运行写入其子目录
+SCRIPT_OUT_BASE = OUT_DIR / "sensing_mc_music_bistatic"  # 双基地脚本输出根目录
+DEFAULT_CONFIG = "config/data_collection/data_collection_bistatic.toml"
+DEFAULT_SENS_MODE = "bistatic"
 DD_DEBUG_PLOT_COUNT = 10  # 前 N 条采纳 episode 额外写出场景/DD 调试图
 
 # 逐 episode CSV 列：位姿与几何真值对齐采集脚本，另含 MUSIC 估计与径向 RMSE
@@ -97,15 +91,15 @@ def argument_parser() -> argparse.Namespace:
     用于构建预采样池（``num_samples × sampler_pool_factor`` 条候选位姿）。
     """
     parser = argparse.ArgumentParser(
-        description="ISAC — 蒙特卡洛 ROI 采样 + 在线 MUSIC 估计 + RMSE"
+        description="ISAC — 蒙特卡洛双基地 ROI 采样 + 在线 MUSIC 估计 + RMSE"
     )
 
     sys_group = parser.add_argument_group("系统配置")
     sys_group.add_argument(
         "--config_file",
         type=str,
-        default="config/data_collection/data_collection.toml",
-        help="仿真与感知链 TOML 配置路径",
+        default=DEFAULT_CONFIG,
+        help="双基地仿真与感知链 TOML 配置路径",
     )
     sys_group.add_argument(
         "--device",
@@ -184,13 +178,6 @@ def argument_parser() -> argparse.Namespace:
         help="谱图与 MUSIC 日志 metric",
     )
     eval_group.add_argument(
-        "--sens_mode",
-        type=str,
-        default="monostatic",
-        choices=["monostatic", "bistatic"],
-        help="感知模式（单基地/双基地），影响 DD 谱轴、MUSIC 换算与输出文件名",
-    )
-    eval_group.add_argument(
         "--apply_mti",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -259,8 +246,23 @@ def _output_stem(scene_slug: str, sens_mode: str) -> str:
 
 
 def _output_dir(scene_slug: str, sens_mode: str) -> Path:
-    """构造单次运行输出目录 ``out/sensing_mc_music/{scene_slug}_{sens_mode}/``。"""
+    """构造单次运行输出目录 ``out/sensing_mc_music_bistatic/{scene_slug}_{sens_mode}/``。"""
     return SCRIPT_OUT_BASE / _output_stem(scene_slug, sens_mode)
+
+
+def _assert_bistatic_topology(rt_simulator: RTSimulator) -> None:
+    """校验 TOML 为分离收发拓扑，且首条链路为双基地。"""
+    geom = rt_simulator.rx_target_tx_geometric
+    if len(geom.tx_names) < 1 or len(geom.rx_names) < 1:
+        raise ValueError(
+            f"双基地脚本需要至少 1 个 TX 与 1 个 RX，"
+            f"收到 tx={geom.tx_names!r}, rx={geom.rx_names!r}"
+        )
+    if not bool(geom.type_tensor[0, 0, 0].item()):
+        raise ValueError(
+            "首条链路 type_tensor[0,0,0] 为单基地；"
+            "请使用分离收发 TOML（如 data_collection_bistatic.toml）"
+        )
 
 
 def _render_scene_png(
@@ -362,7 +364,7 @@ def _evaluate_episode(
         if mti is None:
             raise ValueError("apply_mti=True 需要 TOML [mti] 段")
         h_freq = mti(h_freq)
-    h_dd = comps.delay_doppler_spectrum(h_freq)
+    h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=sens_mode)
 
     # --- 2D CFAR：为 MUSIC 提供候选峰门限 ---
     cfar_th: torch.Tensor | None = None
@@ -400,7 +402,8 @@ def _evaluate_episode(
         est_velocities=estimate.est_velocities,
         true_ranges=true_range.reshape(-1),
         true_velocities=true_velocity.reshape(-1),
-        label="",
+        label="双基地 MC MUSIC",
+        distance_axis_label="折叠路径长",
         verbose=False,
     )
 
@@ -510,7 +513,7 @@ def _run_mc_loop(
             true_range = geom.range_tensor[0, 0, 0]
             true_velocity = geom.vel_tensor[0, 0, 0]
             # 径向速度须超过 sens_mode 对应速度分辨率，避免近零多普勒难以分辨
-            if abs(float(true_velocity.item())) <= v_res:
+            if abs(float(true_velocity.item())) <= v_res / 2:
                 continue
 
             # 须存在目标镜面反射路径，否则无法形成可感知回波
@@ -608,17 +611,17 @@ def _print_rmse_summary(
     estimator_label: str,
     n_episodes: int,
 ) -> None:
-    """以表格输出逐 episode 径向距离与速度 RMSE 统计。"""
+    """以表格输出逐 episode 折叠路径长与速度 RMSE 统计。"""
     suffix = f"({n_episodes} episodes)"
     tables = [
         (
-            f"蒙特卡洛 MUSIC 在线评估 ({estimator_label}) — 径向距离 RMSE 统计 {suffix}:",
+            f"蒙特卡洛双基地 MUSIC 在线评估 ({estimator_label}) — 折叠路径长 RMSE 统计 {suffix}:",
             torch.stack(range_rmses),
             "m",
             "m²",
         ),
         (
-            f"蒙特卡洛 MUSIC 在线评估 ({estimator_label}) — 径向速度 RMSE 统计 {suffix}:",
+            f"蒙特卡洛双基地 MUSIC 在线评估 ({estimator_label}) — 径向速度 RMSE 统计 {suffix}:",
             torch.stack(velocity_rmses),
             "m/s",
             "(m/s)²",
@@ -657,13 +660,15 @@ def main() -> None:
     # --- 场景绑定：RT 目标、scene_slug、output_stem、out_dir ---
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
-    output_stem = _output_stem(scene_slug, args.sens_mode)
-    out_dir = _output_dir(scene_slug, args.sens_mode)
+    sens_mode = DEFAULT_SENS_MODE
+    _assert_bistatic_topology(rt_simulator)
+    output_stem = _output_stem(scene_slug, sens_mode)
+    out_dir = _output_dir(scene_slug, sens_mode)
     _log_run_context(
         config_path=args.config_file,
         target_name=target_name,
         scene_slug=scene_slug,
-        sens_mode=args.sens_mode,
+        sens_mode=sens_mode,
         num_samples=collection_meta.num_samples,
         metric_mode=args.metric_mode,
         apply_mti=args.apply_mti,
@@ -683,7 +688,7 @@ def main() -> None:
         metric_mode=args.metric_mode,
         output_stem=output_stem,
         out_dir=out_dir,
-        sens_mode=args.sens_mode,
+        sens_mode=sens_mode,
         apply_mti=args.apply_mti,
         apply_cfar=args.apply_cfar,
     )
@@ -698,11 +703,13 @@ def main() -> None:
     _log_dd_debug_plots(out_dir, output_stem, n_debug_plots)
 
     n_episodes = len(csv_rows)
-    print(f"性能评估完成: {n_episodes}/{collection_meta.num_samples} episodes (MUSIC)")
+    print(
+        f"性能评估完成: {n_episodes}/{collection_meta.num_samples} episodes (MUSIC bistatic)"
+    )
     _print_rmse_summary(
         range_rmses,
         velocity_rmses,
-        estimator_label="MUSIC",
+        estimator_label="MUSIC (bistatic)",
         n_episodes=n_episodes,
     )
 

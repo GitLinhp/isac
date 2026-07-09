@@ -63,12 +63,12 @@ polarization = "V"
 [rt_simulator.transceivers.bs1]
 position = [-4.5, -2.5, 1.5]
 look_at = [0, 0, 0]
-type = ["tx", "rx"]
+type = ["rx"]
 power_dbm = 44               # 发射功率 (dBm)，对应 Sionna RT Transmitter
-# [rt_simulator.transceivers.bs2]
-# position = [40, 0, 20]
-# look_at = [0, 0, 0]
-# type = ["tx", "rx"]
+[rt_simulator.transceivers.bs2]
+position = [4.5, 2.5, 1.5]
+look_at = [0, 0, 0]
+type = ["tx"]
 
 # 目标材质参数
 [rt_simulator.target_materials]

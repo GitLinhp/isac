@@ -1,6 +1,6 @@
-# MonostaticDelayDopplerCNN 模型说明
+# SensingCNN 模型说明
 
-本文档说明单基地时延–多普勒 CNN（`MonostaticDelayDopplerCNN`）的输入、网络结构、输出、训练/推理链路与 checkpoint 约定。权威实现见 [`src/isac/models/model_design.py`](../src/isac/models/model_design.py)。
+本文档说明单基地时延–多普勒 CNN（`SensingCNN`）的输入、网络结构、输出、训练/推理链路与 checkpoint 约定。权威实现见 [`src/isac/models/model_design.py`](../src/isac/models/model_design.py)。
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 模型职责
 
-`MonostaticDelayDopplerCNN` 将 **ROI 裁切后的复数时延–多普勒谱** 回归为 **ROI 局部 bin** 坐标 `[peaks_delay, peaks_doppler]`，与 `MusicPeaks` / `SpectrumMetric` 使用同一坐标系。
+`SensingCNN` 将 **ROI 裁切后的复数时延–多普勒谱** 回归为 **ROI 局部 bin** 坐标 `[peaks_delay, peaks_doppler]`，与 `MusicPeaks` / `SpectrumMetric` 使用同一坐标系。
 
 - 输入：复数 `spectrum_tensor`（与 MUSIC 估计器相同）
 - 输出：可微 `(B, 2)` 张量，**不直接**输出物理距离/速度
@@ -19,13 +19,13 @@
 | 估计器 | 模块 | 输出 |
 |--------|------|------|
 | MUSIC | `MUSICEstimator` | `MusicPeaks` |
-| CNN（本文） | `MonostaticDelayDopplerCNN` | `(B, 2)` 局部 bin → 转为 `MusicPeaks` |
+| CNN（本文） | `SensingCNN` | `(B, 2)` 局部 bin → 转为 `MusicPeaks` |
 
 评估脚本 [`run_sensing_from_dataset.py`](../script/evaluation/run_sensing_from_dataset.py) 通过 `--estimator model` 选用 CNN。
 
 ### 感知元数据不在模型内
 
-ROI 上界、距离/速度分辨率、`num_doppler_bins` 等由 **`data_collection.toml` / `System`** 提供，**不**保存在 `MonostaticDelayDopplerCNN` 实例或 checkpoint 中。训练标签与推理时的物理换算均依赖同一份 TOML。
+ROI 上界、距离/速度分辨率、`num_doppler_bins` 等由 **`data_collection.toml` / `System`** 提供，**不**保存在 `SensingCNN` 实例或 checkpoint 中。训练标签与推理时的物理换算均依赖同一份 TOML。
 
 ---
 
@@ -34,7 +34,7 @@ ROI 上界、距离/速度分辨率、`num_doppler_bins` 等由 **`data_collecti
 ```mermaid
 flowchart LR
   HDF5[h_dd spectrum_tensor] --> Preprocess[spectrum_tensor_to_features]
-  Preprocess --> CNN[MonostaticDelayDopplerCNN]
+  Preprocess --> CNN[SensingCNN]
   CNN --> Bins["(B,2) local bins"]
   Bins --> MP[MusicPeaks.from_local_bins]
   MP --> SE[SensingEstimator]
@@ -65,7 +65,7 @@ flowchart LR
 
 ### 3.2 内部预处理
 
-`MonostaticDelayDopplerCNN.forward` 内部调用 [`spectrum_tensor_to_features`](../src/isac/models/preprocess.py)，调用方**只需传入复数谱**。
+`SensingCNN.forward` 内部调用 [`spectrum_tensor_to_features`](../src/isac/models/preprocess.py)，调用方**只需传入复数谱**。
 
 | 步骤 | 函数 | 输出 |
 |------|------|------|
@@ -93,7 +93,7 @@ flowchart LR
 - `stride > 1` 或输入/输出通道不一致时，shortcut 为 1×1 Conv + BN
 - `stride = 1` 且通道相同时，shortcut 为 `Identity`
 
-### 4.2 MonostaticDelayDopplerCNN 主干
+### 4.2 SensingCNN 主干
 
 默认 `base_channels = 32`、`num_layers = 4`（`c = 32`）时的通道与下采样如下。
 `num_layers` 控制残差编码块数量：首块 stride=1、同宽；第 2–N 块逐层通道加倍并 stride=2 下采样。
@@ -197,7 +197,7 @@ python script/evaluation/run_sensing_from_dataset.py \
 
 ### 加载与配置
 
-- 权重：`load_monostatic_cnn_checkpoint(path, device)`，返回 `eval()` 模式模型
+- 权重：`load_sensing_cnn_checkpoint(path, device)`，返回 `eval()` 模式模型
 - TOML：从 `--dataset_h5` **同目录**读取 `data_collection.toml`，**不从 checkpoint 读取**
 - 感知链：构建 `System` → `SensingEstimator`；CNN 输出 bin → `MusicPeaks` → 物理量
 
@@ -232,7 +232,7 @@ python script/evaluation/run_sensing_from_dataset.py \
 
 | 路径 | 职责 |
 |------|------|
-| [`src/isac/models/model_design.py`](../src/isac/models/model_design.py) | `MonostaticDelayDopplerCNN`、`ConvResidualBlock`、`load_monostatic_cnn_checkpoint` |
+| [`src/isac/models/model_design.py`](../src/isac/models/model_design.py) | `SensingCNN`、`ConvResidualBlock`、`load_sensing_cnn_checkpoint` |
 | [`src/isac/models/preprocess.py`](../src/isac/models/preprocess.py) | `spectrum_tensor_to_features`、`kinematics_to_target_bins` |
 | [`src/isac/models/loss.py`](../src/isac/models/loss.py) | `MonostaticSensingLoss` |
 | [`src/isac/collection/sensing_attrs.py`](../src/isac/collection/sensing_attrs.py) | 从 `System` 提取标签/日志用感知属性 |
@@ -252,10 +252,10 @@ python script/evaluation/run_sensing_from_dataset.py \
 ```python
 import torch
 from isac.data_structures.types import MusicPeaks
-from isac.models import load_monostatic_cnn_checkpoint
+from isac.models import load_sensing_cnn_checkpoint
 
 device = "cuda:0"
-model = load_monostatic_cnn_checkpoint("models/monostatic_cnn/best_model.pth", device)
+model = load_sensing_cnn_checkpoint("models/monostatic_cnn/best_model.pth", device)
 
 h_dd = torch.randn(256, 128, dtype=torch.complex64, device=device)  # 示例 ROI 裁切谱
 with torch.no_grad():

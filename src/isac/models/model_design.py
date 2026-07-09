@@ -18,7 +18,7 @@ stem（7×7 conv + pool）→ 残差块 × ``num_layers``（默认通道 32→64
 checkpoint
 ----------
 保存 ``model_state_dict`` 与 ``in_channels`` / ``base_channels`` / ``num_layers`` /
-``dropout``；见 ``_REQUIRED_CKPT_KEYS`` 与 ``load_monostatic_cnn_checkpoint``。
+``dropout``；见 ``_REQUIRED_CKPT_KEYS`` 与 ``load_sensing_cnn_checkpoint``。
 
 调用方
 ------
@@ -82,7 +82,7 @@ class ConvResidualBlock(nn.Module):
         return out
 
 
-class MonostaticDelayDopplerCNN(nn.Module):
+class SensingCNN(nn.Module):
     """单基地自发自收感知 CNN。
 
     输入 ROI 裁切复数 ``spectrum_tensor``，``forward`` 返回可微
@@ -172,10 +172,10 @@ class MonostaticDelayDopplerCNN(nn.Module):
         return x
 
 
-def load_monostatic_cnn_checkpoint(
+def load_sensing_cnn_checkpoint(
     path: str | Path,
     device: torch.device | str,
-) -> MonostaticDelayDopplerCNN:
+) -> SensingCNN:
     """从 checkpoint 加载 CNN 并置 ``eval()`` 模式。
 
     必填字段见 ``_CORE_CKPT_KEYS``；``num_layers`` 缺省时按 4 处理以兼容旧 checkpoint。
@@ -198,7 +198,7 @@ def load_monostatic_cnn_checkpoint(
     if missing:
         raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
 
-    model = MonostaticDelayDopplerCNN(
+    model = SensingCNN(
         in_channels=int(ckpt["in_channels"]),
         base_channels=int(ckpt["base_channels"]),
         num_layers=int(ckpt.get("num_layers", 4)),

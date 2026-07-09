@@ -4,30 +4,46 @@
 
     python script/data_collection/run_data_collection.py
 
+双基地示例::
+
+    python script/data_collection/run_data_collection.py \\
+        --config_file config/data_collection/data_collection_bistatic.toml \\
+        --sens_mode bistatic
+
 流程概要
 --------
 1. 解析 CLI，设置随机种子，批量采样 ROI 内位置与速度。
-2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与 ``|true_radial_velocity| > Δv``。
+2. 构建 ``System``，循环更新 RT 目标位姿并过滤镜面反射路径与速度分辨率门槛。
 3. 流式写出 HDF5，事后写出 TOML、CSV 与场景 PNG。
 
 输出目录
 --------
-``data/{scene_slug}_{scs}/``（``scs`` 为子载波间隔 slug，如 ``30kHz``），其下：
-``{scene_slug}_mc_sionna_dataset.h5``、``{scene_slug}_mc_dataset_episodes.csv``、
-配置 TOML 副本与 ``{scene_slug}_scene.png``。
+``data/{scene_slug}_{sens_mode}_{scs}/``（``scs`` 为子载波间隔 slug，如 ``30kHz``），其下：
+``{scene_slug}_{sens_mode}_mc_sionna_dataset.h5``、
+``{scene_slug}_{sens_mode}_mc_dataset_episodes.csv``、
+配置 TOML 副本与 ``{scene_slug}_{sens_mode}_scene.png``。
+
+相对旧版 ``data/{scene_slug}_{scs}/``，单基地现含 ``_monostatic`` 后缀（破坏性变更）。
+
+``--sens_mode``
+---------------
+- ``monostatic``（默认）：距离真值为斜距；典型 TOML 为 ``data_collection.toml``
+- ``bistatic``：距离真值为折叠路径长 ``||T-X||+||R-T||``；须分离收发 TOML（如 ``data_collection_bistatic.toml``，bs1=RX）
 
 采纳条件
 --------
 从预采样池 ``pop`` 位姿后，须同时满足：
 
 - 存在与目标的 **镜面反射** 路径（``paths_intersect_target_with_interaction(..., "specular")``）
-- ``|true_radial_velocity| > velocity_resolution_monostatic``
+- ``|true_velocity| > velocity_resolution_{sens_mode}``（单基地为径向速度，双基地为路径变化率）
 
 池耗尽则 ``RuntimeError``（提示增大 ``--sampler_pool_factor``）。
 
 单 episode 感知链（默认 MTI）
 -----------------------------
-transmit → channel → ls_channel_estimator →（默认 MTI）→ delay_doppler_spectrum → append_episode
+transmit → channel → ls_channel_estimator →（默认 MTI）→ delay_doppler_spectrum(sens_mode) → append_episode
+
+HDF5 ``bs_pos`` 取 ``transceivers["bs1"].position``；双基地 TOML 下 bs1 为 RX。
 
 详见 ``docs/run_data_collection.md``。
 """
@@ -36,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 from tqdm import tqdm
@@ -51,6 +68,9 @@ from isac.collection import (
 from isac.system import System
 from isac.utils import load_config
 from isac.utils.misc import csv_float2_scalar, csv_vec3
+
+if TYPE_CHECKING:
+    from isac.channel.rt.rt_simulator import RTSimulator
 
 # Sionna/drjit 在大量 RT 路径更新时会重复触发 AST decorator 警告，不影响仿真结果，
 # 在采集长循环前过滤以免刷屏。
@@ -147,6 +167,13 @@ def argument_parser() -> argparse.Namespace:
 
     proc_group = parser.add_argument_group("感知链")
     proc_group.add_argument(
+        "--sens_mode",
+        type=str,
+        default="monostatic",
+        choices=["monostatic", "bistatic"],
+        help="感知模式；影响 DD 谱 ROI 裁切、速度分辨率筛选与输出目录",
+    )
+    proc_group.add_argument(
         "--apply_mti",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -181,6 +208,26 @@ def _preflight_checks(system: System, *, apply_mti: bool) -> None:
         raise ValueError("--apply_mti 需要 TOML [mti] 段以构建 MovingTargetIndication")
 
 
+def _dataset_slug(scene_slug: str, sens_mode: str) -> str:
+    """构造数据集文件名前缀 ``{scene_slug}_{sens_mode}``。"""
+    return f"{scene_slug}_{sens_mode}"
+
+
+def _assert_bistatic_topology(rt_simulator: RTSimulator) -> None:
+    """校验 TOML 为分离收发拓扑，且首条链路为双基地。"""
+    geom = rt_simulator.rx_target_tx_geometric
+    if len(geom.tx_names) < 1 or len(geom.rx_names) < 1:
+        raise ValueError(
+            f"双基地采集需要至少 1 个 TX 与 1 个 RX，"
+            f"收到 tx={geom.tx_names!r}, rx={geom.rx_names!r}"
+        )
+    if not bool(geom.type_tensor[0, 0, 0].item()):
+        raise ValueError(
+            "首条链路 type_tensor[0,0,0] 为单基地；"
+            "请使用分离收发 TOML（如 data_collection_bistatic.toml）"
+        )
+
+
 def main() -> None:
     """蒙特卡洛采集 episode → 流式写出 HDF5 → 写出 TOML / CSV / PNG。"""
     # --- 初始化：CLI → 采集元数据 → System ---
@@ -197,19 +244,26 @@ def main() -> None:
     assert rt_simulator is not None
     target_name, target = next(iter(rt_simulator.rt_targets.items()))
     scene_slug = getattr(rt_simulator.rt_simulator_params, "filename", "None")
+    sens_mode = args.sens_mode
+    if sens_mode == "bistatic":
+        _assert_bistatic_topology(rt_simulator)
+    dataset_slug = _dataset_slug(scene_slug, sens_mode)
     scs_hz = float(comps.rg.subcarrier_spacing)
-    out_dir = collection_dataset_dir(scene_slug, scs_hz, DEFAULT_COLLECTION_OUT_DIR)
+    out_dir = collection_dataset_dir(dataset_slug, scs_hz, DEFAULT_COLLECTION_OUT_DIR)
     mti_label = "开" if args.apply_mti else "关"
     print(
         f"目标: {target_name}, 场景: {scene_slug}, 配置: {args.config_file}\n"
-        f"采集 | MTI={mti_label} | 目标采纳数={collection_meta.num_samples}\n"
+        f"采集 | sens_mode={sens_mode} | MTI={mti_label} | "
+        f"目标采纳数={collection_meta.num_samples}\n"
         f"采集输出: {out_dir}/"
     )
 
     csv_rows: list[dict[str, str | int]] = []
     bs_pos = np.asarray(rt_simulator.transceivers["bs1"].position, dtype=np.float64)
-    h5_path = collection_h5_path(scene_slug, out_dir)
-    v_res = float(comps.sensing_performance.velocity_resolution_monostatic)
+    h5_path = collection_h5_path(dataset_slug, out_dir)
+    v_res = float(
+        getattr(comps.sensing_performance, f"velocity_resolution_{sens_mode}")
+    )
 
     # --- 流式采集循环：pop → 位姿/路径 → 过滤 → 感知链 → append ---
     with RTDatasetWriter.open(
@@ -237,15 +291,15 @@ def main() -> None:
             )
             rt_simulator.paths(update=True)
 
-            if not rt_simulator.paths_intersect_target_with_interaction(
-                target, "specular"
-            ):
-                continue
-
             geom = rt_simulator.rx_target_tx_geometric
             true_range = geom.range_tensor[0, 0, 0]
             true_velocity = geom.vel_tensor[0, 0, 0]
-            if abs(float(true_velocity.item())) <= v_res:
+            if abs(float(true_velocity.item())) <= v_res / 2:
+                continue
+
+            if not rt_simulator.paths_intersect_target_with_interaction(
+                target, "specular"
+            ):
                 continue
 
             csv_rows.append(
@@ -265,7 +319,7 @@ def main() -> None:
             h_freq = comps.ls_channel_estimator(x_rg, y_rg)
             if args.apply_mti:
                 h_freq = comps.moving_target_indication(h_freq)
-            h_dd = comps.delay_doppler_spectrum(h_freq)
+            h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=sens_mode)
 
             dataset.append_episode(
                 h_dd.detach().cpu().numpy().astype(np.complex64),
@@ -284,13 +338,13 @@ def main() -> None:
         # --- 落盘：写入 HDF5 根属性并关闭文件 ---
         dataset.finalize(
             collection_meta=collection_meta,
-            scene_slug=scene_slug,
+            scene_slug=dataset_slug,
             apply_mti=args.apply_mti,
         )
 
     # TOML / CSV / 场景 PNG 须在 HDF5 finalize 关闭后写出
     save_collection_artifacts(
-        scene_slug=scene_slug,
+        scene_slug=dataset_slug,
         config_file=args.config_file,
         csv_rows=csv_rows,
         rt_simulator=rt_simulator,

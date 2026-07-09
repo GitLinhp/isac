@@ -8,7 +8,7 @@
 ------
 1. ``RTDataset.load`` 返回原始 ``spectrum_tensor`` 与运动学
 2. ``kinematics_to_target_bins`` 从运动学生成 ``(B, 2)`` 局部 bin 监督
-3. ``MonostaticDelayDopplerCNN.forward`` 输出可微 ``(B, 2)`` 预测
+3. ``SensingCNN.forward`` 输出可微 ``(B, 2)`` 预测
 4. ``MonostaticSensingLoss`` 在 bin 空间优化
 5. 验证除 bin 损失外，经 ``SensingEstimator`` 报告物理距离/速度 RMSE
 
@@ -59,7 +59,7 @@ from isac import DEFAULT_DATASET_H5, DEFAULT_MONOSTATIC_CNN_MODEL
 from isac.collection import RTDataset, sensing_attrs_from_system
 from isac.data_structures.types import MusicPeaks
 from isac.models import (
-    MonostaticDelayDopplerCNN,
+    SensingCNN,
     MonostaticSensingLoss,
     kinematics_to_range_velocity,
     kinematics_to_target_bins,
@@ -152,7 +152,7 @@ def _batch_to_device(
 
 
 def _predict_and_target_bins(
-    model: MonostaticDelayDopplerCNN,
+    model: SensingCNN,
     spectrum: torch.Tensor,
     pos: torch.Tensor,
     vel: torch.Tensor,
@@ -185,7 +185,7 @@ def _bins_row_to_peaks(
 
 def _train_step(
     batch: dict[str, torch.Tensor],
-    model: MonostaticDelayDopplerCNN,
+    model: SensingCNN,
     criterion: MonostaticSensingLoss,
     optimizer: torch.optim.Optimizer,
     sensing_performance: SensingPerformance,
@@ -212,7 +212,7 @@ def _train_step(
 
 @torch.no_grad()
 def _evaluate(
-    model: MonostaticDelayDopplerCNN,
+    model: SensingCNN,
     loader: DataLoader,
     criterion: MonostaticSensingLoss,
     sensing_estimator: SensingEstimator,
@@ -305,14 +305,14 @@ def _build_model_and_optim(
     *,
     base_channels: int,
     dropout: float,
-) -> tuple[MonostaticDelayDopplerCNN, torch.optim.Optimizer, MonostaticSensingLoss, int]:
+) -> tuple[SensingCNN, torch.optim.Optimizer, MonostaticSensingLoss, int]:
     """构建 CNN、Adam 与 bin 空间损失。
 
     CNN 仅 ``in_channels=2``，不传入 ``sensing_attrs``；感知参数仅用于标签与日志。
     Adam 使用 ``weight_decay`` 作 L2 正则。
     """
     in_channels = 2
-    model = MonostaticDelayDopplerCNN(
+    model = SensingCNN(
         in_channels=in_channels,
         base_channels=base_channels,
         num_layers=num_layers,
@@ -385,7 +385,7 @@ def _log_train_banner(
 
 
 def _checkpoint_payload(
-    model: MonostaticDelayDopplerCNN,
+    model: SensingCNN,
     *,
     in_channels: int,
 ) -> dict[str, Any]:
@@ -434,7 +434,7 @@ def _train_one_epoch(
     epoch: int,
     epochs: int,
     train_loader: DataLoader,
-    model: MonostaticDelayDopplerCNN,
+    model: SensingCNN,
     criterion: MonostaticSensingLoss,
     optimizer: torch.optim.Optimizer,
     sensing_performance: SensingPerformance,
@@ -468,7 +468,7 @@ def _run_training_epochs(
     args: argparse.Namespace,
     train_loader: DataLoader,
     val_loader: DataLoader,
-    model: MonostaticDelayDopplerCNN,
+    model: SensingCNN,
     criterion: MonostaticSensingLoss,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau,

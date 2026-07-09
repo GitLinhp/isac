@@ -5,7 +5,7 @@ import torch
 
 from isac.data_structures.types import MusicPeaks
 from isac.models import (
-    MonostaticDelayDopplerCNN,
+    SensingCNN,
     dd_spectrum_to_features,
     kinematics_to_target_bins,
     spectrum_tensor_to_features,
@@ -31,7 +31,7 @@ def _sensing_performance() -> SensingPerformance:
 
 
 def test_monostatic_cnn_forward_shape():
-    model = MonostaticDelayDopplerCNN(in_channels=2)
+    model = SensingCNN(in_channels=2)
     model.eval()
     h_dd = torch.randn(256, 128, dtype=torch.complex64)
     with torch.no_grad():
@@ -40,7 +40,7 @@ def test_monostatic_cnn_forward_shape():
 
 
 def test_monostatic_cnn_batch_forward():
-    model = MonostaticDelayDopplerCNN(in_channels=2)
+    model = SensingCNN(in_channels=2)
     model.eval()
     batch = torch.randn(4, 256, 128, dtype=torch.complex64)
     with torch.no_grad():
@@ -50,7 +50,7 @@ def test_monostatic_cnn_batch_forward():
 
 @pytest.mark.parametrize("num_layers", [1, 2, 4])
 def test_monostatic_cnn_num_layers_forward(num_layers: int):
-    model = MonostaticDelayDopplerCNN(in_channels=2, num_layers=num_layers)
+    model = SensingCNN(in_channels=2, num_layers=num_layers)
     model.eval()
     batch = torch.randn(2, 256, 128, dtype=torch.complex64)
     with torch.no_grad():
@@ -60,12 +60,12 @@ def test_monostatic_cnn_num_layers_forward(num_layers: int):
 
 def test_monostatic_cnn_num_layers_invalid():
     with pytest.raises(ValueError, match="num_layers"):
-        MonostaticDelayDopplerCNN(in_channels=2, num_layers=0)
+        SensingCNN(in_channels=2, num_layers=0)
 
 
 def test_monostatic_cnn_base_channels_dropout_roi_input():
     """ROI 典型尺寸 8×13 与小宽度/高 dropout 配置仍可前向。"""
-    model = MonostaticDelayDopplerCNN(
+    model = SensingCNN(
         in_channels=2,
         base_channels=16,
         num_layers=2,
