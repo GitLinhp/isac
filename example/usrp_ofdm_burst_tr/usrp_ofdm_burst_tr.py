@@ -78,13 +78,13 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.time_lead_s = time_lead_s = 0.5
         self.startup_delay_s = startup_delay_s = 1.0
         self.samp_rate = samp_rate = resolve_ofdm_samp_rate(config_file)
-        self.rx_delay_s = rx_delay_s = 0.0
         self.ofdm_burst_samples = ofdm_burst_samples = resolve_ofdm_burst_len(config_file)
-        self.idle_ms = idle_ms = 400
+        self.idle_ms = idle_ms = 1000
         self.gui_update_time_ms = gui_update_time_ms = 10
         self.freq_trig_level = freq_trig_level = -90
         self.device = device = "cuda:0"
         self.dd_vlen = dd_vlen = resolve_dd_output_vlen(config_file)
+        self.corr_threshold = corr_threshold = 0.6
         self.TX_gain = TX_gain = 20
         self.RX_gain = RX_gain = 20
 
@@ -151,7 +151,7 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
         self.ofdm_burst_source = ofdm_burst_source.blk(config_file=config_file, idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=time_lead_s, startup_delay_s=startup_delay_s)
-        self.ofdm_burst_sensing_rx = ofdm_burst_sensing_rx.blk(config_file=config_file, device=device, seed=42, idle_ms=idle_ms, rx_delay_s=rx_delay_s)
+        self.ofdm_burst_sensing_rx = ofdm_burst_sensing_rx.blk(config_file=config_file, device=device, seed=42, idle_ms=idle_ms, corr_threshold=corr_threshold)
         self._freq_trig_level_range = qtgui.Range(-120, 0, 5, -90, 200)
         self._freq_trig_level_win = qtgui.RangeWidget(self._freq_trig_level_range, self.set_freq_trig_level, "freq_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._freq_trig_level_win, 1, 2, 1, 1)
@@ -165,7 +165,6 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         ##################################################
         # Connections
         ##################################################
-        self.msg_connect((self.ofdm_burst_source, 'tx_schedule'), (self.ofdm_burst_sensing_rx, 'tx_schedule'))
         self.connect((self.ofdm_burst_sensing_rx, 0), (self.dd_spectrum_plot_0, 0))
         self.connect((self.ofdm_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.ofdm_burst_sensing_rx, 0))
@@ -239,13 +238,6 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.uhd_usrp_sink_0_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_source_0_0.set_samp_rate(self.samp_rate)
 
-    def get_rx_delay_s(self):
-        return self.rx_delay_s
-
-    def set_rx_delay_s(self, rx_delay_s):
-        self.rx_delay_s = rx_delay_s
-        self.ofdm_burst_sensing_rx.rx_delay_s = self.rx_delay_s
-
     def get_ofdm_burst_samples(self):
         return self.ofdm_burst_samples
 
@@ -284,6 +276,13 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
 
     def set_dd_vlen(self, dd_vlen):
         self.dd_vlen = dd_vlen
+
+    def get_corr_threshold(self):
+        return self.corr_threshold
+
+    def set_corr_threshold(self, corr_threshold):
+        self.corr_threshold = corr_threshold
+        self.ofdm_burst_sensing_rx.corr_threshold = self.corr_threshold
 
     def get_TX_gain(self):
         return self.TX_gain

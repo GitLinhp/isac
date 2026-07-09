@@ -369,11 +369,22 @@ def resolve_ofdm_samp_rate(config_file: str) -> int:
 
 
 def resolve_ofdm_burst_len(config_file: str) -> int:
-    """从 TOML [ofdm] 解析突发样点数 ``num_symbols * (fft_size + cp)``。"""
+    """从 TOML [ofdm] 解析载荷突发样点数 ``num_symbols * (fft_size + cp)``。
+
+    不含 SC 前导；前导长度见 ``ofdm_sc_preamble.preamble_len``。
+    """
     ofdm = load_system_params(config_file).ofdm
     if ofdm is None:
         raise ValueError(f"TOML 缺少 [ofdm]: {config_file}")
     return int(ofdm.num_symbols * (ofdm.fft_size + ofdm.cyclic_prefix_length))
+
+
+def resolve_ofdm_fft_cp(config_file: str) -> tuple[int, int]:
+    """从 TOML [ofdm] 解析 ``(fft_size, cyclic_prefix_length)``。"""
+    ofdm = load_system_params(config_file).ofdm
+    if ofdm is None:
+        raise ValueError(f"TOML 缺少 [ofdm]: {config_file}")
+    return int(ofdm.fft_size), int(ofdm.cyclic_prefix_length)
 
 
 def resolve_source_cache_file(config_file: str) -> str:

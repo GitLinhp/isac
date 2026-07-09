@@ -1,5 +1,5 @@
 """
-GNU Radio 嵌入式 Python 块：OFDM 突发源（纯 x_time.npy 时域重放）
+GNU Radio 嵌入式 Python 块：OFDM 突发源（SC 前导 + x_time.npy 时域重放）
 
 周期性输出 OFDM 时域突发，并在流上附加 UHD 所需的 stream tag：
   tx_sob  — 突发开始（Start Of Burst）
@@ -8,10 +8,10 @@ GNU Radio 嵌入式 Python 块：OFDM 突发源（纯 x_time.npy 时域重放）
 
 Style 1 约定：下游 USRP Sink 的 len_tag_name 必须留空，由 tag 而非包长 tag 界定突发边界。
 
-发射链：由 config_file 解析 source.cache_file（缓存目录）与 OFDM samp_rate，
-再仅 np.load 目录内 x_time.npy（未缩放缓存）→ 写出时乘当前 tx_amp 周期性重放。
-tx_amp 可实时调节，无需重载波形。
-不构建 System 调制链，不调用 create_system / transmit()。System 仅由接收端构建。
+发射链：由 config_file 解析 source.cache_file（缓存目录）与 OFDM 几何，
+加载 x_time.npy（载荷，未缩放）→ 前缀拼接 Schmidl-Cox 时域前导 → 写出时乘
+当前 tx_amp 周期性重放。前导运行时生成，无需重写缓存。
+空口同步由 RX 对前导做相关完成；本块不再发 tx_schedule 消息。
 
 注意：__init__ 形参默认值须与 GRC 变量保持同步。
 """
@@ -23,20 +23,18 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pmt
 from gnuradio import gr
 
 from isac import PROJECT_ROOT
 from isac_imp.burst_pack import (
-    PORT_TX_SCHEDULE,
     TPP_DONT,
     add_style1_eob,
     add_style1_sob_time,
     load_burst_buffer,
-    make_tx_schedule_msg,
     schedule_idle_delay_s,
 )
-from isac_imp.gr_setup import resolve_ofdm_samp_rate, resolve_source_cache_file
+from isac_imp.gr_setup import resolve_ofdm_fft_cp, resolve_ofdm_samp_rate, resolve_source_cache_file
+from isac_imp.ofdm_sc_preamble import preamble_time
 
 # ---------------------------------------------------------------------------
 # 模块常量
@@ -49,7 +47,7 @@ _LOG_PREFIX = "[OFDM Burst Source]"  # stderr 日志前缀
 
 class blk(gr.basic_block):
     """
-    Style 1 OFDM 突发源：启动时按 TOML 加载 x_time.npy，之后周期性重放并打 UHD 定时 tag。
+    Style 1 OFDM 突发源：SC 前导 + x_time.npy，周期性重放并打 UHD 定时 tag。
 
     工作流程：突发期内从缓存输出样本并打 tag；突发结束后进入 idle 静默期，
     静默期不产出样本（general_work 返回 0），到期再启动下一突发。
@@ -69,7 +67,7 @@ class blk(gr.basic_block):
     ):
         """
         参数:
-            - config_file:      TOML 路径；从中解析 source.cache_file（目录）与 OFDM samp_rate
+            - config_file:      TOML 路径；从中解析 source.cache_file（目录）与 OFDM 几何
             - idle_ms:          两次突发之间的纯静默间隔 (毫秒)，不含突发本身时长
             - tx_amp:           输出幅度缩放（写出时相乘，可实时调节）
             - time_lead_s:      tx_time 相对当前 wall-clock 的提前量 (秒)
@@ -82,7 +80,9 @@ class blk(gr.basic_block):
             out_sig=[np.complex64],
         )
         self._config_file = str(config_file)
-        self._cache_dir, self._samp_rate = self._resolve_from_config(self._config_file)
+        self._cache_dir, self._samp_rate, self._fft_size, self._cp_len = (
+            self._resolve_from_config(self._config_file)
+        )
         self._idle_ms = float(idle_ms)
         self._tx_amp = float(tx_amp)
         self._time_lead_s = float(time_lead_s)
@@ -93,7 +93,7 @@ class blk(gr.basic_block):
         self._burst_idx = 0
         self._next_burst_at = time.monotonic() + self._startup_delay_s
 
-        # 未缩放缓存波形、样本数、静默时长（秒）；写出时再乘 _tx_amp
+        # 未缩放缓存波形（前导+载荷）、样本数、静默时长（秒）；写出时再乘 _tx_amp
         self._burst_buffer: np.ndarray | None = None
         self._burst_len = 0
         self._idle_s = max(0.0, self._idle_ms / 1000.0)
@@ -101,22 +101,21 @@ class blk(gr.basic_block):
         # 源块无输入 tag；缓冲至少能装下一段突发，避免调度器切得过碎
         self.set_tag_propagation_policy(TPP_DONT)
         self.set_min_output_buffer(4096)
-        # 同机感知：把每突发 tx_time 经消息口发给 RX（空口不传 stream tag）
-        self.message_port_register_out(pmt.intern(PORT_TX_SCHEDULE))
 
     # -----------------------------------------------------------------------
     # 配置解析与缓存加载
     # -----------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_from_config(config_file: str) -> tuple[str, float]:
-        """从 TOML 解析 source.cache_file（缓存目录）与 OFDM samp_rate（不建 System）。"""
+    def _resolve_from_config(config_file: str) -> tuple[str, float, int, int]:
+        """解析 cache 目录、samp_rate、fft_size、cp（不建 System）。"""
         cache_dir = resolve_source_cache_file(config_file)
         samp_rate = float(resolve_ofdm_samp_rate(config_file))
-        return cache_dir, samp_rate
+        fft_size, cp_len = resolve_ofdm_fft_cp(config_file)
+        return cache_dir, samp_rate, fft_size, cp_len
 
     def start(self):
-        """流图启动时预热加载 x_time.npy，避免首包冷启动导致 Sink underflow。"""
+        """流图启动时预热加载波形，避免首包冷启动导致 Sink underflow。"""
         self._ensure_burst()
         self._next_burst_at = time.monotonic() + self._startup_delay_s
         return True
@@ -137,22 +136,27 @@ class blk(gr.basic_block):
         self._burst_buffer = None
 
     def _ensure_burst(self) -> np.ndarray:
-        """懒加载入口：缓存未命中时 np.load，返回突发缓冲。"""
+        """懒加载入口：缓存未命中时 np.load + 拼前导，返回突发缓冲。"""
         if self._burst_buffer is None:
             self._load_burst()
         assert self._burst_buffer is not None
         return self._burst_buffer
 
     def _load_burst(self) -> None:
-        """从缓存目录读取 x_time.npy（未缩放），供写出时乘当前 tx_amp。"""
+        """加载 x_time.npy，前缀 SC 前导，供写出时乘当前 tx_amp。"""
         path = self._resolve_cache_dir() / "x_time.npy"
-        burst_buffer = load_burst_buffer(path, tx_amp=1.0)
+        payload = load_burst_buffer(path, tx_amp=1.0)
+        preamble = preamble_time(self._fft_size, self._cp_len)
+        burst_buffer = np.concatenate([preamble, payload]).astype(
+            np.complex64, copy=False
+        )
         self._burst_buffer = burst_buffer
         self._burst_len = int(burst_buffer.size)
         self._idle_s = max(0.0, self._idle_ms / 1000.0)
         self.set_min_output_buffer(max(4096, self._burst_len * 2))
         self._log(
-            f"load x_time.npy ok config={self._config_file!r} path={path} "
+            f"load x_time.npy + SC preamble ok config={self._config_file!r} "
+            f"path={path} preamble_len={preamble.size} payload_len={payload.size} "
             f"burst_len={self._burst_len} samp_rate={self._samp_rate}"
         )
 
@@ -171,9 +175,11 @@ class blk(gr.basic_block):
 
     @config_file.setter
     def config_file(self, value):
-        """更新配置路径，重新解析缓存目录与 samp_rate，并清空突发缓存。"""
+        """更新配置路径，重新解析缓存目录与 OFDM 几何，并清空突发缓存。"""
         self._config_file = str(value)
-        self._cache_dir, self._samp_rate = self._resolve_from_config(self._config_file)
+        self._cache_dir, self._samp_rate, self._fft_size, self._cp_len = (
+            self._resolve_from_config(self._config_file)
+        )
         self._invalidate_burst()
 
     @property
@@ -188,7 +194,7 @@ class blk(gr.basic_block):
 
     @property
     def burst_len(self):
-        """只读：当前突发缓冲的样本数（未加载前为 0）。"""
+        """只读：当前突发缓冲的样本数（含前导；未加载前为 0）。"""
         return self._burst_len
 
     @property
@@ -276,13 +282,10 @@ class blk(gr.basic_block):
         )
 
         abs_out = self.nitems_written(0)
-        # 突发首样本：打 SOB + tx_time，并消息通知 RX 同一 epoch
+        # 突发首样本：打 SOB + tx_time（仅服务 USRP 定时；无 tx_schedule）
         if self._burst_idx == 0:
             epoch = time.time() + self._time_lead_s
             add_style1_sob_time(self, 0, abs_out, epoch)
-            self.message_port_pub(
-                pmt.intern(PORT_TX_SCHEDULE), make_tx_schedule_msg(epoch)
-            )
 
         self._burst_idx += n
         # 突发末样本：打 EOB，进入 idle，调度下一突发时刻
