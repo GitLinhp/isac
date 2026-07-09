@@ -31,7 +31,7 @@ def effective_for_flowgraph(tb) -> EffectiveConfig:
 
 
 def _update_spectrogram_axes(tb, eff: EffectiveConfig) -> None:
-    plot = getattr(tb, "sionna_dd_spectrogram_0", None)
+    plot = getattr(tb, "dd_spectrum_plot_0", None)
     if plot is None:
         return
     for method, args in (

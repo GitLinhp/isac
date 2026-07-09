@@ -22,20 +22,8 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import uhd
 import time
+from isac_imp.blocks.dd_spectrum_plot import DDSpectrogramPlot
 from isac_imp.gr_setup import (resolve_dd_output_vlen, resolve_ofdm_samp_rate, resolve_ofdm_burst_len)
-from pathlib import Path
-_here = Path(__file__).resolve().parent if "__file__" in dir() else Path.cwd()
-_gr_root = None
-for _c in (_here, *_here.parents):
-    if (_c / "gnuradio" / "bootstrap.py").is_file():
-        _gr_root = _c / "gnuradio"
-        break
-if _gr_root is not None:
-    if str(_gr_root) not in sys.path:
-        sys.path.insert(0, str(_gr_root))
-    from bootstrap import setup_gnuradio_paths
-    setup_gnuradio_paths()
-from sionna_dd_spectrogram import SionnaDDSpectrogramPlot
 import threading
 import usrp_ofdm_burst_tr_ofdm_burst_sensing_rx as ofdm_burst_sensing_rx  # embedded python block
 import usrp_ofdm_burst_tr_ofdm_burst_source as ofdm_burst_source  # embedded python block
@@ -90,6 +78,7 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.time_lead_s = time_lead_s = 0.5
         self.startup_delay_s = startup_delay_s = 1.0
         self.samp_rate = samp_rate = resolve_ofdm_samp_rate(config_file)
+        self.rx_delay_s = rx_delay_s = 0.0
         self.ofdm_burst_samples = ofdm_burst_samples = resolve_ofdm_burst_len(config_file)
         self.idle_ms = idle_ms = 400
         self.gui_update_time_ms = gui_update_time_ms = 10
@@ -161,9 +150,8 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self.sionna_dd_spectrogram_0 = SionnaDDSpectrogramPlot(vlen=dd_vlen, xlabel="target_range", ylabel="target_velocity", label="DD Spectrogram", axis_x=[0, 50], axis_y=[-10, 10], axis_z=[-15, -12], autoscale_z=True, len_key="packet_len")
         self.ofdm_burst_source = ofdm_burst_source.blk(config_file=config_file, idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=time_lead_s, startup_delay_s=startup_delay_s)
-        self.ofdm_burst_sensing_rx = ofdm_burst_sensing_rx.blk(config_file=config_file, device=device, seed=42, idle_ms=idle_ms, dd_vlen=dd_vlen, debug=False)
+        self.ofdm_burst_sensing_rx = ofdm_burst_sensing_rx.blk(config_file=config_file, device=device, seed=42, idle_ms=idle_ms, rx_delay_s=rx_delay_s)
         self._freq_trig_level_range = qtgui.Range(-120, 0, 5, -90, 200)
         self._freq_trig_level_win = qtgui.RangeWidget(self._freq_trig_level_range, self.set_freq_trig_level, "freq_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._freq_trig_level_win, 1, 2, 1, 1)
@@ -171,12 +159,14 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
+        self.dd_spectrum_plot_0 = DDSpectrogramPlot(vlen=dd_vlen, xlabel="target_range", ylabel="target_velocity", label="DD Spectrogram", axis_x=[0, 50], axis_y=[-10, 10], axis_z=[-15, -12], autoscale_z=True, len_key="packet_len")
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.ofdm_burst_sensing_rx, 0), (self.sionna_dd_spectrogram_0, 0))
+        self.msg_connect((self.ofdm_burst_source, 'tx_schedule'), (self.ofdm_burst_sensing_rx, 'tx_schedule'))
+        self.connect((self.ofdm_burst_sensing_rx, 0), (self.dd_spectrum_plot_0, 0))
         self.connect((self.ofdm_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
         self.connect((self.uhd_usrp_source_0_0, 0), (self.ofdm_burst_sensing_rx, 0))
 
@@ -248,6 +238,13 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.uhd_usrp_sink_0_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_source_0_0.set_samp_rate(self.samp_rate)
+
+    def get_rx_delay_s(self):
+        return self.rx_delay_s
+
+    def set_rx_delay_s(self, rx_delay_s):
+        self.rx_delay_s = rx_delay_s
+        self.ofdm_burst_sensing_rx.rx_delay_s = self.rx_delay_s
 
     def get_ofdm_burst_samples(self):
         return self.ofdm_burst_samples

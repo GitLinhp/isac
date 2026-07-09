@@ -29,7 +29,7 @@ if str(_repo_root) not in sys.path:
 
 from isac.data_structures import SystemComponents, SystemParams
 from isac.utils import load_config, set_random_seed
-from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
+from isac_imp.burst_pack import TAG_EOB, TAG_SOB, TAG_TIME
 
 _DEFAULT_CONFIG = "implementaion/ofdm_burst_source.toml"
 

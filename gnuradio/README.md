@@ -34,7 +34,7 @@ pip install -e .
 
 ```bash
 # 安装 / 更新 GRC 块定义
-bash gnuradio/tools/install_grc_blocks.sh
+bash src/isac_imp/install_grc_blocks.sh
 
 # 在 flowgraphs/ 目录下 grcc 生成 Python
 # grcc sensing_baseline.grc

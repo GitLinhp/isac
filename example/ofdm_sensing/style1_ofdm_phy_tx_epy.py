@@ -22,7 +22,7 @@ if _UHD_TEST_DIR not in sys.path:
     sys.path.insert(0, _UHD_TEST_DIR)
 
 from ofdm_loopback_phy_context import PhyContext
-from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
+from isac_imp.burst_pack import TAG_EOB, TAG_SOB, TAG_TIME
 
 
 class blk(gr.basic_block):

@@ -39,7 +39,7 @@ from gnuradio import gr
 
 from isac.data_structures import SystemParams
 from isac.utils import load_config
-from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
+from isac_imp.burst_pack import TAG_EOB, TAG_SOB, TAG_TIME
 
 
 @dataclass(frozen=True)

@@ -129,7 +129,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1592, 4.0]
+    coordinate: [1400, 20.0]
     rotation: 0
     state: true
 - name: gui_update_time_ms
@@ -154,6 +154,18 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [976, 8.0]
+    rotation: 0
+    state: enabled
+- name: rx_delay_s
+  id: variable
+  parameters:
+    comment: echo delay relative to tx_time (s); monostatic default 0
+    value: '0.0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [976, 72.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_samples
@@ -201,7 +213,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1176, 144.0]
+    coordinate: [1272, 384.0]
     rotation: 0
     state: enabled
 - name: time_mag_trig_level
@@ -222,7 +234,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1368, 4.0]
+    coordinate: [1128, 20.0]
     rotation: 0
     state: true
 - name: tx_amp
@@ -314,6 +326,28 @@ blocks:
     coordinate: [440, 988.0]
     rotation: 0
     state: disabled
+- name: dd_spectrum_plot_0
+  id: dd_spectrum_plot
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale_z: 'True'
+    axis_x: '[0, 50]'
+    axis_y: '[-10, 10]'
+    axis_z: '[-15, -12]'
+    comment: DD spectrogram GUI (range/velocity); vlen matches ROI delay bins (dd_vlen)
+    label: '"DD Spectrogram"'
+    len_key: '"packet_len"'
+    vlen: dd_vlen
+    xlabel: '"target_range"'
+    ylabel: '"target_velocity"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1672, 920.0]
+    rotation: 0
+    state: enabled
 - name: freq
   id: parameter
   parameters:
@@ -349,126 +383,125 @@ blocks:
   id: epy_block
   parameters:
     _source_code: "\"\"\"\nGNU Radio \u5D4C\u5165\u5F0F Python \u5757\uFF1AOFDM \u7A81\u53D1\
-      \u611F\u77E5\u63A5\u6536\uFF08\u56FA\u5B9A\u957F\u5EA6\u5207\u5305 + LS/DD\uFF09\
-      \n\n\u4ECE USRP RX \u8FDE\u7EED IQ \u6D41\u4E2D\uFF0C\u6512\u6EE1 burst_len\
-      \ \u540E\u76F4\u63A5\u5207\u5305\u89E3\u8C03\uFF1A\n  y_rg = demodulator(y_time)\n\
-      \  h_freq = ls_channel_estimator(x_rg, y_rg)   # x_rg \u6765\u81EA\u79BB\
-      \u7EBF x_rg.npy\n  h_dd = delay_doppler_spectrum(h_freq, sens_mode=\"\
-      monostatic\")\n\n\u8F93\u51FA\uFF1Alog10(|h_dd|\xB2) \u6309\u591A\u666E\
-      \u52D2\u884C\u8F93\u51FA\u7684 float32 \u5411\u91CF\u6D41\uFF0C\u9996\u884C\
-      \u6253 packet_len tag\uFF0C\n\u4F9B SionnaDDSpectrogramPlot \u663E\u793A\
-      \u3002\u4E0D\u6253\u5370\u8DDD\u79BB/\u901F\u5EA6/RMSE\u3002\n\nSystem\
-      \ / burst_len / OFDM \u51E0\u4F55\u4E00\u5F8B\u6765\u81EA TOML\uFF08config_file\uFF09\
-      \uFF0C\u4E0D\u505A GRC OFDM \u8986\u76D6\u3002\n\u4E0D\u505A\u76F8\u5173\
-      \u540C\u6B65\uFF1Bx_rg \u4ECE source.cache_file \u76EE\u5F55\u7684 x_rg.npy\
-      \ \u52A0\u8F7D\u3002\n\n\u6CE8\u610F\uFF1A__init__ \u5F62\u53C2\u9ED8\u8BA4\
-      \u503C\u987B\u4E0E GRC \u53D8\u91CF\u4FDD\u6301\u540C\u6B65\u3002\n\"\"\
-      \"\n\nfrom __future__ import annotations\n\nimport sys\nimport time\n\
-      import traceback\nfrom collections import deque\nfrom typing import Any\n\
-      \nimport numpy as np\nimport pmt\nimport torch\nfrom gnuradio import gr\n\
-      \nfrom isac.system import System\nfrom isac_imp.constants import TPP_DONT\n\
-      from isac_imp.gr_setup import (\n    create_system,\n    make_cache_key,\n\
-      \    resolve_dd_output_vlen,\n    resolve_ofdm_burst_len,\n)\n\n# ---------------------------------------------------------------------------\n\
+      \u611F\u77E5\u63A5\u6536\uFF08tx_time + rx_time \u5207\u5305 + LS/DD\uFF09\
+      \n\n\u540C\u673A\u5355\u7AD9\uFF1ATX \u7ECF\u6D88\u606F\u53E3 ``tx_schedule``\
+      \ \u4E0B\u53D1\u6BCF\u7A81\u53D1\u8BA1\u5212 epoch\uFF08\u4E0E tx_time\
+      \ \u540C\u5F62\uFF09\uFF1B\nUSRP Source \u8FDE\u7EED IQ \u4E0A\u7684 ``rx_time``\
+      \ \u5EFA\u7ACB\u6837\u70B9\u65F6\u95F4\u8F74\u3002\u5728\n``t_target =\
+      \ tx_epoch + rx_delay_s`` \u5904\u5207\u51FA ``burst_len`` \u6837\u70B9\
+      \u540E\uFF1A\n  y_rg = demodulator(y_time)\n  h_freq = ls_channel_estimator(x_rg,\
+      \ y_rg)   # x_rg \u6765\u81EA\u79BB\u7EBF x_rg.npy\n  h_dd = delay_doppler_spectrum(h_freq,\
+      \ sens_mode=\"monostatic\")\n\n\u8F93\u51FA\uFF1Alog10(|h_dd|\xB2) \u6309\
+      \u591A\u666E\u52D2\u884C\u8F93\u51FA\u7684 float32 \u5411\u91CF\u6D41\uFF0C\
+      \u9996\u884C\u6253 packet_len tag\uFF0C\n\u4F9B DDSpectrogramPlot \u663E\
+      \u793A\u3002\u4E0D\u6253\u5370\u8DDD\u79BB/\u901F\u5EA6/RMSE\u3002\n\n\
+      System / burst_len / OFDM \u51E0\u4F55\u4E00\u5F8B\u6765\u81EA TOML\uFF08\
+      config_file\uFF09\uFF0C\u4E0D\u505A GRC OFDM \u8986\u76D6\u3002\n\u4E0D\
+      \u505A\u76F8\u5173\u540C\u6B65\uFF1Bx_rg \u4ECE system.cache_file \u76EE\
+      \u5F55\u7684 x_rg.npy \u52A0\u8F7D\u3002\n\n\u6CE8\u610F\uFF1A__init__\
+      \ \u5F62\u53C2\u9ED8\u8BA4\u503C\u987B\u4E0E GRC \u53D8\u91CF\u4FDD\u6301\
+      \u540C\u6B65\u3002\n\"\"\"\n\nfrom __future__ import annotations\n\nimport\
+      \ sys\nimport time\nimport traceback\nfrom collections import deque\n\
+      from typing import Any\n\nimport numpy as np\nimport pmt\nimport torch\n\
+      from gnuradio import gr\n\nfrom isac.system import System\nfrom isac.utils\
+      \ import set_random_seed\nfrom isac_imp.burst_pack import (\n    PORT_TX_SCHEDULE,\n\
+      \    TAG_RX_TIME,\n    TPP_DONT,\n    parse_uhd_time_pmt,\n)\nfrom isac_imp.gr_setup\
+      \ import (\n    resolve_dd_output_vlen,\n    resolve_ofdm_burst_len,\n\
+      \    resolve_ofdm_samp_rate,\n)\n\n# ---------------------------------------------------------------------------\n\
       # \u6A21\u5757\u5E38\u91CF\u4E0E\u5DE5\u5177\u51FD\u6570\n# ---------------------------------------------------------------------------\n\
       \n# \u9ED8\u8BA4 TOML\uFF08\u76F8\u5BF9 PROJECT_ROOT/config\uFF09\uFF1B\
       \u987B\u4E0E GRC \u9ED8\u8BA4\u503C\u4E00\u81F4\n_DEFAULT_CONFIG = \"\
       simulation/sensing/sensing_monostatic.toml\"\n_TAG_PACKET_LEN = pmt.intern(\"\
       packet_len\")  # DD \u5E27\u9996\u884C\uFF1A\u672C\u5E27\u591A\u666E\u52D2\
       \u884C\u6570\n_LOG_EPS = 1e-20  # log10(|h|\xB2+\u03B5) \u9632\u96F6\n\
-      _LOG_PREFIX = \"[OFDM Burst Sensing RX]\"\n_FORECAST_MAX = 16384  # \u8C03\
-      \u5EA6\u5668\u5355\u6B21\u8F93\u5165\u4E0A\u9650\uFF1B\u6574\u5E27\u9760\
-      \u5185\u90E8 _buf \u6512\u9F50\n\n\ndef _dd_log_magnitude(h_dd: np.ndarray,\
-      \ log_eps: float = _LOG_EPS) -> np.ndarray:\n    \"\"\"|\xB7|\xB2 \u2192\
-      \ +\u03B5 \u2192 log10\uFF0C\u5F62\u72B6\u4FDD\u6301 (n_doppler, n_delay)\u3002\
-      \"\"\"\n    mag2 = np.abs(h_dd.astype(np.complex128, copy=False)) ** 2\n\
-      \    return np.log10(mag2 + float(log_eps)).astype(np.float32)\n\n\ndef\
-      \ _as_bool(value) -> bool:\n    \"\"\"GRC \u53EF\u80FD\u4F20\u5165\u5B57\
-      \u7B26\u4E32\uFF1B\u7EDF\u4E00\u8F6C\u4E3A bool\u3002\"\"\"\n    if isinstance(value,\
-      \ str):\n        return value.strip().lower() in (\"1\", \"true\", \"\
-      yes\", \"on\")\n    return bool(value)\n\n\nclass blk(gr.basic_block):\n\
-      \    \"\"\"\n    \u56FA\u5B9A\u957F\u5EA6\u5207\u5305 OFDM \u611F\u77E5\
-      \u63A5\u6536\uFF1A\u6512\u6EE1 burst_len \u540E\u89E3\u8C03\u3001LS/DD\uFF0C\
-      \u5E76\u8F93\u51FA DD log \u8C31\u884C\u3002\n\n    \u5DE5\u4F5C\u6D41\
-      \u7A0B\uFF1AIQ \u5165\u7F13\u51B2 \u2192 \u5207\u5305 \u2192 LS/DD \u2192\
-      \ \u884C\u961F\u5217 \u2192 \u5199\u51FA float32 \u5411\u91CF\uFF08\u9996\
-      \u884C\u6253 packet_len\uFF09\u3002\n    \"\"\"\n\n    # -----------------------------------------------------------------------\n\
+      _FORECAST_MAX = 16384  # \u8C03\u5EA6\u5668\u5355\u6B21\u8F93\u5165\u4E0A\
+      \u9650\uFF1B\u6574\u5E27\u9760\u5185\u90E8 _buf \u6512\u9F50\n_MAX_SCHEDULE\
+      \ = 32  # \u5F85\u5904\u7406 tx_schedule \u961F\u5217\u4E0A\u9650\n\n\n\
+      def _dd_log_magnitude(h_dd: np.ndarray, log_eps: float = _LOG_EPS) ->\
+      \ np.ndarray:\n    \"\"\"|\xB7|\xB2 \u2192 +\u03B5 \u2192 log10\uFF0C\u5F62\
+      \u72B6\u4FDD\u6301 (n_doppler, n_delay)\u3002\"\"\"\n    mag2 = np.abs(h_dd.astype(np.complex128,\
+      \ copy=False)) ** 2\n    return np.log10(mag2 + float(log_eps)).astype(np.float32)\n\
+      \n\nclass blk(gr.basic_block):\n    \"\"\"\n    \u6309 tx_schedule + rx_time\
+      \ \u5207\u5305\u7684 OFDM \u611F\u77E5\u63A5\u6536\u3002\n\n    \u5DE5\
+      \u4F5C\u6D41\u7A0B\uFF1AIQ/rx_time \u5165\u7F13\u51B2 \u2192 \u961F\u5934\
+      \ schedule \u6620\u5C04\u6837\u70B9 \u2192 LS/DD \u2192 \u884C\u961F\u5217\
+      \u5199\u51FA\u3002\n    \"\"\"\n\n    # -----------------------------------------------------------------------\n\
       \    # \u521D\u59CB\u5316\n    # -----------------------------------------------------------------------\n\
       \n    def __init__(\n        self,\n        config_file=_DEFAULT_CONFIG,\n\
-      \        device=\"cpu\",\n        seed=42,\n        idle_ms=400.0,\n \
-      \       dd_vlen=0,\n        debug=False,\n    ):\n        \"\"\"\n   \
-      \     \u53C2\u6570:\n            - config_file / device / seed: TOML \u8DEF\
-      \u5F84\u4E0E\u8BA1\u7B97\u8BBE\u5907\uFF1BOFDM \u51E0\u4F55\u6765\u81EA\
-      \ TOML\n            - idle_ms: \u5207\u5305\u5904\u7406\u540E\u6291\u5236\
-      \u671F (ms)\uFF0C\u907F\u514D\u540C\u4E00\u7A81\u53D1\u91CD\u590D\u89E3\
-      \u8C03\n            - dd_vlen: \u8F93\u51FA\u5411\u91CF\u957F\u5EA6\uFF1B\
-      <=0 \u65F6\u6309 TOML ROI \u65F6\u5EF6\u5217\u6570\u81EA\u52A8\u89E3\u6790\
-      \n            - debug: \u662F\u5426\u5411 stderr \u6253\u5370\u5207\u5305\
-      /LS-DD \u8C03\u8BD5\u4FE1\u606F\n        \"\"\"\n        self._config_file\
-      \ = str(config_file)\n        self._device = str(device)\n        self._seed\
-      \ = int(seed)\n        self._idle_ms = float(idle_ms)\n        self._debug\
-      \ = _as_bool(debug)\n        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n\
-      \        if int(dd_vlen) > 0:\n            self._dd_vlen = int(dd_vlen)\n\
-      \        else:\n            self._dd_vlen = resolve_dd_output_vlen(self._config_file)\n\
-      \n        gr.basic_block.__init__(\n            self,\n            name=\"\
-      OFDM Burst Sensing RX\",\n            in_sig=[np.complex64],\n       \
-      \     out_sig=[(np.float32, self._dd_vlen)],\n        )\n\n        # \u8FD0\
-      \u884C\u65F6\uFF1A\u5171\u4EAB System\u3001\u79BB\u7EBF\u53C2\u8003\u9891\
-      \u57DF\u7F51\u683C\n        self._system: System | None = None\n     \
-      \   self._x_rg: Any = None\n\n        # \u5207\u5305\u72B6\u6001\uFF1A\
-      IQ \u73AF\u5F62\u7F13\u51B2\u3001\u6291\u5236\u622A\u6B62\u65F6\u523B\u3001\
-      \u5DF2\u5904\u7406\u7A81\u53D1\u8BA1\u6570\n        self._buf = np.zeros(0,\
-      \ dtype=np.complex64)\n        self._suppress_until = 0.0\n        self._processed_bursts\
-      \ = 0\n\n        # \u5F85\u8F93\u51FA\u7684 DD \u884C\uFF1A\u6BCF\u9879\
-      \ (row_f32[vlen], is_first_row, n_rows)\n        self._pending_rows: deque[tuple[np.ndarray,\
-      \ bool, int]] = deque()\n\n        # \u8C03\u8BD5\u8282\u6D41\uFF1A\u7B49\
-      \u5F85\u7F13\u5B58\u65E5\u5FD7\u65F6\u95F4\u6233\u3001\u662F\u5426\u5DF2\
-      \u6253\u5370\u9996\u5E27\u5199\u51FA\n        self._last_waiting_cache_log_at\
-      \ = 0.0\n        self._logged_first_produce = False\n\n        self.set_tag_propagation_policy(TPP_DONT)\n\
-      \        self._log(\n            f\"init dd_vlen={self._dd_vlen} burst_len={self._burst_len}\
-      \ \"\n            f\"idle_ms={self._idle_ms} debug={self._debug} (config-only,\
-      \ no OFDM override)\"\n        )\n\n    def _log(self, msg: str) -> None:\n\
-      \        \"\"\"debug \u5F00\u542F\u65F6\u5411 stderr \u8F93\u51FA\u5E26\
-      \u524D\u7F00\u65E5\u5FD7\u3002\"\"\"\n        if not self._debug:\n  \
-      \          return\n        print(f\"{_LOG_PREFIX} {msg}\", file=sys.stderr,\
-      \ flush=True)\n\n    @property\n    def burst_len(self) -> int:\n    \
-      \    \"\"\"\u53EA\u8BFB\uFF1A\u5F53\u524D\u5207\u5305\u957F\u5EA6\uFF08\
-      \u6837\u70B9\u6570\uFF09\u3002\"\"\"\n        return self._burst_len\n\
-      \n    @property\n    def dd_vlen(self) -> int:\n        \"\"\"\u53EA\u8BFB\
-      \uFF1A\u8F93\u51FA\u5411\u91CF\u957F\u5EA6\uFF08\u65F6\u5EF6\u7EF4\u5217\
-      \u6570\uFF09\u3002\"\"\"\n        return self._dd_vlen\n\n    # -----------------------------------------------------------------------\n\
+      \        device=\"cpu\",\n        seed=42,\n        idle_ms=900.0,\n \
+      \       rx_delay_s=0.0,\n    ):\n        \"\"\"\n        \u53C2\u6570\
+      :\n            - config_file / device / seed: TOML \u8DEF\u5F84\u4E0E\u8BA1\
+      \u7B97\u8BBE\u5907\uFF1BOFDM \u51E0\u4F55\u6765\u81EA TOML\n         \
+      \   - idle_ms: \u5207\u5305\u5904\u7406\u540E\u6291\u5236\u671F (ms)\uFF0C\
+      \u907F\u514D\u540C\u4E00\u7A81\u53D1\u91CD\u590D\u89E3\u8C03\n       \
+      \     - rx_delay_s: \u671F\u671B\u56DE\u6CE2\u76F8\u5BF9 tx_time \u7684\
+      \u65F6\u5EF6 (s)\uFF1B\u5355\u7AD9\u9ED8\u8BA4 0\n\n        \u8F93\u51FA\
+      \u5411\u91CF\u957F\u5EA6 ``dd_vlen`` \u7531 TOML ``[dd_spectrum_roi]``\
+      \ \u7ECF\n        ``resolve_dd_output_vlen`` \u89E3\u6790\uFF0C\u4E0D\u4F5C\
+      \u4E3A\u6784\u9020\u53C2\u6570\u4F20\u5165\u3002\n        \"\"\"\n   \
+      \     self._config_file = str(config_file)\n        self._device = str(device)\n\
+      \        self._seed = int(seed)\n        self._idle_ms = float(idle_ms)\n\
+      \        self._rx_delay_s = float(rx_delay_s)\n        self._burst_len\
+      \ = int(resolve_ofdm_burst_len(self._config_file))\n        self._samp_rate\
+      \ = float(resolve_ofdm_samp_rate(self._config_file))\n        self._dd_vlen\
+      \ = resolve_dd_output_vlen(self._config_file)\n\n        gr.basic_block.__init__(\n\
+      \            self,\n            name=\"OFDM Burst Sensing RX\",\n    \
+      \        in_sig=[np.complex64],\n            out_sig=[(np.float32, self._dd_vlen)],\n\
+      \        )\n\n        # \u8FD0\u884C\u65F6\uFF1A\u672C\u5757\u72EC\u5360\
+      \ System\u3001\u79BB\u7EBF\u53C2\u8003\u9891\u57DF\u7F51\u683C\n     \
+      \   self._system: System | None = None\n        self._x_rg: Any = None\n\
+      \n        # IQ \u7F13\u51B2\uFF1A_buf_abs0 \u4E3A\u7F13\u51B2\u9996\u6837\
+      \u70B9\u5BF9\u5E94\u7684\u7EDD\u5BF9\u8BFB\u5165\u4E0B\u6807\n       \
+      \ self._buf = np.zeros(0, dtype=np.complex64)\n        self._buf_abs0\
+      \ = 0\n        self._suppress_until = 0.0\n\n        # rx_time \u951A\u70B9\
+      \uFF1A(\u7EDD\u5BF9\u6837\u70B9\u4E0B\u6807, epoch \u79D2)\uFF1B\u65E0\
+      \u951A\u70B9\u65F6\u65E0\u6CD5\u6309\u65F6\u95F4\u5207\u5305\n       \
+      \ self._time_anchor_abs: int | None = None\n        self._time_anchor_epoch:\
+      \ float | None = None\n\n        # TX \u4E0B\u53D1\u7684\u8BA1\u5212\u53D1\
+      \u5C04 epoch \u961F\u5217\n        self._tx_schedule: deque[float] = deque()\n\
+      \n        # \u5F85\u8F93\u51FA\u7684 DD \u884C\uFF1A\u6BCF\u9879 (row_f32[vlen],\
+      \ is_first_row, n_rows)\n        self._pending_rows: deque[tuple[np.ndarray,\
+      \ bool, int]] = deque()\n\n        self.set_tag_propagation_policy(TPP_DONT)\n\
+      \        self.message_port_register_in(pmt.intern(PORT_TX_SCHEDULE))\n\
+      \        self.set_msg_handler(pmt.intern(PORT_TX_SCHEDULE), self._handle_tx_schedule)\n\
+      \n    def _handle_tx_schedule(self, msg) -> None:\n        \"\"\"\u6D88\
+      \u606F\u53E3\uFF1A\u5165\u961F TX \u8BA1\u5212 epoch\uFF1B\u8FC7\u957F\
+      \u5219\u4E22\u5F03\u6700\u65E7\u9879\u3002\"\"\"\n        try:\n     \
+      \       epoch = parse_uhd_time_pmt(msg)\n        except Exception:\n \
+      \           return\n        self._tx_schedule.append(float(epoch))\n \
+      \       while len(self._tx_schedule) > _MAX_SCHEDULE:\n            self._tx_schedule.popleft()\n\
+      \n    @property\n    def burst_len(self) -> int:\n        \"\"\"\u53EA\
+      \u8BFB\uFF1A\u5F53\u524D\u5207\u5305\u957F\u5EA6\uFF08\u6837\u70B9\u6570\
+      \uFF09\u3002\"\"\"\n        return self._burst_len\n\n    @property\n\
+      \    def dd_vlen(self) -> int:\n        \"\"\"\u53EA\u8BFB\uFF1A\u8F93\
+      \u51FA\u5411\u91CF\u957F\u5EA6\uFF08\u65F6\u5EF6\u7EF4\u5217\u6570\uFF09\
+      \u3002\"\"\"\n        return self._dd_vlen\n\n    # -----------------------------------------------------------------------\n\
       \    # System \u4E0E\u53C2\u8003\u6CE2\u5F62\n    # -----------------------------------------------------------------------\n\
-      \n    def _cache_key(self) -> tuple:\n        \"\"\"\u4E0E create_system\
-      \ \u4E00\u81F4\u7684 registry \u952E\uFF08\u65E0 OFDM \u8986\u76D6\uFF09\
-      \u3002\"\"\"\n        return make_cache_key(\n            self._config_file,\n\
-      \            self._device,\n            self._seed,\n            None,\n\
-      \        )\n\n    def _ensure_system(self) -> System:\n        \"\"\"\u61D2\
-      \u6784\u5EFA/\u590D\u7528 System\uFF1B\u540C\u6B65\u5237\u65B0 burst_len\u3002\
+      \n    def _ensure_system(self) -> System:\n        \"\"\"\u61D2\u6784\u5EFA\
+      \u672C\u5757\u72EC\u5360 System\uFF1B\u540C\u6B65\u5237\u65B0 burst_len\u3002\
       \"\"\"\n        if self._system is None:\n            torch.set_num_threads(1)\n\
-      \            cache_key = self._cache_key()\n            self._system =\
-      \ create_system(\n                self._config_file,\n               \
-      \ device=self._device,\n                seed=self._seed,\n           \
-      \     ofdm_overrides=None,\n            )\n            ofdm = self._system.params.ofdm\n\
+      \            set_random_seed(self._seed)\n            self._system = System(self._config_file,\
+      \ device=self._device)\n            ofdm = self._system.params.ofdm\n\
       \            if ofdm is not None:\n                self._burst_len = int(\n\
       \                    ofdm.num_symbols * (ofdm.fft_size + ofdm.cyclic_prefix_length)\n\
-      \                )\n            self._log(\n                f\"create_system\
-      \ config={self._config_file!r} device={self._device!r} \"\n          \
-      \      f\"key={cache_key} system_id={id(self._system)} burst_len={self._burst_len}\"\
-      \n            )\n        return self._system\n\n    def _ensure_waveform(self)\
-      \ -> bool:\n        \"\"\"\u4EC5\u4ECE\u7F13\u5B58\u76EE\u5F55\u52A0\u8F7D\
-      \ x_rg.npy\uFF1B\u6210\u529F\u8FD4\u56DE True\u3002\"\"\"\n        if\
-      \ self._x_rg is not None:\n            return True\n        system = self._ensure_system()\n\
+      \                )\n                self._samp_rate = float(ofdm.samp_rate)\n\
+      \        return self._system\n\n    def _ensure_waveform(self) -> bool:\n\
+      \        \"\"\"\u4EC5\u4ECE\u7F13\u5B58\u76EE\u5F55\u52A0\u8F7D x_rg.npy\uFF1B\
+      \u6210\u529F\u8FD4\u56DE True\u3002\"\"\"\n        if self._x_rg is not\
+      \ None:\n            return True\n        system = self._ensure_system()\n\
       \        try:\n            self._x_rg = system.load_transmit_x_rg()\n\
-      \        except (FileNotFoundError, ValueError) as exc:\n            now\
-      \ = time.monotonic()\n            if now - self._last_waiting_cache_log_at\
-      \ >= 1.0:\n                self._last_waiting_cache_log_at = now\n   \
-      \             self._log(f\"waiting for transmit x_rg.npy: {exc}\")\n \
-      \           return False\n        self._log(f\"load_transmit_x_rg ok x_rg={tuple(self._x_rg.shape)}\"\
-      )\n        return True\n\n    def _invalidate(self) -> None:\n       \
-      \ \"\"\"GRC \u53C2\u6570\u53D8\u66F4\u65F6\u6E05\u7A7A System/\u6CE2\u5F62\
-      /\u7F13\u51B2\uFF0C\u5E76\u91CD\u7B97 burst_len\u3002\"\"\"\n        self._system\
-      \ = None\n        self._x_rg = None\n        self._buf = np.zeros(0, dtype=np.complex64)\n\
-      \        self._pending_rows.clear()\n        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n\
-      \n    # -----------------------------------------------------------------------\n\
+      \        except (FileNotFoundError, ValueError):\n            return False\n\
+      \        return True\n\n    def _invalidate(self) -> None:\n        \"\
+      \"\"GRC \u53C2\u6570\u53D8\u66F4\u65F6\u6E05\u7A7A System/\u6CE2\u5F62\
+      /\u7F13\u51B2\uFF0C\u5E76\u91CD\u7B97\u51E0\u4F55\u3002\"\"\"\n      \
+      \  self._system = None\n        self._x_rg = None\n        self._buf =\
+      \ np.zeros(0, dtype=np.complex64)\n        self._buf_abs0 = 0\n      \
+      \  self._time_anchor_abs = None\n        self._time_anchor_epoch = None\n\
+      \        self._tx_schedule.clear()\n        self._pending_rows.clear()\n\
+      \        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n\
+      \        self._samp_rate = float(resolve_ofdm_samp_rate(self._config_file))\n\
+      \        self._dd_vlen = resolve_dd_output_vlen(self._config_file)\n\n\
+      \    # -----------------------------------------------------------------------\n\
       \    # GRC \u53EF\u8C03\u5C5E\u6027\n    # -----------------------------------------------------------------------\n\
       \n    @property\n    def config_file(self):\n        \"\"\"TOML \u914D\
       \u7F6E\u8DEF\u5F84\u3002\"\"\"\n        return self._config_file\n\n \
@@ -481,7 +514,7 @@ blocks:
       \u6E05\u7A7A\u8FD0\u884C\u65F6\u72B6\u6001\uFF08\u9700\u91CD\u5EFA System\uFF09\
       \u3002\"\"\"\n        self._device = str(value)\n        self._invalidate()\n\
       \n    @property\n    def seed(self):\n        \"\"\"\u968F\u673A\u79CD\
-      \u5B50\uFF08create_system registry \u952E\u7684\u4E00\u90E8\u5206\uFF09\
+      \u5B50\uFF08\u6784\u5EFA System \u524D\u4F20\u7ED9 set_random_seed\uFF09\
       \u3002\"\"\"\n        return self._seed\n\n    @seed.setter\n    def seed(self,\
       \ value):\n        \"\"\"\u66F4\u65B0\u79CD\u5B50\u5E76\u6E05\u7A7A\u8FD0\
       \u884C\u65F6\u72B6\u6001\u3002\"\"\"\n        self._seed = int(value)\n\
@@ -491,64 +524,86 @@ blocks:
       \  def idle_ms(self, value):\n        \"\"\"\u4EC5\u66F4\u65B0\u6291\u5236\
       \u65F6\u957F\uFF1B\u4E0D\u5F71\u54CD\u5DF2\u8C03\u5EA6\u7684 _suppress_until\u3002\
       \"\"\"\n        self._idle_ms = float(value)\n\n    @property\n    def\
-      \ debug(self):\n        \"\"\"\u662F\u5426\u8F93\u51FA\u8C03\u8BD5\u65E5\
-      \u5FD7\u3002\"\"\"\n        return self._debug\n\n    @debug.setter\n\
-      \    def debug(self, value):\n        self._debug = _as_bool(value)\n\n\
-      \    # -----------------------------------------------------------------------\n\
-      \    # \u5207\u5305\u4E0E\u611F\u77E5\n    # -----------------------------------------------------------------------\n\
+      \ rx_delay_s(self):\n        \"\"\"\u671F\u671B\u56DE\u6CE2\u76F8\u5BF9\
+      \ tx_time \u7684\u65F6\u5EF6\uFF08\u79D2\uFF09\u3002\"\"\"\n        return\
+      \ self._rx_delay_s\n\n    @rx_delay_s.setter\n    def rx_delay_s(self,\
+      \ value):\n        \"\"\"\u4EC5\u66F4\u65B0\u65F6\u5EF6\u53C2\u6570\u3002\
+      \"\"\"\n        self._rx_delay_s = float(value)\n\n    # -----------------------------------------------------------------------\n\
+      \    # \u65F6\u95F4\u8F74\u4E0E\u5207\u5305\n    # -----------------------------------------------------------------------\n\
       \n    def forecast(self, noutput_items, ninputs):\n        \"\"\"\u5411\
       \u8C03\u5EA6\u5668\u58F0\u660E\u5E0C\u671B\u7684\u8F93\u5165\u91CF\uFF08\
       \u4E0D\u8D85\u8FC7 _FORECAST_MAX\uFF09\u3002\"\"\"\n        del noutput_items\n\
       \        need = min(self.burst_len, _FORECAST_MAX)\n        need = max(need,\
-      \ 4096)\n        return [need] * ninputs\n\n    def _queue_dd_frame(self,\
-      \ h_dd: torch.Tensor) -> tuple[int, float, float]:\n        \"\"\"\u5C06\
-      \ h_dd \u8F6C\u4E3A log \u5E45\u5EA6\u884C\u5E76\u5165\u961F\uFF1B\u8FD4\
-      \u56DE (n_rows, finite_min, finite_max)\u3002\"\"\"\n        arr = h_dd.detach().cpu().numpy()\n\
-      \        while arr.ndim > 2:\n            arr = arr[0]\n        log_mag\
-      \ = _dd_log_magnitude(arr)\n        n_rows, n_cols = int(log_mag.shape[0]),\
-      \ int(log_mag.shape[1])\n        vlen = self._dd_vlen\n        for i in\
-      \ range(n_rows):\n            row = np.full(vlen, np.nan, dtype=np.float32)\n\
-      \            n = min(n_cols, vlen)\n            row[:n] = log_mag[i, :n]\n\
-      \            self._pending_rows.append((row, i == 0, n_rows))\n\n    \
-      \    finite = log_mag[np.isfinite(log_mag)]\n        if finite.size:\n\
-      \            return n_rows, float(finite.min()), float(finite.max())\n\
-      \        return n_rows, float(\"nan\"), float(\"nan\")\n\n    def _process_burst(self,\
-      \ y_np: np.ndarray) -> None:\n        \"\"\"\u5BF9\u4E00\u6BB5 y_time\
-      \ \u505A\u89E3\u8C03 \u2192 LS \u2192 DD\uFF0C\u5E76\u5C06\u8C31\u884C\
-      \u5165\u961F\u3002\"\"\"\n        if y_np.size < self.burst_len:\n   \
-      \         self._log(f\"burst too short: size={y_np.size} need={self.burst_len}\"\
-      )\n            return\n        y_np = y_np[: self.burst_len]\n\n     \
-      \   system = self._ensure_system()\n        if not self._ensure_waveform():\n\
-      \            self._log(\"skip sensing: transmit x_rg.npy not loaded\"\
-      )\n            return\n        x_rg = self._x_rg\n\n        comps = system.components\n\
-      \        if comps.demodulator is None:\n            self._log(\"skip sensing:\
-      \ demodulator is None\")\n            return\n\n        y_time = torch.from_numpy(np.ascontiguousarray(y_np)).to(\n\
+      \ 4096)\n        return [need] * ninputs\n\n    def _ingest_rx_time_tags(self,\
+      \ n_in: int) -> None:\n        \"\"\"\u626B\u63CF\u672C\u6279\u8F93\u5165\
+      \u4E0A\u7684 rx_time\uFF0C\u66F4\u65B0\u65F6\u95F4\u951A\u70B9\u3002\"\
+      \"\"\n        if n_in <= 0:\n            return\n        base = self.nitems_read(0)\n\
+      \        for tag in self.get_tags_in_range(0, base, base + n_in):\n  \
+      \          if tag.key != TAG_RX_TIME:\n                continue\n    \
+      \        try:\n                epoch = parse_uhd_time_pmt(tag.value)\n\
+      \            except Exception:\n                continue\n           \
+      \ self._time_anchor_abs = int(tag.offset)\n            self._time_anchor_epoch\
+      \ = float(epoch)\n\n    def _epoch_to_abs_sample(self, epoch_s: float)\
+      \ -> int | None:\n        \"\"\"\u5C06\u7EDD\u5BF9\u65F6\u523B\u6620\u5C04\
+      \u4E3A\u7EDD\u5BF9\u6837\u70B9\u4E0B\u6807\uFF1B\u65E0\u951A\u70B9\u6216\
+      \ samp_rate \u65E0\u6548\u65F6\u8FD4\u56DE None\u3002\"\"\"\n        if\
+      \ self._time_anchor_abs is None or self._time_anchor_epoch is None:\n\
+      \            return None\n        if self._samp_rate <= 0:\n         \
+      \   return None\n        dt = float(epoch_s) - float(self._time_anchor_epoch)\n\
+      \        return int(round(self._time_anchor_abs + dt * self._samp_rate))\n\
+      \n    def _trim_buf(self, keep_from_rel: int = 0) -> None:\n        \"\
+      \"\"\u4E22\u5F03\u7F13\u51B2\u524D\u7F00\uFF0C\u5E76\u540C\u6B65 _buf_abs0\u3002\
+      \"\"\"\n        if keep_from_rel <= 0:\n            return\n        keep_from_rel\
+      \ = min(keep_from_rel, self._buf.size)\n        self._buf = self._buf[keep_from_rel:]\n\
+      \        self._buf_abs0 += keep_from_rel\n\n    def _queue_dd_frame(self,\
+      \ h_dd: torch.Tensor) -> None:\n        \"\"\"\u5C06 h_dd \u8F6C\u4E3A\
+      \ log \u5E45\u5EA6\u884C\u5E76\u5165\u961F\u3002\"\"\"\n        arr =\
+      \ h_dd.detach().cpu().numpy()\n        while arr.ndim > 2:\n         \
+      \   arr = arr[0]\n        log_mag = _dd_log_magnitude(arr)\n        n_rows,\
+      \ n_cols = int(log_mag.shape[0]), int(log_mag.shape[1])\n        vlen\
+      \ = self._dd_vlen\n        for i in range(n_rows):\n            row =\
+      \ np.full(vlen, np.nan, dtype=np.float32)\n            n = min(n_cols,\
+      \ vlen)\n            row[:n] = log_mag[i, :n]\n            self._pending_rows.append((row,\
+      \ i == 0, n_rows))\n\n    def _process_burst(self, y_np: np.ndarray) ->\
+      \ None:\n        \"\"\"\u5BF9\u4E00\u6BB5 y_time \u505A\u89E3\u8C03 \u2192\
+      \ LS \u2192 DD\uFF0C\u5E76\u5C06\u8C31\u884C\u5165\u961F\u3002\"\"\"\n\
+      \        if y_np.size < self.burst_len:\n            return\n        y_np\
+      \ = y_np[: self.burst_len]\n\n        system = self._ensure_system()\n\
+      \        if not self._ensure_waveform():\n            return\n       \
+      \ x_rg = self._x_rg\n\n        comps = system.components\n        if comps.demodulator\
+      \ is None:\n            return\n\n        y_time = torch.from_numpy(np.ascontiguousarray(y_np)).to(\n\
       \            device=system.device,\n            dtype=torch.complex64,\n\
       \        )\n        while y_time.dim() < 3:\n            y_time = y_time.unsqueeze(0)\n\
       \n        with torch.inference_mode():\n            y_rg = comps.demodulator(y_time)\n\
       \            h_freq = comps.ls_channel_estimator(x_rg, y_rg)\n       \
       \     h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=\"monostatic\"\
-      )\n            n_rows, lo, hi = self._queue_dd_frame(h_dd)\n\n       \
-      \ self._processed_bursts += 1\n        self._log(\n            f\"sensing\
-      \ ok #{self._processed_bursts} h_dd={tuple(h_dd.shape)} \"\n         \
-      \   f\"rows={n_rows} log10_min={lo:.3f} log10_max={hi:.3f} \"\n      \
-      \      f\"pending={len(self._pending_rows)}\"\n        )\n\n    def _try_slice_and_process(self)\
-      \ -> None:\n        \"\"\"\u6512\u6EE1 burst_len \u540E\u5207\u5305\u89E3\
-      \u8C03\uFF1Bidle \u6291\u5236\u671F\u5185\u53EA\u88C1\u526A\u7F13\u51B2\
-      \u3002\"\"\"\n        burst_len = self.burst_len\n        suppress = time.monotonic()\
-      \ < self._suppress_until\n\n        # \u9650\u5236\u7F13\u51B2\u4E0A\u9650\
-      \uFF0C\u907F\u514D\u957F\u65F6\u95F4\u672A\u5207\u5305\u65F6\u5185\u5B58\
-      \u81A8\u80C0\n        max_buf = burst_len * 2\n        if self._buf.size\
-      \ > max_buf:\n            self._buf = self._buf[-max_buf:]\n\n       \
-      \ if suppress:\n            return\n\n        if self._buf.size < burst_len:\n\
-      \            return\n\n        # \u5207\u51FA\u4E00\u5E27\uFF0C\u8FDB\u5165\
-      \u6291\u5236\u671F\uFF0C\u518D\u8DD1\u611F\u77E5\n        y_burst = self._buf[:burst_len].copy()\n\
-      \        self._buf = self._buf[burst_len:]\n        self._suppress_until\
-      \ = time.monotonic() + max(0.0, self._idle_ms / 1000.0)\n\n        self._log(f\"\
-      slice packet burst_len={burst_len} remain_buf={self._buf.size}\")\n  \
-      \      try:\n            self._process_burst(y_burst)\n        except\
-      \ Exception:\n            self._log(\"sensing failed:\")\n           \
-      \ traceback.print_exc(file=sys.stderr)\n\n    # -----------------------------------------------------------------------\n\
+      )\n            self._queue_dd_frame(h_dd)\n\n    def _try_slice_and_process(self)\
+      \ -> None:\n        \"\"\"\u6309\u961F\u5934 tx_schedule + rx_time \u5207\
+      \u5305\uFF1B\u6291\u5236\u671F\u5185\u53EA\u88C1\u526A\u7F13\u51B2\u3002\
+      \"\"\"\n        burst_len = self.burst_len\n        # \u9650\u5236\u7F13\
+      \u51B2\u4E0A\u9650\uFF0C\u907F\u514D\u957F\u65F6\u95F4\u672A\u5207\u5305\
+      \u65F6\u5185\u5B58\u81A8\u80C0\n        max_buf = burst_len * 4\n    \
+      \    if self._buf.size > max_buf:\n            self._trim_buf(self._buf.size\
+      \ - max_buf)\n\n        if time.monotonic() < self._suppress_until:\n\
+      \            return\n\n        if not self._tx_schedule:\n           \
+      \ return\n\n        tx_epoch = self._tx_schedule[0]\n        t_target\
+      \ = tx_epoch + self._rx_delay_s\n        start_abs = self._epoch_to_abs_sample(t_target)\n\
+      \        if start_abs is None:\n            # \u5C1A\u65E0 rx_time \u951A\
+      \u70B9\uFF1A\u7B49\u5F85\uFF0C\u4E0D\u4E22 schedule\n            return\n\
+      \n        buf_end_abs = self._buf_abs0 + self._buf.size\n        # \u76EE\
+      \u6807\u8D77\u70B9\u5DF2\u843D\u5728\u7F13\u51B2\u4E4B\u524D\uFF1A\u8FC7\
+      \u671F\uFF0C\u4E22\u5F03\u8BE5 schedule\n        if start_abs < self._buf_abs0:\n\
+      \            self._tx_schedule.popleft()\n            return\n\n     \
+      \   # \u76EE\u6807\u5C1A\u672A\u5B8C\u5168\u8FDB\u5165\u7F13\u51B2\uFF1A\
+      \u7B49\u5F85\u66F4\u591A IQ\n        if start_abs + burst_len > buf_end_abs:\n\
+      \            return\n\n        rel = start_abs - self._buf_abs0\n    \
+      \    y_burst = self._buf[rel : rel + burst_len].copy()\n        # \u4E22\
+      \u5F03\u5DF2\u7528\u524D\u7F00\uFF0C\u4FDD\u7559\u7A81\u53D1\u4E4B\u540E\
+      \u7684\u6837\u70B9\n        self._trim_buf(rel + burst_len)\n        self._tx_schedule.popleft()\n\
+      \        self._suppress_until = time.monotonic() + max(0.0, self._idle_ms\
+      \ / 1000.0)\n\n        try:\n            self._process_burst(y_burst)\n\
+      \        except Exception:\n            traceback.print_exc(file=sys.stderr)\n\
+      \n    # -----------------------------------------------------------------------\n\
       \    # \u8F93\u51FA\u4E0E general_work\n    # -----------------------------------------------------------------------\n\
       \n    def _produce_pending(self, out: np.ndarray) -> int:\n        \"\"\
       \"\u5199\u51FA\u5F85\u53D1\u9001 DD \u884C\uFF0C\u8FD4\u56DE\u5199\u51FA\
@@ -559,49 +614,47 @@ blocks:
       \u56FE\u5757\u754C\u5B9A\u4E00\u5E27\n            if is_first:\n     \
       \           abs_out = self.nitems_written(0) + produced\n            \
       \    self.add_item_tag(\n                    0, abs_out, _TAG_PACKET_LEN,\
-      \ pmt.from_long(int(n_rows))\n                )\n                if not\
-      \ self._logged_first_produce:\n                    self._logged_first_produce\
-      \ = True\n                    self._log(\n                        f\"\
-      produce first frame packet_len={n_rows} vlen={self._dd_vlen}\"\n     \
-      \               )\n            out[produced][:] = row\n            produced\
-      \ += 1\n        return produced\n\n    def general_work(self, input_items,\
-      \ output_items):\n        \"\"\"\n        \u4E3B\u5DE5\u4F5C\u51FD\u6570\
-      \uFF1A\u6D88\u8D39 IQ \u2192 \u6512\u5305\u5207\u5305\u611F\u77E5 \u2192\
-      \ \u5199\u51FA\u5F85\u53D1\u9001 DD \u884C\u3002\n\n        \u65E0 x_rg\
-      \ \u7F13\u5B58\u65F6\u4ECD consume \u8F93\u5165\u4EE5\u514D\u5835\u6B7B\
-      \u4E0A\u6E38\uFF1B\u8FD4\u56DE\u503C\u4E3A\u672C\u6B21\u5199\u51FA\u7684\
-      \u884C\u6570\u3002\n        \"\"\"\n        inp = input_items[0]\n   \
-      \     out = output_items[0]\n        n_in = len(inp)\n\n        if n_in\
-      \ > 0:\n            # \u5C1A\u65E0\u53C2\u8003\u7F51\u683C\uFF1A\u4E22\
-      \u5F03\u672C\u6279\u8F93\u5165\u4F46\u4ECD consume\uFF0C\u907F\u514D USRP\
-      \ Source \u5835\u6B7B\n            if not self._ensure_waveform():\n \
-      \               self.consume(0, n_in)\n            else:\n           \
-      \     self._buf = np.concatenate(\n                    (self._buf, np.asarray(inp,\
-      \ dtype=np.complex64))\n                )\n                self.consume(0,\
-      \ n_in)\n                self._try_slice_and_process()\n\n        return\
-      \ self._produce_pending(out)\n"
+      \ pmt.from_long(int(n_rows))\n                )\n            out[produced][:]\
+      \ = row\n            produced += 1\n        return produced\n\n    def\
+      \ general_work(self, input_items, output_items):\n        \"\"\"\n   \
+      \     \u4E3B\u5DE5\u4F5C\u51FD\u6570\uFF1A\u6D88\u8D39 IQ / rx_time \u2192\
+      \ \u6309 schedule \u5207\u5305\u611F\u77E5 \u2192 \u5199\u51FA DD \u884C\
+      \u3002\n\n        \u65E0 x_rg \u7F13\u5B58\u65F6\u4ECD consume \u8F93\u5165\
+      \u4EE5\u514D\u5835\u6B7B\u4E0A\u6E38\uFF1B\u8FD4\u56DE\u503C\u4E3A\u672C\
+      \u6B21\u5199\u51FA\u7684\u884C\u6570\u3002\n        \"\"\"\n        inp\
+      \ = input_items[0]\n        out = output_items[0]\n        n_in = len(inp)\n\
+      \n        if n_in > 0:\n            self._ingest_rx_time_tags(n_in)\n\
+      \            # \u5C1A\u65E0\u53C2\u8003\u7F51\u683C\uFF1A\u4E22\u5F03\u672C\
+      \u6279\u8F93\u5165\u4F46\u4ECD consume\uFF0C\u907F\u514D USRP Source \u5835\
+      \u6B7B\n            if not self._ensure_waveform():\n                #\
+      \ \u4ECD\u63A8\u8FDB\u7EDD\u5BF9\u4E0B\u6807\uFF0C\u4F7F\u540E\u7EED rx_time\
+      \ \u951A\u70B9\u4E0E\u7F13\u51B2\u4E00\u81F4\n                if self._buf.size\
+      \ == 0:\n                    self._buf_abs0 = self.nitems_read(0) + n_in\n\
+      \                self.consume(0, n_in)\n            else:\n          \
+      \      if self._buf.size == 0:\n                    self._buf_abs0 = self.nitems_read(0)\n\
+      \                self._buf = np.concatenate(\n                    (self._buf,\
+      \ np.asarray(inp, dtype=np.complex64))\n                )\n          \
+      \      self.consume(0, n_in)\n                self._try_slice_and_process()\n\
+      \n        return self._produce_pending(out)\n"
     affinity: ''
     alias: ''
-    comment: "Config-only RX \u2192 LS/DD \u2192 log|h_dd|^2 rows"
+    comment: "tx_schedule + rx_time slice \u2192 LS/DD \u2192 log|h_dd|^2"
     config_file: config_file
-    dd_vlen: dd_vlen
-    debug: 'False'
     device: device
     idle_ms: idle_ms
     maxoutbuf: '0'
     minoutbuf: '0'
+    rx_delay_s: rx_delay_s
     seed: '42'
   states:
     _io_cache: "('OFDM Burst Sensing RX', 'blk', [('config_file', \"'simulation/sensing/sensing_monostatic.toml'\"\
-      ), ('device', \"'cpu'\"), ('seed', '42'), ('idle_ms', '400.0'), ('dd_vlen',\
-      \ '0'), ('debug', 'False')], [('0', 'complex', 1)], [('0', 'float', 21)],\
-      \ '\\n    \u56FA\u5B9A\u957F\u5EA6\u5207\u5305 OFDM \u611F\u77E5\u63A5\
-      \u6536\uFF1A\u6512\u6EE1 burst_len \u540E\u89E3\u8C03\u3001LS/DD\uFF0C\
-      \u5E76\u8F93\u51FA DD log \u8C31\u884C\u3002\\n\\n    \u5DE5\u4F5C\u6D41\
-      \u7A0B\uFF1AIQ \u5165\u7F13\u51B2 \u2192 \u5207\u5305 \u2192 LS/DD \u2192\
-      \ \u884C\u961F\u5217 \u2192 \u5199\u51FA float32 \u5411\u91CF\uFF08\u9996\
-      \u884C\u6253 packet_len\uFF09\u3002\\n    ', ['config_file', 'debug',\
-      \ 'device', 'idle_ms', 'seed'])"
+      ), ('device', \"'cpu'\"), ('seed', '42'), ('idle_ms', '900.0'), ('rx_delay_s',\
+      \ '0.0')], [('0', 'complex', 1)], [('0', 'float', 21)], '\\n    \u6309\
+      \ tx_schedule + rx_time \u5207\u5305\u7684 OFDM \u611F\u77E5\u63A5\u6536\
+      \u3002\\n\\n    \u5DE5\u4F5C\u6D41\u7A0B\uFF1AIQ/rx_time \u5165\u7F13\u51B2\
+      \ \u2192 \u961F\u5934 schedule \u6620\u5C04\u6837\u70B9 \u2192 LS/DD \u2192\
+      \ \u884C\u961F\u5217\u5199\u51FA\u3002\\n    ', ['config_file', 'device',\
+      \ 'idle_ms', 'rx_delay_s', 'seed'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
@@ -623,17 +676,20 @@ blocks:
       \uFF0C\u7531 tag \u800C\u975E\u5305\u957F tag \u754C\u5B9A\u7A81\u53D1\
       \u8FB9\u754C\u3002\n\n\u53D1\u5C04\u94FE\uFF1A\u7531 config_file \u89E3\
       \u6790 source.cache_file\uFF08\u7F13\u5B58\u76EE\u5F55\uFF09\u4E0E OFDM\
-      \ samp_rate\uFF0C\n\u518D\u4EC5 np.load \u76EE\u5F55\u5185 x_time.npy\
-      \ \u2192 \u4E58 tx_amp \u540E\u5468\u671F\u6027\u91CD\u653E\u3002\n\u4E0D\
+      \ samp_rate\uFF0C\n\u518D\u4EC5 np.load \u76EE\u5F55\u5185 x_time.npy\uFF08\
+      \u672A\u7F29\u653E\u7F13\u5B58\uFF09\u2192 \u5199\u51FA\u65F6\u4E58\u5F53\
+      \u524D tx_amp \u5468\u671F\u6027\u91CD\u653E\u3002\ntx_amp \u53EF\u5B9E\
+      \u65F6\u8C03\u8282\uFF0C\u65E0\u9700\u91CD\u8F7D\u6CE2\u5F62\u3002\n\u4E0D\
       \u6784\u5EFA System \u8C03\u5236\u94FE\uFF0C\u4E0D\u8C03\u7528 create_system\
       \ / transmit()\u3002System \u4EC5\u7531\u63A5\u6536\u7AEF\u6784\u5EFA\u3002\
       \n\n\u6CE8\u610F\uFF1A__init__ \u5F62\u53C2\u9ED8\u8BA4\u503C\u987B\u4E0E\
       \ GRC \u53D8\u91CF\u4FDD\u6301\u540C\u6B65\u3002\n\"\"\"\n\nfrom __future__\
       \ import annotations\n\nimport sys\nimport time\nfrom pathlib import Path\n\
       \nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\nfrom isac\
-      \ import PROJECT_ROOT\nfrom isac_imp.constants import TAG_EOB, TAG_SOB,\
-      \ TAG_TIME, TPP_DONT, make_tx_time_pmt\nfrom isac_imp.gr_setup import\
-      \ resolve_ofdm_samp_rate, resolve_source_cache_file\n\n# ---------------------------------------------------------------------------\n\
+      \ import PROJECT_ROOT\nfrom isac_imp.burst_pack import (\n    PORT_TX_SCHEDULE,\n\
+      \    TPP_DONT,\n    add_style1_eob,\n    add_style1_sob_time,\n    load_burst_buffer,\n\
+      \    make_tx_schedule_msg,\n    schedule_idle_delay_s,\n)\nfrom isac_imp.gr_setup\
+      \ import resolve_ofdm_samp_rate, resolve_source_cache_file\n\n# ---------------------------------------------------------------------------\n\
       # \u6A21\u5757\u5E38\u91CF\n# ---------------------------------------------------------------------------\n\
       \n# \u9ED8\u8BA4 TOML\uFF08\u76F8\u5BF9 PROJECT_ROOT/config\uFF09\uFF1B\
       \u987B\u4E0E GRC \u9ED8\u8BA4\u503C\u4E00\u81F4\n_DEFAULT_CONFIG = \"\
@@ -657,29 +713,34 @@ blocks:
       \            - idle_ms:          \u4E24\u6B21\u7A81\u53D1\u4E4B\u95F4\u7684\
       \u7EAF\u9759\u9ED8\u95F4\u9694 (\u6BEB\u79D2)\uFF0C\u4E0D\u542B\u7A81\u53D1\
       \u672C\u8EAB\u65F6\u957F\n            - tx_amp:           \u8F93\u51FA\
-      \u5E45\u5EA6\u7F29\u653E\uFF0C\u5EFA\u8BAE \u2264 1.0 \u4EE5\u514D USRP\
-      \ \u9971\u548C\n            - time_lead_s:      tx_time \u76F8\u5BF9\u5F53\
-      \u524D wall-clock \u7684\u63D0\u524D\u91CF (\u79D2)\n            - startup_delay_s:\
-      \  \u9996\u7A81\u53D1\u542F\u52A8\u524D\u7684\u521D\u59CB\u7B49\u5F85\
-      \ (\u79D2)\n        \"\"\"\n        gr.basic_block.__init__(\n       \
-      \     self,\n            name=\"OFDM Burst Source\",\n            in_sig=[],\n\
-      \            out_sig=[np.complex64],\n        )\n        self._config_file\
-      \ = str(config_file)\n        self._cache_dir, self._samp_rate = self._resolve_from_config(self._config_file)\n\
-      \        self._idle_ms = float(idle_ms)\n        self._tx_amp = float(tx_amp)\n\
-      \        self._time_lead_s = float(time_lead_s)\n        self._startup_delay_s\
-      \ = float(startup_delay_s)\n\n        # \u7A81\u53D1\u72B6\u6001\u673A\
-      \uFF1A\u662F\u5426\u6B63\u5728\u8F93\u51FA\u7A81\u53D1\u3001\u5F53\u524D\
-      \u5199\u51FA\u4F4D\u7F6E\u3001\u4E0B\u4E00\u7A81\u53D1\u5141\u8BB8\u5F00\
-      \u59CB\u7684 monotonic \u65F6\u523B\n        self._burst_active = False\n\
-      \        self._burst_idx = 0\n        self._next_burst_at = time.monotonic()\
-      \ + self._startup_delay_s\n\n        # \u7F13\u5B58\u6CE2\u5F62\uFF08\u4E58\
-      \ tx_amp \u540E\uFF09\u3001\u6837\u672C\u6570\u3001\u9759\u9ED8\u65F6\u957F\
-      \uFF08\u79D2\uFF09\n        self._burst_buffer: np.ndarray | None = None\n\
-      \        self._burst_len = 0\n        self._idle_s = max(0.0, self._idle_ms\
-      \ / 1000.0)\n\n        # \u6E90\u5757\u65E0\u8F93\u5165 tag\uFF1B\u7F13\
-      \u51B2\u81F3\u5C11\u80FD\u88C5\u4E0B\u4E00\u6BB5\u7A81\u53D1\uFF0C\u907F\
-      \u514D\u8C03\u5EA6\u5668\u5207\u5F97\u8FC7\u788E\n        self.set_tag_propagation_policy(TPP_DONT)\n\
-      \        self.set_min_output_buffer(4096)\n\n    # -----------------------------------------------------------------------\n\
+      \u5E45\u5EA6\u7F29\u653E\uFF08\u5199\u51FA\u65F6\u76F8\u4E58\uFF0C\u53EF\
+      \u5B9E\u65F6\u8C03\u8282\uFF09\n            - time_lead_s:      tx_time\
+      \ \u76F8\u5BF9\u5F53\u524D wall-clock \u7684\u63D0\u524D\u91CF (\u79D2\
+      )\n            - startup_delay_s:  \u9996\u7A81\u53D1\u542F\u52A8\u524D\
+      \u7684\u521D\u59CB\u7B49\u5F85 (\u79D2)\n        \"\"\"\n        gr.basic_block.__init__(\n\
+      \            self,\n            name=\"OFDM Burst Source\",\n        \
+      \    in_sig=[],\n            out_sig=[np.complex64],\n        )\n    \
+      \    self._config_file = str(config_file)\n        self._cache_dir, self._samp_rate\
+      \ = self._resolve_from_config(self._config_file)\n        self._idle_ms\
+      \ = float(idle_ms)\n        self._tx_amp = float(tx_amp)\n        self._time_lead_s\
+      \ = float(time_lead_s)\n        self._startup_delay_s = float(startup_delay_s)\n\
+      \n        # \u7A81\u53D1\u72B6\u6001\u673A\uFF1A\u662F\u5426\u6B63\u5728\
+      \u8F93\u51FA\u7A81\u53D1\u3001\u5F53\u524D\u5199\u51FA\u4F4D\u7F6E\u3001\
+      \u4E0B\u4E00\u7A81\u53D1\u5141\u8BB8\u5F00\u59CB\u7684 monotonic \u65F6\
+      \u523B\n        self._burst_active = False\n        self._burst_idx =\
+      \ 0\n        self._next_burst_at = time.monotonic() + self._startup_delay_s\n\
+      \n        # \u672A\u7F29\u653E\u7F13\u5B58\u6CE2\u5F62\u3001\u6837\u672C\
+      \u6570\u3001\u9759\u9ED8\u65F6\u957F\uFF08\u79D2\uFF09\uFF1B\u5199\u51FA\
+      \u65F6\u518D\u4E58 _tx_amp\n        self._burst_buffer: np.ndarray | None\
+      \ = None\n        self._burst_len = 0\n        self._idle_s = max(0.0,\
+      \ self._idle_ms / 1000.0)\n\n        # \u6E90\u5757\u65E0\u8F93\u5165\
+      \ tag\uFF1B\u7F13\u51B2\u81F3\u5C11\u80FD\u88C5\u4E0B\u4E00\u6BB5\u7A81\
+      \u53D1\uFF0C\u907F\u514D\u8C03\u5EA6\u5668\u5207\u5F97\u8FC7\u788E\n \
+      \       self.set_tag_propagation_policy(TPP_DONT)\n        self.set_min_output_buffer(4096)\n\
+      \        # \u540C\u673A\u611F\u77E5\uFF1A\u628A\u6BCF\u7A81\u53D1 tx_time\
+      \ \u7ECF\u6D88\u606F\u53E3\u53D1\u7ED9 RX\uFF08\u7A7A\u53E3\u4E0D\u4F20\
+      \ stream tag\uFF09\n        self.message_port_register_out(pmt.intern(PORT_TX_SCHEDULE))\n\
+      \n    # -----------------------------------------------------------------------\n\
       \    # \u914D\u7F6E\u89E3\u6790\u4E0E\u7F13\u5B58\u52A0\u8F7D\n    # -----------------------------------------------------------------------\n\
       \n    @staticmethod\n    def _resolve_from_config(config_file: str) ->\
       \ tuple[str, float]:\n        \"\"\"\u4ECE TOML \u89E3\u6790 source.cache_file\uFF08\
@@ -707,25 +768,18 @@ blocks:
       \u8FD4\u56DE\u7A81\u53D1\u7F13\u51B2\u3002\"\"\"\n        if self._burst_buffer\
       \ is None:\n            self._load_burst()\n        assert self._burst_buffer\
       \ is not None\n        return self._burst_buffer\n\n    def _load_burst(self)\
-      \ -> None:\n        \"\"\"\u4EC5\u4ECE\u7F13\u5B58\u76EE\u5F55\u8BFB\u53D6\
-      \ x_time.npy\uFF0C\u4E58 tx_amp \u5EFA\u7A81\u53D1\u7F13\u51B2\u3002\"\
-      \"\"\n        path = self._resolve_cache_dir() / \"x_time.npy\"\n    \
-      \    if not path.is_file():\n            raise FileNotFoundError(\n  \
-      \              f\"\u53D1\u5C04\u65F6\u57DF\u7F13\u5B58\u4E0D\u5B58\u5728\
-      : {path}\uFF1B\u8BF7\u5148\u79BB\u7EBF\u8FD0\u884C transmit() \u751F\u6210\
-      \"\n            )\n        x_time = np.asarray(np.load(path))\n      \
-      \  burst = x_time.squeeze().astype(np.complex64, copy=False)\n       \
-      \ burst_buffer = (burst * self._tx_amp).astype(np.complex64, copy=False)\n\
-      \        self._burst_buffer = burst_buffer\n        self._burst_len =\
-      \ int(burst_buffer.size)\n        self._idle_s = max(0.0, self._idle_ms\
-      \ / 1000.0)\n        self.set_min_output_buffer(max(4096, self._burst_len\
-      \ * 2))\n        self._log(\n            f\"load x_time.npy ok config={self._config_file!r}\
-      \ path={path} \"\n            f\"x_time={tuple(x_time.shape)} burst_len={self._burst_len}\
-      \ \"\n            f\"samp_rate={self._samp_rate}\"\n        )\n\n    def\
-      \ _recompute_idle(self) -> None:\n        \"\"\"\u4EC5 idle_ms \u53D8\u66F4\
-      \u65F6\u91CD\u7B97\u9759\u9ED8\u671F\uFF0C\u65E0\u9700\u91CD\u5EFA\u6CE2\
-      \u5F62\u3002\"\"\"\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n\
-      \n    # -----------------------------------------------------------------------\n\
+      \ -> None:\n        \"\"\"\u4ECE\u7F13\u5B58\u76EE\u5F55\u8BFB\u53D6 x_time.npy\uFF08\
+      \u672A\u7F29\u653E\uFF09\uFF0C\u4F9B\u5199\u51FA\u65F6\u4E58\u5F53\u524D\
+      \ tx_amp\u3002\"\"\"\n        path = self._resolve_cache_dir() / \"x_time.npy\"\
+      \n        burst_buffer = load_burst_buffer(path, tx_amp=1.0)\n       \
+      \ self._burst_buffer = burst_buffer\n        self._burst_len = int(burst_buffer.size)\n\
+      \        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n        self.set_min_output_buffer(max(4096,\
+      \ self._burst_len * 2))\n        self._log(\n            f\"load x_time.npy\
+      \ ok config={self._config_file!r} path={path} \"\n            f\"burst_len={self._burst_len}\
+      \ samp_rate={self._samp_rate}\"\n        )\n\n    def _recompute_idle(self)\
+      \ -> None:\n        \"\"\"\u4EC5 idle_ms \u53D8\u66F4\u65F6\u91CD\u7B97\
+      \u9759\u9ED8\u671F\uFF0C\u65E0\u9700\u91CD\u5EFA\u6CE2\u5F62\u3002\"\"\
+      \"\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n\n    # -----------------------------------------------------------------------\n\
       \    # GRC \u53EF\u8C03\u5C5E\u6027\n    # -----------------------------------------------------------------------\n\
       \n    @property\n    def config_file(self):\n        \"\"\"TOML \u914D\
       \u7F6E\u8DEF\u5F84\uFF08\u76F8\u5BF9 config/ \u6216\u7EDD\u5BF9\u8DEF\u5F84\
@@ -751,72 +805,65 @@ blocks:
       \u7B97 _idle_s\uFF0C\u65E0\u9700\u91CD\u5EFA\u6CE2\u5F62\u3002\"\"\"\n\
       \        self._idle_ms = float(value)\n        self._recompute_idle()\n\
       \n    @property\n    def tx_amp(self):\n        \"\"\"\u8F93\u51FA\u5E45\
-      \u5EA6\u7F29\u653E\u7CFB\u6570\u3002\"\"\"\n        return self._tx_amp\n\
-      \n    @tx_amp.setter\n    def tx_amp(self, value):\n        \"\"\"\u66F4\
-      \u65B0\u5E45\u5EA6\u5E76\u6E05\u7A7A\u7A81\u53D1\u7F13\u5B58\uFF08\u4E0B\
-      \u6B21\u52A0\u8F7D\u65F6\u91CD\u65B0\u4E58 amp\uFF09\u3002\"\"\"\n   \
-      \     self._tx_amp = float(value)\n        self._invalidate_burst()\n\n\
-      \    @property\n    def time_lead_s(self):\n        \"\"\"tx_time \u76F8\
-      \u5BF9 wall-clock \u7684\u63D0\u524D\u91CF\uFF08\u79D2\uFF09\u3002\"\"\
-      \"\n        return self._time_lead_s\n\n    @time_lead_s.setter\n    def\
-      \ time_lead_s(self, value):\n        \"\"\"\u4EC5\u66F4\u65B0\u63D0\u524D\
-      \u91CF\uFF1B\u5DF2\u53D1\u51FA\u7684 tag \u4E0D\u53D7\u5F71\u54CD\u3002\
-      \"\"\"\n        self._time_lead_s = float(value)\n\n    @property\n  \
-      \  def startup_delay_s(self):\n        \"\"\"\u9996\u7A81\u53D1\u542F\u52A8\
-      \u524D\u7684\u521D\u59CB\u7B49\u5F85\uFF08\u79D2\uFF09\u3002\"\"\"\n \
-      \       return self._startup_delay_s\n\n    @startup_delay_s.setter\n\
-      \    def startup_delay_s(self, value):\n        \"\"\"\u4EC5\u66F4\u65B0\
-      \u53C2\u6570\uFF1B\u5DF2\u8C03\u5EA6\u7684 _next_burst_at \u9700\u5728\
-      \ start() \u4E2D\u91CD\u8BBE\u3002\"\"\"\n        self._startup_delay_s\
-      \ = float(value)\n\n    # -----------------------------------------------------------------------\n\
+      \u5EA6\u7F29\u653E\u7CFB\u6570\uFF08\u5199\u51FA\u65F6\u76F8\u4E58\uFF0C\
+      \u53EF\u5B9E\u65F6\u8C03\u8282\uFF09\u3002\"\"\"\n        return self._tx_amp\n\
+      \n    @tx_amp.setter\n    def tx_amp(self, value):\n        \"\"\"\u4EC5\
+      \u66F4\u65B0\u5E45\u5EA6\u7CFB\u6570\uFF1B\u4E0D\u91CD\u8F7D\u6CE2\u5F62\
+      \uFF0C\u4E0B\u4E00\u5199\u51FA\u5757\u7ACB\u5373\u751F\u6548\u3002\"\"\
+      \"\n        self._tx_amp = float(value)\n\n    @property\n    def time_lead_s(self):\n\
+      \        \"\"\"tx_time \u76F8\u5BF9 wall-clock \u7684\u63D0\u524D\u91CF\
+      \uFF08\u79D2\uFF09\u3002\"\"\"\n        return self._time_lead_s\n\n \
+      \   @time_lead_s.setter\n    def time_lead_s(self, value):\n        \"\
+      \"\"\u4EC5\u66F4\u65B0\u63D0\u524D\u91CF\uFF1B\u5DF2\u53D1\u51FA\u7684\
+      \ tag \u4E0D\u53D7\u5F71\u54CD\u3002\"\"\"\n        self._time_lead_s\
+      \ = float(value)\n\n    @property\n    def startup_delay_s(self):\n  \
+      \      \"\"\"\u9996\u7A81\u53D1\u542F\u52A8\u524D\u7684\u521D\u59CB\u7B49\
+      \u5F85\uFF08\u79D2\uFF09\u3002\"\"\"\n        return self._startup_delay_s\n\
+      \n    @startup_delay_s.setter\n    def startup_delay_s(self, value):\n\
+      \        \"\"\"\u4EC5\u66F4\u65B0\u53C2\u6570\uFF1B\u5DF2\u8C03\u5EA6\u7684\
+      \ _next_burst_at \u9700\u5728 start() \u4E2D\u91CD\u8BBE\u3002\"\"\"\n\
+      \        self._startup_delay_s = float(value)\n\n    # -----------------------------------------------------------------------\n\
       \    # \u8C03\u5EA6\u4E0E general_work\n    # -----------------------------------------------------------------------\n\
       \n    def forecast(self, noutput_items, ninputs):\n        \"\"\"\u65E0\
       \u8F93\u5165\u7AEF\u53E3\uFF0C\u4E0D\u5411\u8C03\u5EA6\u5668\u58F0\u660E\
       \u8F93\u5165\u9700\u6C42\u3002\"\"\"\n        del noutput_items, ninputs\n\
       \        return []\n\n    def _schedule_delay_s(self) -> float:\n    \
-      \    \"\"\"\n        \u8BA1\u7B97\u5F53\u524D\u7A81\u53D1\u7ED3\u675F\u540E\
-      \uFF0C\u5230\u4E0B\u4E00\u7A81\u53D1\u5F00\u59CB\u524D\u7684\u7B49\u5F85\
-      \u65F6\u95F4\uFF08\u79D2\uFF09\u3002\n\n        \u5468\u671F = max(idle\
-      \ + burst, burst)\uFF1B\u8FD4\u56DE\u503C = \u5468\u671F - burst\uFF0C\
-      \u5373\u7EAF idle \u65F6\u957F\u3002\n        \"\"\"\n        if self._samp_rate\
-      \ <= 0:\n            return max(0.0, self._idle_s)\n        burst_s =\
-      \ self._burst_len / self._samp_rate\n        period_s = max(self._idle_s\
-      \ + burst_s, burst_s)\n        return max(0.0, period_s - burst_s)\n\n\
-      \    def _tx_time_pmt(self):\n        \"\"\"\n        \u6784\u9020 tx_time\
-      \ tag \u7684 PMT \u503C\uFF1A(\u6574\u6570\u79D2, \u5C0F\u6570\u79D2)\u3002\
-      \n\n        \u4F7F\u7528 time.time() + time_lead_s\uFF0C\u4E0E UHD timed\
-      \ TX \u7684\u7EDD\u5BF9\u65F6\u523B\u683C\u5F0F\u4E00\u81F4\u3002\n  \
-      \      \"\"\"\n        return make_tx_time_pmt(time.time() + self._time_lead_s)\n\
-      \n    def general_work(self, input_items, output_items):\n        \"\"\
-      \"\n        \u4E3B\u5DE5\u4F5C\u51FD\u6570\uFF1A\u6309\u5757\u4ECE\u7F13\
-      \u5B58\u91CD\u653E OFDM \u7A81\u53D1\uFF0C\u5728\u7A81\u53D1\u9996\u5C3E\
-      \u9644\u52A0 UHD tag\u3002\n\n        \u9759\u9ED8\u671F\u5185\u8FD4\u56DE\
-      \ 0\uFF08\u4E0D\u6D88\u8017\u8F93\u51FA\u7F13\u51B2\uFF09\uFF1B\u7A81\u53D1\
-      \u53EF\u5206\u591A\u6B21 general_work \u5B8C\u6210\u3002\n        \u8FD4\
-      \u56DE\u503C n \u8868\u793A\u672C\u6B21\u5199\u5165\u8F93\u51FA\u7AEF\u53E3\
-      \u7684\u6709\u6548\u6837\u672C\u6570\u3002\n        \"\"\"\n        del\
-      \ input_items\n        burst_buffer = self._ensure_burst()\n        out\
-      \ = output_items[0]\n\n        # idle\uFF1A\u672A\u5230\u4E0B\u4E00\u7A81\
-      \u53D1\u65F6\u523B\u5219\u4E0D\u4EA7\u51FA\u6837\u672C\n        if not\
-      \ self._burst_active:\n            if time.monotonic() < self._next_burst_at:\n\
-      \                return 0\n            # \u542F\u52A8\u65B0\u7A81\u53D1\
-      \n            self._burst_active = True\n            self._burst_idx =\
-      \ 0\n\n        # \u672C\u8F6E\u53EF\u5199\u6837\u672C\u6570\uFF1A\u53D7\
-      \u8F93\u51FA\u7F13\u51B2\u4E0E\u7A81\u53D1\u5269\u4F59\u957F\u5EA6\u9650\
-      \u5236\n        n_remain = self._burst_len - self._burst_idx\n       \
-      \ n = min(len(out), n_remain)\n        if n <= 0:\n            return\
-      \ 0\n\n        # \u4ECE\u7F13\u5B58\u62F7\u8D1D\u4E00\u6BB5\u5230\u8F93\
-      \u51FA\n        out[:n] = burst_buffer[self._burst_idx : self._burst_idx\
-      \ + n]\n\n        abs_out = self.nitems_written(0)\n        # \u7A81\u53D1\
-      \u9996\u6837\u672C\uFF1A\u6253 SOB + tx_time\n        if self._burst_idx\
-      \ == 0:\n            self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)\n\
-      \            self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())\n\
-      \n        self._burst_idx += n\n        # \u7A81\u53D1\u672B\u6837\u672C\
-      \uFF1A\u6253 EOB\uFF0C\u8FDB\u5165 idle\uFF0C\u8C03\u5EA6\u4E0B\u4E00\u7A81\
-      \u53D1\u65F6\u523B\n        if self._burst_idx >= self._burst_len:\n \
-      \           self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)\n\
-      \            self._burst_active = False\n            self._next_burst_at\
-      \ = time.monotonic() + self._schedule_delay_s()\n\n        return n\n"
+      \    \"\"\"\u5F53\u524D\u7A81\u53D1\u7ED3\u675F\u540E\u5230\u4E0B\u4E00\
+      \u7A81\u53D1\u5F00\u59CB\u524D\u7684\u7EAF idle \u65F6\u957F\uFF08\u79D2\
+      \uFF09\u3002\"\"\"\n        return schedule_idle_delay_s(self._burst_len,\
+      \ self._samp_rate, self._idle_s)\n\n    def general_work(self, input_items,\
+      \ output_items):\n        \"\"\"\n        \u4E3B\u5DE5\u4F5C\u51FD\u6570\
+      \uFF1A\u6309\u5757\u4ECE\u7F13\u5B58\u91CD\u653E OFDM \u7A81\u53D1\uFF0C\
+      \u5728\u7A81\u53D1\u9996\u5C3E\u9644\u52A0 UHD tag\u3002\n\n        \u9759\
+      \u9ED8\u671F\u5185\u8FD4\u56DE 0\uFF08\u4E0D\u6D88\u8017\u8F93\u51FA\u7F13\
+      \u51B2\uFF09\uFF1B\u7A81\u53D1\u53EF\u5206\u591A\u6B21 general_work \u5B8C\
+      \u6210\u3002\n        \u8FD4\u56DE\u503C n \u8868\u793A\u672C\u6B21\u5199\
+      \u5165\u8F93\u51FA\u7AEF\u53E3\u7684\u6709\u6548\u6837\u672C\u6570\u3002\
+      \n        \"\"\"\n        del input_items\n        burst_buffer = self._ensure_burst()\n\
+      \        out = output_items[0]\n\n        # idle\uFF1A\u672A\u5230\u4E0B\
+      \u4E00\u7A81\u53D1\u65F6\u523B\u5219\u4E0D\u4EA7\u51FA\u6837\u672C\n \
+      \       if not self._burst_active:\n            if time.monotonic() <\
+      \ self._next_burst_at:\n                return 0\n            # \u542F\
+      \u52A8\u65B0\u7A81\u53D1\n            self._burst_active = True\n    \
+      \        self._burst_idx = 0\n\n        # \u672C\u8F6E\u53EF\u5199\u6837\
+      \u672C\u6570\uFF1A\u53D7\u8F93\u51FA\u7F13\u51B2\u4E0E\u7A81\u53D1\u5269\
+      \u4F59\u957F\u5EA6\u9650\u5236\n        n_remain = self._burst_len - self._burst_idx\n\
+      \        n = min(len(out), n_remain)\n        if n <= 0:\n           \
+      \ return 0\n\n        # \u4ECE\u7F13\u5B58\u62F7\u8D1D\u4E00\u6BB5\u5E76\
+      \u4E58\u5F53\u524D tx_amp\uFF08\u5B9E\u65F6\u53EF\u8C03\uFF09\n      \
+      \  out[:n] = burst_buffer[self._burst_idx : self._burst_idx + n] * np.float32(\n\
+      \            self._tx_amp\n        )\n\n        abs_out = self.nitems_written(0)\n\
+      \        # \u7A81\u53D1\u9996\u6837\u672C\uFF1A\u6253 SOB + tx_time\uFF0C\
+      \u5E76\u6D88\u606F\u901A\u77E5 RX \u540C\u4E00 epoch\n        if self._burst_idx\
+      \ == 0:\n            epoch = time.time() + self._time_lead_s\n       \
+      \     add_style1_sob_time(self, 0, abs_out, epoch)\n            self.message_port_pub(\n\
+      \                pmt.intern(PORT_TX_SCHEDULE), make_tx_schedule_msg(epoch)\n\
+      \            )\n\n        self._burst_idx += n\n        # \u7A81\u53D1\
+      \u672B\u6837\u672C\uFF1A\u6253 EOB\uFF0C\u8FDB\u5165 idle\uFF0C\u8C03\u5EA6\
+      \u4E0B\u4E00\u7A81\u53D1\u65F6\u523B\n        if self._burst_idx >= self._burst_len:\n\
+      \            add_style1_eob(self, 0, abs_out + n - 1)\n            self._burst_active\
+      \ = False\n            self._next_burst_at = time.monotonic() + self._schedule_delay_s()\n\
+      \n        return n\n"
     affinity: ''
     alias: ''
     comment: "config_file \u2192 x_time.npy replay + UHD SOB/TIME/EOB"
@@ -830,16 +877,15 @@ blocks:
   states:
     _io_cache: "('OFDM Burst Source', 'blk', [('config_file', \"'simulation/sensing/sensing_monostatic.toml'\"\
       ), ('idle_ms', '900.0'), ('tx_amp', '0.3'), ('time_lead_s', '0.3'), ('startup_delay_s',\
-      \ '0.2')], [], [('0', 'complex', 1)], '\\n    Style 1 OFDM \u7A81\u53D1\
-      \u6E90\uFF1A\u542F\u52A8\u65F6\u6309 TOML \u52A0\u8F7D x_time.npy\uFF0C\
-      \u4E4B\u540E\u5468\u671F\u6027\u91CD\u653E\u5E76\u6253 UHD \u5B9A\u65F6\
-      \ tag\u3002\\n\\n    \u5DE5\u4F5C\u6D41\u7A0B\uFF1A\u7A81\u53D1\u671F\u5185\
-      \u4ECE\u7F13\u5B58\u8F93\u51FA\u6837\u672C\u5E76\u6253 tag\uFF1B\u7A81\
-      \u53D1\u7ED3\u675F\u540E\u8FDB\u5165 idle \u9759\u9ED8\u671F\uFF0C\\n\
-      \    \u9759\u9ED8\u671F\u4E0D\u4EA7\u51FA\u6837\u672C\uFF08general_work\
-      \ \u8FD4\u56DE 0\uFF09\uFF0C\u5230\u671F\u518D\u542F\u52A8\u4E0B\u4E00\
-      \u7A81\u53D1\u3002\\n    ', ['config_file', 'idle_ms', 'startup_delay_s',\
-      \ 'time_lead_s', 'tx_amp'])"
+      \ '0.2')], [], [('0', 'complex', 1)], '\\n    Style 1 OFDM \u7A81\u53D1\u6E90\
+      \uFF1A\u542F\u52A8\u65F6\u6309 TOML \u52A0\u8F7D x_time.npy\uFF0C\u4E4B\u540E\
+      \u5468\u671F\u6027\u91CD\u653E\u5E76\u6253 UHD \u5B9A\u65F6 tag\u3002\\n\\n\
+      \    \u5DE5\u4F5C\u6D41\u7A0B\uFF1A\u7A81\u53D1\u671F\u5185\u4ECE\u7F13\u5B58\
+      \u8F93\u51FA\u6837\u672C\u5E76\u6253 tag\uFF1B\u7A81\u53D1\u7ED3\u675F\u540E\
+      \u8FDB\u5165 idle \u9759\u9ED8\u671F\uFF0C\\n    \u9759\u9ED8\u671F\u4E0D\u4EA7\
+      \u51FA\u6837\u672C\uFF08general_work \u8FD4\u56DE 0\uFF09\uFF0C\u5230\u671F\u518D\
+      \u542F\u52A8\u4E0B\u4E00\u7A81\u53D1\u3002\\n    ', ['config_file', 'idle_ms',\
+      \ 'startup_delay_s', 'time_lead_s', 'tx_amp'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
@@ -1121,28 +1167,6 @@ blocks:
     coordinate: [1680, 604.0]
     rotation: 0
     state: disabled
-- name: sionna_dd_spectrogram_0
-  id: sionna_dd_spectrogram
-  parameters:
-    affinity: ''
-    alias: ''
-    autoscale_z: 'True'
-    axis_x: '[0, 50]'
-    axis_y: '[-10, 10]'
-    axis_z: '[-15, -12]'
-    comment: DD spectrogram GUI (range/velocity); vlen matches ROI delay bins (dd_vlen)
-    label: '"DD Spectrogram"'
-    len_key: '"packet_len"'
-    vlen: dd_vlen
-    xlabel: '"target_range"'
-    ylabel: '"target_velocity"'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1672, 920.0]
-    rotation: 0
-    state: enabled
 - name: uhd_usrp_sink_0_0
   id: uhd_usrp_sink
   parameters:
@@ -1858,9 +1882,10 @@ blocks:
     state: true
 
 connections:
+- [ofdm_burst_source, tx_schedule, ofdm_burst_sensing_rx, tx_schedule]
 - [blocks_complex_to_mag_0, '0', qtgui_time_sink_x_0, '0']
 - [blocks_complex_to_mag_tx, '0', qtgui_time_sink_tx, '0']
-- [ofdm_burst_sensing_rx, '0', sionna_dd_spectrogram_0, '0']
+- [ofdm_burst_sensing_rx, '0', dd_spectrum_plot_0, '0']
 - [ofdm_burst_source, '0', blocks_complex_to_mag_tx, '0']
 - [ofdm_burst_source, '0', blocks_tag_debug_0, '0']
 - [ofdm_burst_source, '0', uhd_usrp_sink_0_0, '0']

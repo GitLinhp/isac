@@ -279,8 +279,8 @@ blocks:
     coordinate: [760, 436.0]
     rotation: 0
     state: enabled
-- name: sionna_dd_spectrogram_0
-  id: sionna_dd_spectrogram
+- name: dd_spectrum_plot_0
+  id: dd_spectrum_plot
   parameters:
     affinity: ''
     alias: ''
@@ -360,7 +360,7 @@ blocks:
 
 connections:
 - [sionna_dd_rx_0, '0', blocks_null_sink_0, '0']
-- [sionna_dd_rx_0, '1', sionna_dd_spectrogram_0, '0']
+- [sionna_dd_rx_0, '1', dd_spectrum_plot_0, '0']
 - [sionna_ofdm_tx_0, '0', sionna_rt_channel_0, '0']
 - [sionna_rt_channel_0, '0', sionna_dd_rx_0, '0']
 

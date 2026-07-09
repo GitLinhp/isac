@@ -1,13 +1,14 @@
-"""事件驱动 DD 谱图：每帧 packet_len 矩阵到达后立即刷新（无 QTimer）。"""
-import sys
-from pathlib import Path
+"""GNU Radio 块：事件驱动 Delay-Doppler (DD) 谱图显示。
 
-_root = Path(__file__).resolve().parents[1]
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-from bootstrap import setup_gnuradio_paths_from
+上游（如 OFDM Burst Sensing RX）输出 float32 向量流，每行对应一个多普勒 bin
+的时延维 log 幅度；帧首行携带 ``packet_len`` tag，值为本帧多普勒行数。
 
-setup_gnuradio_paths_from(__file__)
+本块按 tag 攒齐一行矩阵 ``(n_doppler, n_delay)`` 后，经 Qt 信号投递到主线程，
+由 PyQtGraph 立即刷新（无 QTimer 轮询）。GNU Radio ``work`` 在调度线程运行，
+GUI 更新必须经 ``QueuedConnection`` 回到 Qt 主线程。
+"""
+
+from __future__ import annotations
 
 import numpy as np
 import pmt
@@ -16,11 +17,24 @@ from gnuradio import gr
 from PyQt5.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 
 
-class _DDSpectrogramDisplay(QObject):
-    """Qt 主线程上的 PyQtGraph 谱图窗口。"""
+# ---------------------------------------------------------------------------
+# Qt 显示层（主线程）
+# ---------------------------------------------------------------------------
 
-    frame_ready = pyqtSignal(object)
+
+class _DDSpectrogramDisplay(QObject):
+    """Qt 主线程上的 PyQtGraph 谱图窗口。
+
+    GR 工作线程通过 ``post_frame`` / ``request_show`` 发信号；槽函数以
+    ``QueuedConnection`` 连接，保证 ``setImage`` / ``show`` 只在 GUI 线程执行。
+    """
+
+    frame_ready = pyqtSignal(object)  # 投递一帧 float32 矩阵
     show_requested = pyqtSignal()
+
+    # -----------------------------------------------------------------------
+    # 初始化
+    # -----------------------------------------------------------------------
 
     def __init__(
         self,
@@ -52,13 +66,20 @@ class _DDSpectrogramDisplay(QObject):
         )
         self._colorbar.setImageItem(self._img, insert_in=self._plot)
         self._apply_axes()
+        # 跨线程：emit 在 GR 线程，槽在 Qt 主线程排队执行
         self.frame_ready.connect(self._on_frame, Qt.QueuedConnection)
         self.show_requested.connect(self._do_show, Qt.QueuedConnection)
 
+    # -----------------------------------------------------------------------
+    # 窗口显示
+    # -----------------------------------------------------------------------
+
     def request_show(self) -> None:
+        """请求在主线程显示窗口。"""
         self.show_requested.emit()
 
     def _do_show(self) -> None:
+        """槽：实际 show / raise（仅主线程）。"""
         self._win.show()
         try:
             self._win.raise_()
@@ -66,46 +87,65 @@ class _DDSpectrogramDisplay(QObject):
             pass
 
     def show(self) -> None:
+        """对外入口：等价于 ``request_show``。"""
         self.request_show()
 
     def close(self) -> None:
+        """关闭谱图窗口。"""
         self._win.close()
 
+    # -----------------------------------------------------------------------
+    # 轴与色标
+    # -----------------------------------------------------------------------
+
     def set_axis_x(self, xmin: float, xmax: float) -> None:
+        """更新横轴范围（物理量，如距离）。"""
         self._axis_x = (float(xmin), float(xmax))
         self._apply_axes()
 
     def set_axis_y(self, ymin: float, ymax: float) -> None:
+        """更新纵轴范围（物理量，如速度）。"""
         self._axis_y = (float(ymin), float(ymax))
         self._apply_axes()
 
     def set_axis_z(self, zmin: float, zmax: float) -> None:
+        """固定色标范围，并关闭 z 轴自适应。"""
         self._axis_z = (float(zmin), float(zmax))
         self._autoscale_z = False
 
     def set_autoscale_z(self, enabled: bool) -> None:
+        """是否按每帧数据分位数自动调整色标。"""
         self._autoscale_z = bool(enabled)
 
-    def post_frame(self, matrix: np.ndarray) -> None:
-        self.frame_ready.emit(matrix)
-
     def _apply_axes(self) -> None:
+        """将当前 axis_x / axis_y 应用到 plot 视口。"""
         xmin, xmax = self._axis_x
         ymin, ymax = self._axis_y
         self._plot.setXRange(xmin, xmax, padding=0)
         self._plot.setYRange(ymin, ymax, padding=0)
 
+    # -----------------------------------------------------------------------
+    # 帧刷新
+    # -----------------------------------------------------------------------
+
+    def post_frame(self, matrix: np.ndarray) -> None:
+        """从任意线程投递一帧；实际绘制在 ``_on_frame``。"""
+        self.frame_ready.emit(matrix)
+
     @pyqtSlot(object)
     def _on_frame(self, matrix: np.ndarray) -> None:
+        """槽：更新 ImageItem、色标与标题帧计数。"""
         data = np.ascontiguousarray(matrix, dtype=np.float32)
         self._img.setImage(data, autoLevels=False)
         xmin, xmax = self._axis_x
         ymin, ymax = self._axis_y
+        # 将像素网格映射到物理轴矩形 (x, y, w, h)
         self._img.setRect(xmin, ymin, xmax - xmin, ymax - ymin)
 
         if self._autoscale_z:
             finite = data[np.isfinite(data)]
             if finite.size:
+                # 2%/98% 分位抑制离群点；退化时回退 min/max
                 lo, hi = float(np.percentile(finite, 2)), float(np.percentile(finite, 98))
                 if hi <= lo:
                     lo, hi = float(finite.min()), float(finite.max())
@@ -120,8 +160,20 @@ class _DDSpectrogramDisplay(QObject):
         self._plot.setTitle(f"{self._title}  [#{self._frame_count}]")
 
 
-class SionnaDDSpectrogramPlot(gr.sync_block):
-    """DD log-magnitude 谱图：按 packet_len tag 帧边界事件刷新。"""
+# ---------------------------------------------------------------------------
+# GNU Radio sync_block
+# ---------------------------------------------------------------------------
+
+
+class DDSpectrogramPlot(gr.sync_block):
+    """DD log-magnitude 谱图：按 ``packet_len`` tag 界定帧边界并事件刷新。
+
+    工作流程：读入向量行 → 遇 tag 重置缓冲并记录行数 → 攒满后 ``post_frame``。
+    """
+
+    # -----------------------------------------------------------------------
+    # 初始化
+    # -----------------------------------------------------------------------
 
     def __init__(
         self,
@@ -135,15 +187,24 @@ class SionnaDDSpectrogramPlot(gr.sync_block):
         autoscale_z: bool = True,
         len_key: str = "packet_len",
     ) -> None:
+        """
+        参数:
+            - vlen: 输入向量长度（时延维列数，须与上游 ROI 一致）
+            - xlabel / ylabel / label: 轴标签与窗口标题
+            - axis_x / axis_y: 横纵轴物理范围 ``[min, max]``
+            - axis_z: 固定色标范围；``autoscale_z=True`` 时每帧覆盖
+            - autoscale_z: 是否按帧内分位数自适应色标
+            - len_key: 帧长度 stream tag 名（默认 ``packet_len``）
+        """
         gr.sync_block.__init__(
             self,
-            name="Sionna DD Spectrogram",
+            name="DD Spectrogram",
             in_sig=[(np.float32, int(vlen))],
             out_sig=None,
         )
         self._vlen = int(vlen)
         self._tag_key = pmt.intern(len_key)
-        self._expected_rows = 0
+        self._expected_rows = 0  # 当前帧尚需攒齐的多普勒行数；0 表示未对齐
         self._row_buf: list[np.ndarray] = []
 
         ax_x = (float(axis_x[0]), float(axis_x[1]))
@@ -160,32 +221,51 @@ class SionnaDDSpectrogramPlot(gr.sync_block):
             autoscale_z=bool(autoscale_z),
         )
 
+    # -----------------------------------------------------------------------
+    # 生命周期与轴代理
+    # -----------------------------------------------------------------------
+
     def start(self) -> bool:
+        """流图启动时弹出谱图窗口。"""
         self._display.show()
         return super().start()
 
     def stop(self) -> bool:
+        """流图停止（窗口由调用方或进程退出关闭）。"""
         return super().stop()
 
     def set_axis_x(self, xmin: float, xmax: float) -> None:
+        """转发至显示层横轴。"""
         self._display.set_axis_x(xmin, xmax)
 
     def set_axis_y(self, ymin: float, ymax: float) -> None:
+        """转发至显示层纵轴。"""
         self._display.set_axis_y(ymin, ymax)
 
     def set_axis_z(self, zmin: float, zmax: float) -> None:
+        """转发至显示层固定色标。"""
         self._display.set_axis_z(zmin, zmax)
 
     def set_autoscale_z(self, enabled: bool) -> None:
+        """转发至显示层色标自适应开关。"""
         self._display.set_autoscale_z(enabled)
 
+    # -----------------------------------------------------------------------
+    # work
+    # -----------------------------------------------------------------------
+
     def work(self, input_items, output_items):
+        """消费输入向量：tag 对齐帧 → 攒行 → 投递显示。
+
+        无有效 ``packet_len`` 时丢弃行（不刷新）；返回已消费样点数。
+        """
         inp = input_items[0]
         n = len(inp)
         base = self.nitems_read(0)
 
         for i in range(n):
             abs_idx = base + i
+            # 帧首 tag：清空缓冲，记录本帧多普勒行数
             for tag in self.get_tags_in_range(0, abs_idx, abs_idx + 1):
                 if tag.key == self._tag_key:
                     self._row_buf.clear()

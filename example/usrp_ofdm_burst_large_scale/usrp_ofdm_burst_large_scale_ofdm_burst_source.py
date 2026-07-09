@@ -28,7 +28,7 @@ import torch
 from gnuradio import gr
 
 from isac.system import System
-from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME, TPP_DONT, make_tx_time_pmt
+from isac_imp.burst_pack import TAG_EOB, TAG_SOB, TAG_TIME, TPP_DONT, make_tx_time_pmt
 from isac_imp.gr_setup import create_system, set_last_x_rg
 
 _DEFAULT_CONFIG = "simulation/sensing/sensing_monostatic.toml"

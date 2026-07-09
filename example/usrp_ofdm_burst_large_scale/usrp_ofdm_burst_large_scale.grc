@@ -422,7 +422,7 @@ blocks:
       \u610F\uFF1A__init__ \u5F62\u53C2\u9ED8\u8BA4\u503C\u987B\u4E0E GRC \u53D8\u91CF\
       \u4FDD\u6301\u540C\u6B65\u3002\n\"\"\"\n\nfrom __future__ import annotations\n\
       \nimport time\nfrom typing import Any\n\nimport numpy as np\nimport pmt\nimport\
-      \ torch\nfrom gnuradio import gr\n\nfrom isac.system import System\nfrom isac_imp.constants\
+      \ torch\nfrom gnuradio import gr\n\nfrom isac.system import System\nfrom isac_imp.burst_pack\
       \ import TAG_EOB, TAG_SOB, TAG_TIME, TPP_DONT, make_tx_time_pmt\nfrom isac_imp.gr_setup\
       \ import create_system, set_last_x_rg\n\n_DEFAULT_CONFIG = \"simulation/sensing/sensing_monostatic.toml\"\
       \n\n\nclass blk(gr.basic_block):\n    \"\"\"\n    Style 1 OFDM \u7A81\u53D1\u6E90\

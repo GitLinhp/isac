@@ -355,8 +355,8 @@ blocks:
     coordinate: [1528, 384.0]
     rotation: 0
     state: disabled
-- name: sionna_dd_spectrogram_0
-  id: sionna_dd_spectrogram
+- name: dd_spectrum_plot_0
+  id: dd_spectrum_plot
   parameters:
     alias: ''
     autoscale_z: 'True'
@@ -495,7 +495,7 @@ connections:
 - [sionna_static_target_0, '0', blocks_add_xx_0, '1']
 - [sionna_static_target_0, '0', sionna_dd_rx_0, '0']
 - [sionna_dd_rx_0, '0', blocks_null_sink_0, '0']
-- [sionna_dd_rx_0, '1', sionna_dd_spectrogram_0, '0']
+- [sionna_dd_rx_0, '1', dd_spectrum_plot_0, '0']
 - [sionna_ofdm_tx_0, '0', sionna_static_target_0, '0']
 
 metadata:

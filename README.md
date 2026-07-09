@@ -138,7 +138,7 @@ python script/simulation/sensing/run_static_target_simulation.py
 
 ```bash
 # 安装 / 更新 GRC 块定义
-bash gnuradio/tools/install_grc_blocks.sh
+bash src/isac_imp/install_grc_blocks.sh
 
 # 带 GPU 预热与感知 UI 的入口
 python gnuradio/flowgraphs/run_sensing_baseline_grc.py
@@ -225,7 +225,7 @@ python script/simulation/sensing/run_sensing_baseline.py --domain frequency
 python script/simulation/sensing/run_sensing_monostatic.py
 
 # 3. GNU Radio 流图
-bash gnuradio/tools/install_grc_blocks.sh
+bash src/isac_imp/install_grc_blocks.sh
 python gnuradio/flowgraphs/run_sensing_baseline_grc.py   # RT 感知基线 + GPU 预热
 python gnuradio/flowgraphs/run_simulator_ofdm.py           # 静态目标 OFDM 仿真器
 

@@ -705,7 +705,7 @@ blocks:
       import numpy as np\nimport pmt\nimport sionna as sn\nimport torch\nfrom gnuradio\
       \ import gr\n\n_UHD_TEST_DIR = \"/home/caict/Desktop/gunradio_test/uhd_test\"\
       \nif _UHD_TEST_DIR not in sys.path:\n    sys.path.insert(0, _UHD_TEST_DIR)\n\
-      \nfrom ofdm_loopback_phy_context import PhyContext\nfrom isac_imp.constants\
+      \nfrom ofdm_loopback_phy_context import PhyContext\nfrom isac_imp.burst_pack\
       \ import TAG_EOB, TAG_SOB, TAG_TIME\n\n\nclass blk(gr.basic_block):\n    \"\"\"Generate one frame at init; reload\
       \ and replay on repeat_period_ms.\"\"\"\n\n    def __init__(\n        self,\n\
       \        device=\"cpu\",\n        tx_amp=0.05,\n        repeat_period_ms=50.0,\n\

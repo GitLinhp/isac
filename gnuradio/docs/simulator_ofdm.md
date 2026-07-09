@@ -127,7 +127,7 @@ GUI 顶部提供 **target_range** / **target_velocity** 滑块（界面标签仍
 ## 运行方式
 
 ```bash
-./gnuradio/install_grc_blocks.sh   # 首次或修改 sionna_*.block.yml 后必跑
+bash src/isac_imp/install_grc_blocks.sh   # 首次或修改 sionna_*.block.yml 后必跑
 cd gnuradio
 grcc simulator_ofdm.grc
 python -u run_simulator_ofdm.py    # 含感知性能 UI 刷新；勿直接跑 simulator_ofdm.py

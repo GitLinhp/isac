@@ -17,7 +17,7 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
-from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME
+from isac_imp.burst_pack import TAG_EOB, TAG_SOB, TAG_TIME
 
 
 class blk(gr.basic_block):

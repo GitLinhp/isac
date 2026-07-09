@@ -9,7 +9,8 @@ GNU Radio 嵌入式 Python 块：OFDM 突发源（纯 x_time.npy 时域重放）
 Style 1 约定：下游 USRP Sink 的 len_tag_name 必须留空，由 tag 而非包长 tag 界定突发边界。
 
 发射链：由 config_file 解析 source.cache_file（缓存目录）与 OFDM samp_rate，
-再仅 np.load 目录内 x_time.npy → 乘 tx_amp 后周期性重放。
+再仅 np.load 目录内 x_time.npy（未缩放缓存）→ 写出时乘当前 tx_amp 周期性重放。
+tx_amp 可实时调节，无需重载波形。
 不构建 System 调制链，不调用 create_system / transmit()。System 仅由接收端构建。
 
 注意：__init__ 形参默认值须与 GRC 变量保持同步。
@@ -26,7 +27,15 @@ import pmt
 from gnuradio import gr
 
 from isac import PROJECT_ROOT
-from isac_imp.constants import TAG_EOB, TAG_SOB, TAG_TIME, TPP_DONT, make_tx_time_pmt
+from isac_imp.burst_pack import (
+    PORT_TX_SCHEDULE,
+    TPP_DONT,
+    add_style1_eob,
+    add_style1_sob_time,
+    load_burst_buffer,
+    make_tx_schedule_msg,
+    schedule_idle_delay_s,
+)
 from isac_imp.gr_setup import resolve_ofdm_samp_rate, resolve_source_cache_file
 
 # ---------------------------------------------------------------------------
@@ -62,7 +71,7 @@ class blk(gr.basic_block):
         参数:
             - config_file:      TOML 路径；从中解析 source.cache_file（目录）与 OFDM samp_rate
             - idle_ms:          两次突发之间的纯静默间隔 (毫秒)，不含突发本身时长
-            - tx_amp:           输出幅度缩放，建议 ≤ 1.0 以免 USRP 饱和
+            - tx_amp:           输出幅度缩放（写出时相乘，可实时调节）
             - time_lead_s:      tx_time 相对当前 wall-clock 的提前量 (秒)
             - startup_delay_s:  首突发启动前的初始等待 (秒)
         """
@@ -84,7 +93,7 @@ class blk(gr.basic_block):
         self._burst_idx = 0
         self._next_burst_at = time.monotonic() + self._startup_delay_s
 
-        # 缓存波形（乘 tx_amp 后）、样本数、静默时长（秒）
+        # 未缩放缓存波形、样本数、静默时长（秒）；写出时再乘 _tx_amp
         self._burst_buffer: np.ndarray | None = None
         self._burst_len = 0
         self._idle_s = max(0.0, self._idle_ms / 1000.0)
@@ -92,6 +101,8 @@ class blk(gr.basic_block):
         # 源块无输入 tag；缓冲至少能装下一段突发，避免调度器切得过碎
         self.set_tag_propagation_policy(TPP_DONT)
         self.set_min_output_buffer(4096)
+        # 同机感知：把每突发 tx_time 经消息口发给 RX（空口不传 stream tag）
+        self.message_port_register_out(pmt.intern(PORT_TX_SCHEDULE))
 
     # -----------------------------------------------------------------------
     # 配置解析与缓存加载
@@ -133,23 +144,16 @@ class blk(gr.basic_block):
         return self._burst_buffer
 
     def _load_burst(self) -> None:
-        """仅从缓存目录读取 x_time.npy，乘 tx_amp 建突发缓冲。"""
+        """从缓存目录读取 x_time.npy（未缩放），供写出时乘当前 tx_amp。"""
         path = self._resolve_cache_dir() / "x_time.npy"
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"发射时域缓存不存在: {path}；请先离线运行 transmit() 生成"
-            )
-        x_time = np.asarray(np.load(path))
-        burst = x_time.squeeze().astype(np.complex64, copy=False)
-        burst_buffer = (burst * self._tx_amp).astype(np.complex64, copy=False)
+        burst_buffer = load_burst_buffer(path, tx_amp=1.0)
         self._burst_buffer = burst_buffer
         self._burst_len = int(burst_buffer.size)
         self._idle_s = max(0.0, self._idle_ms / 1000.0)
         self.set_min_output_buffer(max(4096, self._burst_len * 2))
         self._log(
             f"load x_time.npy ok config={self._config_file!r} path={path} "
-            f"x_time={tuple(x_time.shape)} burst_len={self._burst_len} "
-            f"samp_rate={self._samp_rate}"
+            f"burst_len={self._burst_len} samp_rate={self._samp_rate}"
         )
 
     def _recompute_idle(self) -> None:
@@ -200,14 +204,13 @@ class blk(gr.basic_block):
 
     @property
     def tx_amp(self):
-        """输出幅度缩放系数。"""
+        """输出幅度缩放系数（写出时相乘，可实时调节）。"""
         return self._tx_amp
 
     @tx_amp.setter
     def tx_amp(self, value):
-        """更新幅度并清空突发缓存（下次加载时重新乘 amp）。"""
+        """仅更新幅度系数；不重载波形，下一写出块立即生效。"""
         self._tx_amp = float(value)
-        self._invalidate_burst()
 
     @property
     def time_lead_s(self):
@@ -239,24 +242,8 @@ class blk(gr.basic_block):
         return []
 
     def _schedule_delay_s(self) -> float:
-        """
-        计算当前突发结束后，到下一突发开始前的等待时间（秒）。
-
-        周期 = max(idle + burst, burst)；返回值 = 周期 - burst，即纯 idle 时长。
-        """
-        if self._samp_rate <= 0:
-            return max(0.0, self._idle_s)
-        burst_s = self._burst_len / self._samp_rate
-        period_s = max(self._idle_s + burst_s, burst_s)
-        return max(0.0, period_s - burst_s)
-
-    def _tx_time_pmt(self):
-        """
-        构造 tx_time tag 的 PMT 值：(整数秒, 小数秒)。
-
-        使用 time.time() + time_lead_s，与 UHD timed TX 的绝对时刻格式一致。
-        """
-        return make_tx_time_pmt(time.time() + self._time_lead_s)
+        """当前突发结束后到下一突发开始前的纯 idle 时长（秒）。"""
+        return schedule_idle_delay_s(self._burst_len, self._samp_rate, self._idle_s)
 
     def general_work(self, input_items, output_items):
         """
@@ -283,19 +270,24 @@ class blk(gr.basic_block):
         if n <= 0:
             return 0
 
-        # 从缓存拷贝一段到输出
-        out[:n] = burst_buffer[self._burst_idx : self._burst_idx + n]
+        # 从缓存拷贝一段并乘当前 tx_amp（实时可调）
+        out[:n] = burst_buffer[self._burst_idx : self._burst_idx + n] * np.float32(
+            self._tx_amp
+        )
 
         abs_out = self.nitems_written(0)
-        # 突发首样本：打 SOB + tx_time
+        # 突发首样本：打 SOB + tx_time，并消息通知 RX 同一 epoch
         if self._burst_idx == 0:
-            self.add_item_tag(0, abs_out, TAG_SOB, pmt.PMT_T)
-            self.add_item_tag(0, abs_out, TAG_TIME, self._tx_time_pmt())
+            epoch = time.time() + self._time_lead_s
+            add_style1_sob_time(self, 0, abs_out, epoch)
+            self.message_port_pub(
+                pmt.intern(PORT_TX_SCHEDULE), make_tx_schedule_msg(epoch)
+            )
 
         self._burst_idx += n
         # 突发末样本：打 EOB，进入 idle，调度下一突发时刻
         if self._burst_idx >= self._burst_len:
-            self.add_item_tag(0, abs_out + n - 1, TAG_EOB, pmt.PMT_T)
+            add_style1_eob(self, 0, abs_out + n - 1)
             self._burst_active = False
             self._next_burst_at = time.monotonic() + self._schedule_delay_s()
 
