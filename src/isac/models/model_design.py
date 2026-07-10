@@ -22,7 +22,7 @@ checkpoint
 
 调用方
 ------
-- 训练：``run_train_monostatic_cnn.py`` 写入 checkpoint；标签由 ``kinematics_to_target_bins`` 生成
+- 训练：``run_train_sensing_cnn.py`` 写入 checkpoint；标签由 ``kinematics_to_target_bins`` 生成
 - 推理：``run_sensing_from_dataset.py`` 加载权重；bin → ``MusicPeaks`` → ``SensingEstimator`` 换算物理量
 """
 

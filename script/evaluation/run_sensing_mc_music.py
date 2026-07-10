@@ -57,7 +57,7 @@ from isac import OUT_DIR
 from isac.collection import CollectionMetadata
 from isac.sensing import match_peaks_and_compute_radial_rmse
 from isac.system import System
-from isac.utils import load_config, set_random_seed
+from isac.utils import set_random_seed
 from isac.utils.misc import csv_float2_scalar, csv_vec3
 
 if TYPE_CHECKING:

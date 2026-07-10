@@ -147,14 +147,21 @@ spectrum_tensor (B,H,W) complex
 
 ### 脚本与前置条件
 
-- 入口：[`script/model_training/run_train_monostatic_cnn.py`](../script/model_training/run_train_monostatic_cnn.py)
+- 入口：[`script/model_training/run_train_sensing_cnn.py`](../script/model_training/run_train_sensing_cnn.py)
 - 须在 **ISAC conda 环境**、仓库根目录运行
 - HDF5 同目录须存在 `data_collection.toml`（采集脚本落盘副本）
 
 ```bash
-python script/model_training/run_train_monostatic_cnn.py \
-  --dataset_h5 data/empty_room_mc_sionna_dataset.h5 \
+python script/model_training/run_train_sensing_cnn.py \
+  --dataset_h5 data/empty_room_monostatic_30kHz/empty_room_monostatic_mc_sionna_dataset.h5 \
+  --sens_mode monostatic \
   --device cuda:0
+
+# 双基地
+python script/model_training/run_train_sensing_cnn.py \
+  --dataset_h5 data/empty_room_bistatic_30kHz/empty_room_bistatic_mc_sionna_dataset.h5 \
+  --config_file config/data_collection/data_collection_bistatic.toml \
+  --sens_mode bistatic
 ```
 
 ### 标签与损失
@@ -171,7 +178,7 @@ python script/model_training/run_train_monostatic_cnn.py \
 
 ### 训练产物
 
-由 `--output`（默认 `models/monostatic_cnn/best_model.pth`）推导：
+由 `--output`（默认 `models/sensing_cnn/monostatic/best_model.pth`）推导：
 
 | 路径 | 说明 |
 |------|------|
@@ -192,7 +199,7 @@ python script/model_training/run_train_monostatic_cnn.py \
 python script/evaluation/run_sensing_from_dataset.py \
   --estimator model \
   --dataset_h5 data/empty_room_mc_sionna_dataset.h5 \
-  --model_path models/monostatic_cnn/best_model.pth
+  --model_path models/sensing_cnn/monostatic/best_model.pth
 ```
 
 ### 加载与配置
@@ -239,7 +246,7 @@ python script/evaluation/run_sensing_from_dataset.py \
 | [`src/isac/collection/dataset.py`](../src/isac/collection/dataset.py) | `RTDataset` 读取 `spectrum_tensor` |
 | [`src/isac/sensing/metric.py`](../src/isac/sensing/metric.py) | bin ↔ 物理量坐标换算 |
 | [`src/isac/data_structures/types.py`](../src/isac/data_structures/types.py) | `MusicPeaks` |
-| [`script/model_training/run_train_monostatic_cnn.py`](../script/model_training/run_train_monostatic_cnn.py) | 训练入口 |
+| [`script/model_training/run_train_sensing_cnn.py`](../script/model_training/run_train_sensing_cnn.py) | 训练入口 |
 | [`script/evaluation/run_sensing_from_dataset.py`](../script/evaluation/run_sensing_from_dataset.py) | 推理与 RMSE 评估 |
 | [`docs/run_data_collection.md`](run_data_collection.md) | 上游 HDF5 采集说明 |
 
@@ -255,7 +262,7 @@ from isac.data_structures.types import MusicPeaks
 from isac.models import load_sensing_cnn_checkpoint
 
 device = "cuda:0"
-model = load_sensing_cnn_checkpoint("models/monostatic_cnn/best_model.pth", device)
+model = load_sensing_cnn_checkpoint("models/sensing_cnn/monostatic/best_model.pth", device)
 
 h_dd = torch.randn(256, 128, dtype=torch.complex64, device=device)  # 示例 ROI 裁切谱
 with torch.no_grad():
@@ -279,4 +286,4 @@ y_bins = model(spectrum)
 loss = criterion(y_bins, target_bins)
 ```
 
-完整循环见 [`run_train_monostatic_cnn.py`](../script/model_training/run_train_monostatic_cnn.py)。
+完整循环见 [`run_train_sensing_cnn.py`](../script/model_training/run_train_sensing_cnn.py)。

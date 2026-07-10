@@ -316,15 +316,15 @@ for batch in loader:
 
 | 脚本                                                                                                         | 用途                          | 默认数据路径                                                   |
 | ------------------------------------------------------------------------------------------------------------ | ----------------------------- | -------------------------------------------------------------- |
-| [`script/model_training/run_train_monostatic_cnn.py`](../script/model_training/run_train_monostatic_cnn.py) | CNN 训练                      | `--dataset_h5` 默认 `data/empty_room_mc_sionna_dataset.h5` |
+| [`script/model_training/run_train_sensing_cnn.py`](../script/model_training/run_train_sensing_cnn.py) | CNN 训练（mono/bistatic） | `--dataset_h5` 默认 `data/empty_room_monostatic_30kHz/...` |
 | [`script/evaluation/run_sensing_from_dataset.py`](../script/evaluation/run_sensing_from_dataset.py)         | MUSIC / CNN 感知评估回放      | 同上；要求同目录存在`data_collection.toml`                   |
 | [`script/model_training/run_sample_roi_positions.py`](../script/model_training/run_sample_roi_positions.py) | 仅 ROI 采样预览（无 RT 仿真） | 输出`data/sample_roi_positions.csv`                          |
 
 训练示例：
 
 ```bash
-python script/model_training/run_train_monostatic_cnn.py \
-  --dataset_h5 data/empty_room_mc_sionna_dataset.h5
+python script/model_training/run_train_sensing_cnn.py \
+  --dataset_h5 data/empty_room_monostatic_30kHz/empty_room_monostatic_mc_sionna_dataset.h5
 ```
 
 评估示例：

@@ -28,10 +28,25 @@ OUT_DIR = PROJECT_ROOT / "out"
 
 # --- 采集数据 ---
 DEFAULT_COLLECTION_OUT_DIR = DATA_DIR
-DEFAULT_DATASET_H5 = DATA_DIR / "empty_room_mc_sionna_dataset.h5"
+DEFAULT_DATASET_H5 = (
+    DATA_DIR
+    / "empty_room_monostatic_30kHz"
+    / "empty_room_monostatic_mc_sionna_dataset.h5"
+)
+DEFAULT_BISTATIC_DATASET_H5 = (
+    DATA_DIR
+    / "empty_room_bistatic_30kHz"
+    / "empty_room_bistatic_mc_sionna_dataset.h5"
+)
 
 # --- 模型产物 ---
-DEFAULT_MONOSTATIC_CNN_DIR = MODELS_DIR / "monostatic_cnn"
-DEFAULT_MONOSTATIC_CNN_MODEL = DEFAULT_MONOSTATIC_CNN_DIR / "best_model.pth"
+DEFAULT_SENSING_CNN_DIR = MODELS_DIR / "sensing_cnn"
+DEFAULT_SENSING_CNN_MODEL = DEFAULT_SENSING_CNN_DIR / "monostatic" / "best_model.pth"
+DEFAULT_BISTATIC_SENSING_CNN_MODEL = (
+    DEFAULT_SENSING_CNN_DIR / "bistatic" / "best_model.pth"
+)
+# 向后兼容别名
+DEFAULT_MONOSTATIC_CNN_DIR = DEFAULT_SENSING_CNN_DIR / "monostatic"
+DEFAULT_MONOSTATIC_CNN_MODEL = DEFAULT_SENSING_CNN_MODEL
 
 __version__ = "0.1.0"

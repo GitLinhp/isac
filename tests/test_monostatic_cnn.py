@@ -115,6 +115,25 @@ def test_kinematics_to_target_bins_shape():
     assert bins.shape == (2, 2)
 
 
+def test_kinematics_to_target_bins_bistatic_shape():
+    sp = _sensing_performance()
+    pos = torch.tensor([[0.0, 0.0, 0.5]])
+    vel = torch.tensor([[2.0, 0.0, 0.0]])
+    rx = torch.tensor([-4.5, -2.5, 1.5])
+    tx = torch.tensor([4.5, 2.5, 1.5])
+    bins = kinematics_to_target_bins(
+        pos,
+        vel,
+        rx,
+        sensing_performance=sp,
+        num_doppler_bins=256,
+        sens_mode="bistatic",
+        tx_pos=tx,
+    )
+    assert bins.shape == (1, 2)
+    assert torch.isfinite(bins).all()
+
+
 def test_kinematics_to_music_peaks_via_sensing_estimator():
     sp = _sensing_performance()
     roi = DelayDopplerRoi(
