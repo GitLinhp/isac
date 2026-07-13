@@ -5,6 +5,7 @@ carrier_frequency = 6e9 # 载波频率(Hz)
 type = "zc"
 root_index = 1
 normalize = true
+num_bits_per_symbol = 16
 
 # OFDM 参数
 [ofdm]
