@@ -121,5 +121,5 @@ threshold = 0.1
 
 # 时延–多普勒谱 ROI（物理量裁剪）
 [dd_spectrum_roi]
-max_range_m = 310.0
-max_velocity_mps = 150.0
+max_range_m = 50.0
+max_velocity_mps = 20.0

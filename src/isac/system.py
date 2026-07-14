@@ -1,7 +1,6 @@
 """ISAC 端到端仿真编排：发射、接收与感知流水线 API。"""
 
 from pathlib import Path
-import time
 
 import numpy as np
 from sionna.phy import config as sn_config
@@ -213,10 +212,17 @@ class System:
             )
             x = comps.mapper(b)
         elif src_type == "zc":
-            b = torch.ones(1, 1, 1, rg.num_data_symbols * int(self.params.source.num_bits_per_symbol))
+            b = torch.ones(
+                1,
+                1,
+                1,
+                rg.num_data_symbols * int(self.params.source.num_bits_per_symbol),
+            )
             x = comps.zc_source([1, 1, 1, rg.num_data_symbols])
         else:
             raise ValueError(f"unsupported source.type: {src_type!r}")
+
+        # b: [batch, 1, 1, 1024]
 
         x_rg = comps.rg_mapper(x)
         x_time = comps.modulator(x_rg)
@@ -292,45 +298,34 @@ class System:
             MUSIC 峰换算后的距离/速度估计
         """
         comps = self.components
-        timings: list[tuple[str, float]] = []
 
-        t0 = time.perf_counter()
+        # 显示感知性能
         comps.sensing_performance()
-        timings.append(("sensing_performance", time.perf_counter() - t0))
 
-        t0 = time.perf_counter()
+        # 信道估计
         h_freq = comps.ls_channel_estimator(x_rg, y_rg)
-        timings.append(("ls_channel_estimator", time.perf_counter() - t0))
 
-        t0 = time.perf_counter()
+        # 时延多普勒谱
         h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=sens_mode)
-        timings.append(("delay_doppler_spectrum", time.perf_counter() - t0))
 
+        # 可视化时延多普勒谱
         if visualize_file is not None:
-            t0 = time.perf_counter()
             comps.delay_doppler_spectrum.visualize(
                 file_name=visualize_file,
                 metric_mode=metric_mode,
                 sens_mode=sens_mode,
                 to_db=to_db,
             )
-            timings.append(("visualize", time.perf_counter() - t0))
 
-        t0 = time.perf_counter()
+        # MUSIC 峰估计
         peaks = comps.music_estimator(h_dd)
-        timings.append(("music_estimator", time.perf_counter() - t0))
 
-        t0 = time.perf_counter()
+        # 距离/速度估计
         estimate = comps.sensing_estimator(
             peaks,
             sens_mode=sens_mode,
             metric_mode=metric_mode,
         )
-        timings.append(("sensing_estimator", time.perf_counter() - t0))
 
-        print("sensing 分步耗时:")
-        for name, dt in timings:
-            print(f"  {name}: {dt:.3f} s")
-        print(f"  total: {sum(dt for _, dt in timings):.3f} s")
-
+        # 返回时延多普勒谱与距离/速度估计
         return h_dd, estimate

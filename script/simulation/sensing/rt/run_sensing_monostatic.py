@@ -1,7 +1,6 @@
 """单基地 ISAC 感知评估脚本：端到端仿真链 + MUSIC 谱峰 + 与几何真值对齐的 RMSE 日志。"""
 
 import argparse
-import time
 
 from isac import PROJECT_ROOT
 from isac.sensing import match_peaks_and_compute_radial_rmse
@@ -70,9 +69,7 @@ def main() -> None:
     )
 
     # --- 发射 ---
-    t0 = time.perf_counter()
     _, x_rg, x_time = system.transmit()
-    print(f"transmit 耗时: {time.perf_counter() - t0:.3f} s")
 
     # --- 应用信道 ---
     domain = args.domain  # 信道施加域
@@ -90,7 +87,7 @@ def main() -> None:
         y_rg,
         metric_mode=args.metric_mode,
         sens_mode="monostatic",
-        # visualize_file=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
+        visualize_file=SCRIPT_OUT_DIR / "sensing_monostatic_delay_doppler_spectrum.png",
         to_db=False,
     )
 
