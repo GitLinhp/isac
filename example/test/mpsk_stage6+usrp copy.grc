@@ -273,7 +273,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [464, 260.0]
+    coordinate: [432, 252.0]
     rotation: 0
     state: true
 - name: digital_constellation_modulator_0
@@ -295,7 +295,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [704, 260.0]
+    coordinate: [672, 252.0]
     rotation: 0
     state: true
 - name: digital_costas_loop_cc_0
@@ -806,7 +806,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1000, 380.0]
+    coordinate: [944, 380.0]
     rotation: 0
     state: true
 - name: uhd_usrp_sink_0
@@ -1519,7 +1519,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 356.0]
+    coordinate: [208, 344.0]
     rotation: 0
     state: true
 
