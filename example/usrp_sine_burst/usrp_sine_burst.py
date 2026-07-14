@@ -9,20 +9,23 @@
 # Description: USRP timed burst TX (sine) + RX monitor (OTA)
 # GNU Radio version: 3.10.12.0
 
-import signal
-import sys
-import threading
-import time
-from argparse import ArgumentParser
-
-import sip
-from PyQt5 import Qt, QtCore
-
-from gnuradio import blocks, eng_notation, gr, qtgui, uhd
-from gnuradio.eng_arg import eng_float, intx
-from gnuradio.fft import window
+from PyQt5 import Qt
+from gnuradio import qtgui
+from PyQt5 import QtCore
+from gnuradio import blocks
+from gnuradio import gr
 from gnuradio.filter import firdes
-
+from gnuradio.fft import window
+import sys
+import signal
+from PyQt5 import Qt
+from argparse import ArgumentParser
+from gnuradio.eng_arg import eng_float, intx
+from gnuradio import eng_notation
+from gnuradio import uhd
+import time
+import sip
+import threading
 import usrp_sine_burst_sine_burst_source as sine_burst_source  # embedded python block
 
 

@@ -17,6 +17,7 @@ import numpy as np
 import pmt
 from gnuradio import gr
 
+# UHD / USRP 发射侧标准 stream tag 键名
 from isac_imp.burst_pack import TAG_EOB, TAG_SOB, TAG_TIME
 
 

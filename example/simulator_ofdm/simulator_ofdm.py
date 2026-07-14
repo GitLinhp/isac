@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: USRP TX/RX (OFDM Burst)
+# Title: OFDM Burst Simulator (Static Target)
 # GNU Radio version: 3.10.12.0
 
 from PyQt5 import Qt
@@ -25,21 +25,20 @@ from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
-from gnuradio import uhd
-import time
+from gnuradio import radar
 from isac_imp.blocks.dd_spectrum_plot import DDSpectrogramPlot
+import simulator_ofdm_ofdm_burst_sensing_rx as ofdm_burst_sensing_rx  # embedded python block
+import simulator_ofdm_ofdm_burst_source as ofdm_burst_source  # embedded python block
 import threading
-import usrp_ofdm_burst_tr_ofdm_burst_sensing_rx as ofdm_burst_sensing_rx  # embedded python block
-import usrp_ofdm_burst_tr_ofdm_burst_source as ofdm_burst_source  # embedded python block
 
 
 
-class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
+class simulator_ofdm(gr.top_block, Qt.QWidget):
 
-    def __init__(self, address="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2", freq=6.0e9):
-        gr.top_block.__init__(self, "USRP TX/RX (OFDM Burst)", catch_exceptions=True)
+    def __init__(self):
+        gr.top_block.__init__(self, "OFDM Burst Simulator (Static Target)", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("USRP TX/RX (OFDM Burst)")
+        self.setWindowTitle("OFDM Burst Simulator (Static Target)")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -57,7 +56,7 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)
 
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_burst_tr")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "simulator_ofdm")
 
         try:
             geometry = self.settings.value("geometry")
@@ -68,114 +67,67 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.flowgraph_started = threading.Event()
 
         ##################################################
-        # Parameters
-        ##################################################
-        self.address = address
-        self.freq = freq
-
-        ##################################################
         # Variables
         ##################################################
-        self.config_file = config_file = "implementaion/ofdm_burst_source_large_sacle.toml"
+        self.config_file = config_file = "simulation/sensing/sensing_monostatic.toml"
         self.fft_len = fft_len = resolve_ofdm_fft_cp(config_file)[0]
         self.n_carriers = n_carriers = fft_len - 2
+        self.samp_rate = samp_rate = resolve_ofdm_samp_rate(config_file)
         self.pilot_carriers = pilot_carriers = (tuple(range(-n_carriers//2-2, -n_carriers//2)) + tuple(range(n_carriers//2+1, n_carriers//2+3)),)
+        self.ofdm_burst_samples = ofdm_burst_samples = resolve_ofdm_burst_len(config_file)
         self.occupied_carriers = occupied_carriers = (tuple(range(-n_carriers//2, 0)) + tuple(range(1, n_carriers//2+1)),)
         self.idle_ms = idle_ms = 1000
         self.header_len = header_len = 2
         self.cp_len = cp_len = resolve_ofdm_fft_cp(config_file)[1]
-        self.tx_amp = tx_amp = 30
-        self.time_mag_trig_level = time_mag_trig_level = 5e-3
+        self.velocity = velocity = 500
+        self.value_range = value_range = 100
+        self.v_max = v_max = 2000
+        self.tx_amp = tx_amp = 0.3
+        self.transpose_len = transpose_len = ofdm_burst_samples
         self.time_lead_s = time_lead_s = 0.5
         self.sync_word2 = sync_word2 = list(digital.ofdm_txrx._make_sync_word2(fft_len, occupied_carriers, pilot_carriers))
         self.sync_word1 = sync_word1 = list(digital.ofdm_txrx._make_sync_word1(fft_len, occupied_carriers, pilot_carriers))
-        self.startup_delay_s = startup_delay_s = 1.0
-        self.samp_rate = samp_rate = resolve_ofdm_samp_rate(config_file)
+        self.startup_delay_s = startup_delay_s = 0.2
         self.rx_sync_min_buf = rx_sync_min_buf = max(65536, int((header_len + 8) * (fft_len + cp_len)))
         self.payload_syms = payload_syms = resolve_ofdm_num_symbols(config_file)
-        self.ofdm_burst_samples = ofdm_burst_samples = resolve_ofdm_burst_len(config_file)
         self.hdr_ack_msg = hdr_ack_msg = pmt.dict_add(pmt.make_dict(), pmt.intern("frame_len"), pmt.from_long(resolve_ofdm_num_symbols(config_file)))
-        self.gui_update_time_ms = gui_update_time_ms = 10
-        self.freq_trig_level = freq_trig_level = -90
         self.frame_len_tag = frame_len_tag = "frame_len"
         self.device = device = "cuda:0"
         self.dd_vlen = dd_vlen = resolve_dd_output_vlen(config_file)
         self.corr_threshold = corr_threshold = 0.6
+        self.center_freq = center_freq = 6e9
         self.burst_period_ms = burst_period_ms = idle_ms
-        self.TX_gain = TX_gain = 20
-        self.RX_gain = RX_gain = 20
+        self.R_max = R_max = 3e8/2/samp_rate*fft_len
 
         ##################################################
         # Blocks
         ##################################################
 
-        self._tx_amp_range = qtgui.Range(0, 100, 0.01, 30, 200)
+        self._velocity_range = qtgui.Range(-v_max, v_max, 1, 500, 200)
+        self._velocity_win = qtgui.RangeWidget(self._velocity_range, self.set_velocity, "Velocity", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._velocity_win, 0, 1, 1, 1)
+        for r in range(0, 1):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(1, 2):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._value_range_range = qtgui.Range(0.1, R_max, 1, 100, 200)
+        self._value_range_win = qtgui.RangeWidget(self._value_range_range, self.set_value_range, "range", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._value_range_win, 0, 0, 1, 1)
+        for r in range(0, 1):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(0, 1):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._tx_amp_range = qtgui.Range(0, 1, 0.01, 0.3, 200)
         self._tx_amp_win = qtgui.RangeWidget(self._tx_amp_range, self.set_tx_amp, "tx_amp", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._tx_amp_win, 0, 2, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain_range = qtgui.Range(0, 50, 1, 20, 200)
-        self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "tx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_grid_layout.addWidget(self._TX_gain_win, 0, 0, 1, 1)
-        for r in range(0, 1):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain_range = qtgui.Range(0, 50, 1, 20, 200)
-        self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "rx_gain", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_grid_layout.addWidget(self._RX_gain_win, 0, 1, 1, 1)
-        for r in range(0, 1):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.top_grid_layout.setColumnStretch(c, 1)
-        self.uhd_usrp_source_0_0 = uhd.usrp_source(
-            ",".join((address, "")),
-            uhd.stream_args(
-                cpu_format="fc32",
-                args='num_recv_frames=512,recv_buff_size=25000000',
-                channels=[2],
-            ),
-        )
-        self.uhd_usrp_source_0_0.set_samp_rate(samp_rate)
-        # No synchronization enforced.
-
-        self.uhd_usrp_source_0_0.set_center_freq(freq, 0)
-        self.uhd_usrp_source_0_0.set_antenna("RX1", 0)
-        self.uhd_usrp_source_0_0.set_gain(RX_gain, 0)
-        self.uhd_usrp_source_0_0.set_min_output_buffer(262144)
-        self.uhd_usrp_sink_0_0 = uhd.usrp_sink(
-            ",".join((address, "")),
-            uhd.stream_args(
-                cpu_format="fc32",
-                args='num_send_frames=512,send_buff_size=25000000',
-                channels=[0],
-            ),
-            '',
-        )
-        self.uhd_usrp_sink_0_0.set_samp_rate(samp_rate)
-        self.uhd_usrp_sink_0_0.set_time_now(uhd.time_spec(time.time()), uhd.ALL_MBOARDS)
-
-        self.uhd_usrp_sink_0_0.set_center_freq(freq, 0)
-        self.uhd_usrp_sink_0_0.set_antenna("TX/RX", 0)
-        self.uhd_usrp_sink_0_0.set_gain(TX_gain, 0)
-        self._time_mag_trig_level_range = qtgui.Range(0, 0.5, 0.005, 5e-3, 200)
-        self._time_mag_trig_level_win = qtgui.RangeWidget(self._time_mag_trig_level_range, self.set_time_mag_trig_level, "time_mag_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_grid_layout.addWidget(self._time_mag_trig_level_win, 1, 0, 1, 1)
-        for r in range(1, 2):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.top_grid_layout.setColumnStretch(c, 1)
+        self.radar_static_target_simulator_cc_0 = radar.static_target_simulator_cc([value_range], [velocity], [1e25], [0], [0], samp_rate, center_freq, -10, True, True, "")
+        self.radar_static_target_simulator_cc_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.ofdm_burst_source = ofdm_burst_source.blk(config_file=config_file, idle_ms=idle_ms, tx_amp=tx_amp, time_lead_s=time_lead_s, startup_delay_s=startup_delay_s)
         self.ofdm_burst_sensing_rx = ofdm_burst_sensing_rx.blk(config_file=config_file, device=device, seed=42)
-        self._freq_trig_level_range = qtgui.Range(-120, 0, 5, -90, 200)
-        self._freq_trig_level_win = qtgui.RangeWidget(self._freq_trig_level_range, self.set_freq_trig_level, "freq_trig_level", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_grid_layout.addWidget(self._freq_trig_level_win, 1, 2, 1, 1)
-        for r in range(1, 2):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(2, 3):
-            self.top_grid_layout.setColumnStretch(c, 1)
         self.digital_ofdm_sync_sc_cfb_0 = digital.ofdm_sync_sc_cfb(fft_len, cp_len, False, corr_threshold)
         self.digital_ofdm_sync_sc_cfb_0.set_min_output_buffer(rx_sync_min_buf)
         self.digital_header_payload_demux_0 = digital.header_payload_demux(
@@ -214,32 +166,18 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.connect((self.digital_ofdm_sync_sc_cfb_0, 0), (self.analog_frequency_modulator_fc_0, 0))
         self.connect((self.digital_ofdm_sync_sc_cfb_0, 1), (self.digital_header_payload_demux_0, 1))
         self.connect((self.ofdm_burst_sensing_rx, 0), (self.dd_spectrum_plot_0, 0))
-        self.connect((self.ofdm_burst_source, 0), (self.uhd_usrp_sink_0_0, 0))
-        self.connect((self.uhd_usrp_source_0_0, 0), (self.blocks_delay_0, 0))
-        self.connect((self.uhd_usrp_source_0_0, 0), (self.digital_ofdm_sync_sc_cfb_0, 0))
+        self.connect((self.ofdm_burst_source, 0), (self.radar_static_target_simulator_cc_0, 0))
+        self.connect((self.radar_static_target_simulator_cc_0, 0), (self.blocks_delay_0, 0))
+        self.connect((self.radar_static_target_simulator_cc_0, 0), (self.digital_ofdm_sync_sc_cfb_0, 0))
 
 
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_burst_tr")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "simulator_ofdm")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
         self.wait()
 
         event.accept()
-
-    def get_address(self):
-        return self.address
-
-    def set_address(self, address):
-        self.address = address
-
-    def get_freq(self):
-        return self.freq
-
-    def set_freq(self, freq):
-        self.freq = freq
-        self.uhd_usrp_sink_0_0.set_center_freq(self.freq, 0)
-        self.uhd_usrp_source_0_0.set_center_freq(self.freq, 0)
 
     def get_config_file(self):
         return self.config_file
@@ -267,6 +205,7 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.set_sync_word2(list(digital.ofdm_txrx._make_sync_word2(self.fft_len, self.occupied_carriers, self.pilot_carriers)))
         self.analog_frequency_modulator_fc_0.set_sensitivity(((-2.0/self.fft_len)))
         self.blocks_delay_0.set_dly(int(((self.fft_len+self.cp_len))))
+        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
 
     def get_n_carriers(self):
         return self.n_carriers
@@ -276,6 +215,14 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.set_occupied_carriers((tuple(range(-self.n_carriers//2, 0)) + tuple(range(1, self.n_carriers//2+1)),))
         self.set_pilot_carriers((tuple(range(-self.n_carriers//2-2, -self.n_carriers//2)) + tuple(range(self.n_carriers//2+1, self.n_carriers//2+3)),))
 
+    def get_samp_rate(self):
+        return self.samp_rate
+
+    def set_samp_rate(self, samp_rate):
+        self.samp_rate = samp_rate
+        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.radar_static_target_simulator_cc_0.setup_targets([self.value_range], [self.velocity], [1e25], [0], [0], self.samp_rate, self.center_freq, -10, True, True)
+
     def get_pilot_carriers(self):
         return self.pilot_carriers
 
@@ -283,6 +230,13 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.pilot_carriers = pilot_carriers
         self.set_sync_word1(list(digital.ofdm_txrx._make_sync_word1(self.fft_len, self.occupied_carriers, self.pilot_carriers)))
         self.set_sync_word2(list(digital.ofdm_txrx._make_sync_word2(self.fft_len, self.occupied_carriers, self.pilot_carriers)))
+
+    def get_ofdm_burst_samples(self):
+        return self.ofdm_burst_samples
+
+    def set_ofdm_burst_samples(self, ofdm_burst_samples):
+        self.ofdm_burst_samples = ofdm_burst_samples
+        self.set_transpose_len(self.ofdm_burst_samples)
 
     def get_occupied_carriers(self):
         return self.occupied_carriers
@@ -315,6 +269,26 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.set_rx_sync_min_buf(max(65536, int((self.header_len + 8) * (self.fft_len + self.cp_len))))
         self.blocks_delay_0.set_dly(int(((self.fft_len+self.cp_len))))
 
+    def get_velocity(self):
+        return self.velocity
+
+    def set_velocity(self, velocity):
+        self.velocity = velocity
+        self.radar_static_target_simulator_cc_0.setup_targets([self.value_range], [self.velocity], [1e25], [0], [0], self.samp_rate, self.center_freq, -10, True, True)
+
+    def get_value_range(self):
+        return self.value_range
+
+    def set_value_range(self, value_range):
+        self.value_range = value_range
+        self.radar_static_target_simulator_cc_0.setup_targets([self.value_range], [self.velocity], [1e25], [0], [0], self.samp_rate, self.center_freq, -10, True, True)
+
+    def get_v_max(self):
+        return self.v_max
+
+    def set_v_max(self, v_max):
+        self.v_max = v_max
+
     def get_tx_amp(self):
         return self.tx_amp
 
@@ -322,11 +296,11 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.tx_amp = tx_amp
         self.ofdm_burst_source.tx_amp = self.tx_amp
 
-    def get_time_mag_trig_level(self):
-        return self.time_mag_trig_level
+    def get_transpose_len(self):
+        return self.transpose_len
 
-    def set_time_mag_trig_level(self, time_mag_trig_level):
-        self.time_mag_trig_level = time_mag_trig_level
+    def set_transpose_len(self, transpose_len):
+        self.transpose_len = transpose_len
 
     def get_time_lead_s(self):
         return self.time_lead_s
@@ -354,14 +328,6 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.startup_delay_s = startup_delay_s
         self.ofdm_burst_source.startup_delay_s = self.startup_delay_s
 
-    def get_samp_rate(self):
-        return self.samp_rate
-
-    def set_samp_rate(self, samp_rate):
-        self.samp_rate = samp_rate
-        self.uhd_usrp_sink_0_0.set_samp_rate(self.samp_rate)
-        self.uhd_usrp_source_0_0.set_samp_rate(self.samp_rate)
-
     def get_rx_sync_min_buf(self):
         return self.rx_sync_min_buf
 
@@ -374,30 +340,12 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
     def set_payload_syms(self, payload_syms):
         self.payload_syms = payload_syms
 
-    def get_ofdm_burst_samples(self):
-        return self.ofdm_burst_samples
-
-    def set_ofdm_burst_samples(self, ofdm_burst_samples):
-        self.ofdm_burst_samples = ofdm_burst_samples
-
     def get_hdr_ack_msg(self):
         return self.hdr_ack_msg
 
     def set_hdr_ack_msg(self, hdr_ack_msg):
         self.hdr_ack_msg = hdr_ack_msg
         self.blocks_message_strobe_0.set_msg(self.hdr_ack_msg)
-
-    def get_gui_update_time_ms(self):
-        return self.gui_update_time_ms
-
-    def set_gui_update_time_ms(self, gui_update_time_ms):
-        self.gui_update_time_ms = gui_update_time_ms
-
-    def get_freq_trig_level(self):
-        return self.freq_trig_level
-
-    def set_freq_trig_level(self, freq_trig_level):
-        self.freq_trig_level = freq_trig_level
 
     def get_frame_len_tag(self):
         return self.frame_len_tag
@@ -425,46 +373,33 @@ class usrp_ofdm_burst_tr(gr.top_block, Qt.QWidget):
         self.corr_threshold = corr_threshold
         self.digital_ofdm_sync_sc_cfb_0.set_threshold(self.corr_threshold)
 
+    def get_center_freq(self):
+        return self.center_freq
+
+    def set_center_freq(self, center_freq):
+        self.center_freq = center_freq
+        self.radar_static_target_simulator_cc_0.setup_targets([self.value_range], [self.velocity], [1e25], [0], [0], self.samp_rate, self.center_freq, -10, True, True)
+
     def get_burst_period_ms(self):
         return self.burst_period_ms
 
     def set_burst_period_ms(self, burst_period_ms):
         self.burst_period_ms = burst_period_ms
 
-    def get_TX_gain(self):
-        return self.TX_gain
+    def get_R_max(self):
+        return self.R_max
 
-    def set_TX_gain(self, TX_gain):
-        self.TX_gain = TX_gain
-        self.uhd_usrp_sink_0_0.set_gain(self.TX_gain, 0)
-
-    def get_RX_gain(self):
-        return self.RX_gain
-
-    def set_RX_gain(self, RX_gain):
-        self.RX_gain = RX_gain
-        self.uhd_usrp_source_0_0.set_gain(self.RX_gain, 0)
+    def set_R_max(self, R_max):
+        self.R_max = R_max
 
 
 
-def argument_parser():
-    parser = ArgumentParser()
-    parser.add_argument(
-        "--address", dest="address", type=str, default="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2",
-        help="Set UHD dev args [default=%(default)r]")
-    parser.add_argument(
-        "-f", "--freq", dest="freq", type=eng_float, default=eng_notation.num_to_str(float(6.0e9)),
-        help="Set Default Frequency [default=%(default)r]")
-    return parser
 
-
-def main(top_block_cls=usrp_ofdm_burst_tr, options=None):
-    if options is None:
-        options = argument_parser().parse_args()
+def main(top_block_cls=simulator_ofdm, options=None):
 
     qapp = Qt.QApplication(sys.argv)
 
-    tb = top_block_cls(address=options.address, freq=options.freq)
+    tb = top_block_cls()
 
     tb.start()
     tb.flowgraph_started.set()

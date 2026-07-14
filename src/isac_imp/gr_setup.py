@@ -30,6 +30,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+import numpy as np
 import sionna.phy
 import torch
 from scipy.constants import speed_of_light as _C
@@ -385,6 +386,67 @@ def resolve_ofdm_fft_cp(config_file: str) -> tuple[int, int]:
     if ofdm is None:
         raise ValueError(f"TOML 缺少 [ofdm]: {config_file}")
     return int(ofdm.fft_size), int(ofdm.cyclic_prefix_length)
+
+
+def resolve_ofdm_num_symbols(config_file: str) -> int:
+    """从 TOML [ofdm] 解析 OFDM 载荷符号数 ``num_symbols``。"""
+    ofdm = load_system_params(config_file).ofdm
+    if ofdm is None:
+        raise ValueError(f"TOML 缺少 [ofdm]: {config_file}")
+    return int(ofdm.num_symbols)
+
+
+def resolve_preamble_len(config_file: str) -> int:
+    """SC 前导时域样点数 ``2 * (fft_size + cp)``（不含载荷）。"""
+    fft_size, cp_len = resolve_ofdm_fft_cp(config_file)
+    return 2 * (fft_size + cp_len)
+
+
+def resolve_gr_carrier_tuples(
+    config_file: str,
+) -> tuple[tuple[tuple[int, ...], ...], tuple[tuple[int, ...], ...]]:
+    """解析 GR ``occupied_carriers`` / ``pilot_carriers``（与 ofdm_sc_preamble 同构）。
+
+    ``n_carriers = fft_size - 2``（全带除 DC）；导频放在占用带外缘，供
+    ``digital.ofdm_txrx._make_sync_word*`` 使用。
+    """
+    fft_size, _cp = resolve_ofdm_fft_cp(config_file)
+    n = int(fft_size) - 2
+    if n < 2 or n % 2:
+        raise ValueError(f"fft_size={fft_size} 无法构成偶长度 occupied 集合")
+    occupied = (
+        tuple(range(-n // 2, 0)) + tuple(range(1, n // 2 + 1)),
+    )
+    pilots = (
+        tuple(range(-n // 2 - 2, -n // 2))
+        + tuple(range(n // 2 + 1, n // 2 + 3)),
+    )
+    return occupied, pilots
+
+
+def preamble_time_from_sync_words(
+    fft_size: int,
+    cp_len: int,
+    sync_word1: np.ndarray,
+    sync_word2: np.ndarray,
+) -> np.ndarray:
+    """频域 sync word（fftshift）→ 时域前导 ``sync1|sync2``（含 CP）。"""
+    from isac_imp.ofdm_sc_preamble import _symbol_time  # noqa: PLC0415
+
+    s1 = _symbol_time(sync_word1, cp_len)
+    s2 = _symbol_time(sync_word2, cp_len)
+    return np.concatenate([s1, s2]).astype(np.complex64, copy=False)
+
+
+def resolve_gr_preamble_time(config_file: str) -> np.ndarray:
+    """用 GR ``ofdm_txrx`` sync word 生成与 RX 链一致的时域前导。"""
+    from gnuradio import digital  # noqa: PLC0415
+
+    fft_size, cp_len = resolve_ofdm_fft_cp(config_file)
+    occupied, pilots = resolve_gr_carrier_tuples(config_file)
+    sw1 = digital.ofdm_txrx._make_sync_word1(fft_size, occupied, pilots)
+    sw2 = digital.ofdm_txrx._make_sync_word2(fft_size, occupied, pilots)
+    return preamble_time_from_sync_words(fft_size, cp_len, sw1, sw2)
 
 
 def resolve_source_cache_file(config_file: str) -> str:

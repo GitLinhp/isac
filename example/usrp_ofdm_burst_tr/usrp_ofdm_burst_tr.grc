@@ -28,11 +28,10 @@ options:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 16
-    - 12.0
+    coordinate: [16, 12.0]
     rotation: 0
     state: enabled
+
 blocks:
 - name: RX_gain
   id: variable_qtgui_range
@@ -52,9 +51,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 560
-    - 12.0
+    coordinate: [560, 12.0]
     rotation: 0
     state: true
 - name: TX_gain
@@ -75,11 +72,21 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 432
-    - 12.0
+    coordinate: [432, 12.0]
     rotation: 0
     state: true
+- name: burst_period_ms
+  id: variable
+  parameters:
+    comment: message_strobe period for header_payload_demux frame_len
+    value: idle_ms
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1088, 96.0]
+    rotation: 0
+    state: enabled
 - name: config_file
   id: variable
   parameters:
@@ -89,23 +96,31 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 56
-    - 312.0
+    coordinate: [56, 312.0]
     rotation: 0
     state: enabled
 - name: corr_threshold
   id: variable
   parameters:
-    comment: SC preamble normalized correlation peak threshold
+    comment: ofdm_sync_sc_cfb correlation threshold
     value: '0.6'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 944
-    - 96.0
+    coordinate: [944, 96.0]
+    rotation: 0
+    state: enabled
+- name: cp_len
+  id: variable
+  parameters:
+    comment: from TOML [ofdm]
+    value: resolve_ofdm_fft_cp(config_file)[1]
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [432, 312.0]
     rotation: 0
     state: enabled
 - name: dd_vlen
@@ -117,9 +132,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1200
-    - 224.0
+    coordinate: [960, 224.0]
     rotation: 0
     state: enabled
 - name: device
@@ -131,9 +144,31 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 752
-    - 208.0
+    coordinate: [752, 208.0]
+    rotation: 0
+    state: enabled
+- name: fft_len
+  id: variable
+  parameters:
+    comment: from TOML [ofdm]
+    value: resolve_ofdm_fft_cp(config_file)[0]
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [312, 312.0]
+    rotation: 0
+    state: enabled
+- name: frame_len_tag
+  id: variable
+  parameters:
+    comment: header_payload_demux length tag key
+    value: '"frame_len"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 160.0]
     rotation: 0
     state: enabled
 - name: freq_trig_level
@@ -154,9 +189,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1400
-    - 20.0
+    coordinate: [1400, 20.0]
     rotation: 0
     state: true
 - name: gui_update_time_ms
@@ -168,9 +201,31 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1864
-    - 280.0
+    coordinate: [1664, 152.0]
+    rotation: 0
+    state: enabled
+- name: hdr_ack_msg
+  id: variable
+  parameters:
+    comment: frame_len message for header_payload_demux
+    value: pmt.dict_add(pmt.make_dict(), pmt.intern("frame_len"), pmt.from_long(resolve_ofdm_num_symbols(config_file)))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 224.0]
+    rotation: 0
+    state: enabled
+- name: header_len
+  id: variable
+  parameters:
+    comment: SC sync1+sync2 OFDM symbols (no comm header)
+    value: '2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1088, 160.0]
     rotation: 0
     state: enabled
 - name: idle_ms
@@ -182,9 +237,31 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 976
-    - 8.0
+    coordinate: [976, 8.0]
+    rotation: 0
+    state: enabled
+- name: n_carriers
+  id: variable
+  parameters:
+    comment: occupied subcarriers count (fft-2)
+    value: fft_len - 2
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 312.0]
+    rotation: 0
+    state: enabled
+- name: occupied_carriers
+  id: variable
+  parameters:
+    comment: GR sync word carrier set
+    value: (tuple(range(-n_carriers//2, 0)) + tuple(range(1, n_carriers//2+1)),)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [688, 312.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_samples
@@ -196,9 +273,44 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 752
-    - 336.0
+    coordinate: [752, 336.0]
+    rotation: 0
+    state: enabled
+- name: payload_syms
+  id: variable
+  parameters:
+    comment: from TOML [ofdm] num_symbols
+    value: resolve_ofdm_num_symbols(config_file)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [816, 312.0]
+    rotation: 0
+    state: enabled
+- name: pilot_carriers
+  id: variable
+  parameters:
+    comment: pilot tones outside occupied band
+    value: (tuple(range(-n_carriers//2-2, -n_carriers//2)) + tuple(range(n_carriers//2+1,
+      n_carriers//2+3)),)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [944, 312.0]
+    rotation: 0
+    state: enabled
+- name: rx_sync_min_buf
+  id: variable
+  parameters:
+    comment: min buffer for GR SC sync chain only (not full payload)
+    value: max(65536, int((header_len + 8) * (fft_len + cp_len)))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1088, 312.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -210,9 +322,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 312
-    - 160.0
+    coordinate: [312, 160.0]
     rotation: 0
     state: enabled
 - name: startup_delay_s
@@ -224,23 +334,43 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1608
-    - 232.0
+    coordinate: [1432, 192.0]
+    rotation: 0
+    state: enabled
+- name: sync_word1
+  id: variable
+  parameters:
+    comment: GR Schmidl-Cox sync word 1
+    value: list(digital.ofdm_txrx._make_sync_word1(fft_len, occupied_carriers, pilot_carriers))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1216, 312.0]
+    rotation: 0
+    state: enabled
+- name: sync_word2
+  id: variable
+  parameters:
+    comment: GR Schmidl-Cox sync word 2
+    value: list(digital.ofdm_txrx._make_sync_word2(fft_len, occupied_carriers, pilot_carriers))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1344, 312.0]
     rotation: 0
     state: enabled
 - name: time_lead_s
   id: variable
   parameters:
-    comment: tx_time lead ahead of wall clock (s)
+    comment: 'deprecated: no longer used (SOB-only TX)'
     value: '0.5'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1272
-    - 384.0
+    coordinate: [1224, 208.0]
     rotation: 0
     state: enabled
 - name: time_mag_trig_level
@@ -261,9 +391,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1128
-    - 20.0
+    coordinate: [1128, 20.0]
     rotation: 0
     state: true
 - name: tx_amp
@@ -284,9 +412,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 704
-    - 12.0
+    coordinate: [704, 12.0]
     rotation: 0
     state: true
 - name: address
@@ -303,9 +429,23 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 184
-    - 12.0
+    coordinate: [184, 12.0]
+    rotation: 0
+    state: enabled
+- name: analog_frequency_modulator_fc_0
+  id: analog_frequency_modulator_fc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: CFO correction from ofdm_sync_sc_cfb
+    maxoutbuf: '0'
+    minoutbuf: rx_sync_min_buf
+    sensitivity: (-2.0/fft_len)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [704, 1176.0]
     rotation: 0
     state: enabled
 - name: blocks_complex_to_mag_0
@@ -321,9 +461,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1432
-    - 640.0
+    coordinate: [1592, 848.0]
     rotation: 0
     state: disabled
 - name: blocks_complex_to_mag_tx
@@ -339,11 +477,81 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 440
-    - 912.0
+    coordinate: [400, 672.0]
     rotation: 0
     state: disabled
+- name: blocks_delay_0
+  id: blocks_delay
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: delayed IQ for CFO multiply
+    delay: (fft_len+cp_len)
+    maxoutbuf: '0'
+    minoutbuf: rx_sync_min_buf
+    num_ports: '1'
+    showports: 'False'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [464, 1048.0]
+    rotation: 0
+    state: enabled
+- name: blocks_message_strobe_0
+  id: blocks_message_strobe
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: periodic frame_len for header_payload_demux
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    msg: hdr_ack_msg
+    period: '1000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [608, 1324.0]
+    rotation: 0
+    state: enabled
+- name: blocks_multiply_xx_0
+  id: blocks_multiply_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: apply CFO correction
+    maxoutbuf: '0'
+    minoutbuf: rx_sync_min_buf
+    num_inputs: '2'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [936, 1072.0]
+    rotation: 0
+    state: enabled
+- name: blocks_null_sink_hdr
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: discard SC header symbols
+    num_inputs: '1'
+    type: complex
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1560, 1160.0]
+    rotation: 0
+    state: enabled
 - name: blocks_tag_debug_0
   id: blocks_tag_debug
   parameters:
@@ -360,9 +568,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 440
-    - 988.0
+    coordinate: [400, 748.0]
     rotation: 0
     state: disabled
 - name: dd_spectrum_plot_0
@@ -384,9 +590,52 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1672
-    - 920.0
+    coordinate: [1952, 1168.0]
+    rotation: 0
+    state: enabled
+- name: digital_header_payload_demux_0
+  id: digital_header_payload_demux
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 2 sync symbols then payload (scalar stream for Sionna demod)
+    guard_interval: cp_len
+    header_len: header_len
+    header_padding: '0'
+    items_per_symbol: fft_len
+    length_tag_key: frame_len_tag
+    maxoutbuf: '0'
+    minoutbuf: rx_sync_min_buf
+    output_symbols: 'True'
+    samp_rate: samp_rate
+    special_tags: ()
+    timing_tag_key: '""'
+    trigger_tag_key: '""'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1168, 1160.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_sync_sc_cfb_0
+  id: digital_ofdm_sync_sc_cfb
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Schmidl-Cox sync (rx_ofdm style)
+    cp_len: cp_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: rx_sync_min_buf
+    threshold: corr_threshold
+    use_even_carriers: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [432, 1172.0]
     rotation: 0
     state: enabled
 - name: freq
@@ -403,301 +652,54 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 432
-    - 284.0
+    coordinate: [432, 284.0]
     rotation: 0
     state: enabled
 - name: import_isac_gr_setup
   id: import
   parameters:
     alias: ''
-    comment: resolve_dd_output_vlen for dd_vlen / spectrogram
-    imports: from isac_imp.gr_setup import (resolve_dd_output_vlen, resolve_ofdm_samp_rate, resolve_ofdm_burst_len)
+    comment: resolve_* for GRC variables; digital/analog for SC sync chain
+    imports: from gnuradio import digital, analog; import pmt; from isac_imp.gr_setup
+      import (resolve_dd_output_vlen, resolve_ofdm_samp_rate, resolve_ofdm_burst_len,
+      resolve_ofdm_fft_cp, resolve_ofdm_num_symbols, resolve_gr_carrier_tuples)
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 40
-    - 176.0
+    coordinate: [40, 176.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_sensing_rx
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nGNU Radio 嵌入式 Python 块：OFDM 突发感知接收（SC 前导相关同步 + LS/DD）\n\n空口同步：仅在短滑动窗（约 8×前导长）上对已知\
-      \ Schmidl-Cox 时域前导做\n归一化相关找峰，估计粗 CFO；命中后再攒齐载荷 ``burst_len`` 样点：\n  y_rg = demodulator(y_time)\n\
-      \  h_freq = ls_channel_estimator(x_rg, y_rg)   # x_rg 来自离线 x_rg.npy\n  h_dd = delay_doppler_spectrum(h_freq,\
-      \ sens_mode=\"monostatic\")\n\n输出：log10(|h_dd|²) 按多普勒行输出的 float32 向量流，首行打 packet_len tag，\n供 DDSpectrogramPlot\
-      \ 显示。不打印距离/速度/RMSE。\n\nSystem / burst_len / OFDM 几何一律来自 TOML（config_file），不做 GRC OFDM 覆盖。\n不再依赖同机\
-      \ tx_schedule / rx_time 切包；x_rg 从 system.cache_file 目录加载。\n\n注意：__init__ 形参默认值须与 GRC 变量保持同步。\n\"\
-      \"\"\n\nfrom __future__ import annotations\n\nimport sys\nimport time\nimport traceback\nfrom collections\
-      \ import deque\nfrom typing import Any\n\nimport numpy as np\nimport pmt\nimport torch\nfrom gnuradio\
-      \ import gr\n\nfrom isac.system import System\nfrom isac.utils import set_random_seed\nfrom isac_imp.burst_pack\
-      \ import TPP_DONT\nfrom isac_imp.gr_setup import (\n    resolve_dd_output_vlen,\n    resolve_ofdm_burst_len,\n\
-      \    resolve_ofdm_fft_cp,\n    resolve_ofdm_samp_rate,\n)\nfrom isac_imp.ofdm_sc_preamble import\
-      \ (\n    apply_cfo,\n    default_search_span,\n    detect_preamble,\n    preamble_time,\n    preamble_tpl_rev_conj,\n\
-      )\n\n# ---------------------------------------------------------------------------\n# 模块常量与工具函数\n\
-      # ---------------------------------------------------------------------------\n\n# 默认 TOML（相对 PROJECT_ROOT/config）；须与\
-      \ GRC 默认值一致\n_DEFAULT_CONFIG = \"simulation/sensing/sensing_monostatic.toml\"\n_TAG_PACKET_LEN =\
-      \ pmt.intern(\"packet_len\")  # DD 帧首行：本帧多普勒行数\n_LOG_EPS = 1e-20  # log10(|h|²+ε) 防零\n_FORECAST_MAX\
-      \ = 16384  # 调度器单次输入上限；整帧靠内部 _buf 攒齐\n_LOG_PREFIX = \"[OFDM Burst Sensing RX]\"\n\n\ndef _dd_log_magnitude(h_dd:\
-      \ np.ndarray, log_eps: float = _LOG_EPS) -> np.ndarray:\n    \"\"\"|·|² → +ε → log10，形状保持 (n_doppler,\
-      \ n_delay)。\"\"\"\n    mag2 = np.abs(h_dd.astype(np.complex128, copy=False)) ** 2\n    return np.log10(mag2\
-      \ + float(log_eps)).astype(np.float32)\n\n\nclass blk(gr.basic_block):\n    \"\"\"\n    按 SC 前导相关切包的\
-      \ OFDM 感知接收。\n\n    工作流程：IQ 入缓冲 → 短窗前导相关 → 等载荷 → CFO 补偿 → LS/DD → 写出。\n    \"\"\"\n\n    # -----------------------------------------------------------------------\n\
-      \    # 初始化\n    # -----------------------------------------------------------------------\n\n  \
-      \  def __init__(\n        self,\n        config_file=_DEFAULT_CONFIG,\n        device=\"cpu\",\n\
-      \        seed=42,\n        idle_ms=900.0,\n        corr_threshold=0.6,\n    ):\n        \"\"\"\n\
-      \        参数:\n            - config_file / device / seed: TOML 路径与计算设备；OFDM 几何来自 TOML\n         \
-      \   - idle_ms: 切包处理后抑制期 (ms)，避免同一突发重复解调\n            - corr_threshold: 前导归一化相关峰门限（约 0~1）\n\n   \
-      \     输出向量长度 ``dd_vlen`` 由 TOML ``[dd_spectrum_roi]`` 经\n        ``resolve_dd_output_vlen`` 解析，不作为构造参数传入。\n\
-      \        \"\"\"\n        self._config_file = str(config_file)\n        self._device = str(device)\n\
-      \        self._seed = int(seed)\n        self._idle_ms = float(idle_ms)\n        self._corr_threshold\
-      \ = float(corr_threshold)\n        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n\
-      \        self._samp_rate = float(resolve_ofdm_samp_rate(self._config_file))\n        self._fft_size,\
-      \ self._cp_len = resolve_ofdm_fft_cp(self._config_file)\n        self._dd_vlen = resolve_dd_output_vlen(self._config_file)\n\
-      \        self._preamble = preamble_time(self._fft_size, self._cp_len)\n        self._preamble_len\
-      \ = int(self._preamble.size)\n        self._search_span = default_search_span(self._preamble_len)\n\
-      \        self._tpl_rev_conj = preamble_tpl_rev_conj(self._preamble)\n\n        gr.basic_block.__init__(\n\
-      \            self,\n            name=\"OFDM Burst Sensing RX\",\n            in_sig=[np.complex64],\n\
-      \            out_sig=[(np.float32, self._dd_vlen)],\n        )\n\n        # 运行时：本块独占 System、离线参考频域网格\n\
-      \        self._system: System | None = None\n        self._x_rg: Any = None\n\n        # IQ 缓冲；命中前导后挂起等载荷（cfo\
-      \ + 峰度量）\n        self._buf = np.zeros(0, dtype=np.complex64)\n        self._suppress_until = 0.0\n\
-      \        self._pending_cfo_hz: float | None = None\n        self._pending_peak: float | None = None\n\
-      \n        # 待输出的 DD 行：每项 (row_f32[vlen], is_first_row, n_rows)\n        self._pending_rows: deque[tuple[np.ndarray,\
-      \ bool, int]] = deque()\n\n        self.set_tag_propagation_policy(TPP_DONT)\n\n    @property\n\
-      \    def burst_len(self) -> int:\n        \"\"\"只读：载荷切包长度（样点数，不含前导）。\"\"\"\n        return self._burst_len\n\
-      \n    @property\n    def dd_vlen(self) -> int:\n        \"\"\"只读：输出向量长度（时延维列数）。\"\"\"\n        return\
-      \ self._dd_vlen\n\n    # -----------------------------------------------------------------------\n\
-      \    # System 与参考波形\n    # -----------------------------------------------------------------------\n\
-      \n    def _ensure_system(self) -> System:\n        \"\"\"懒构建本块独占 System；同步刷新 burst_len / 前导。\"\"\
-      \"\n        if self._system is None:\n            torch.set_num_threads(1)\n            set_random_seed(self._seed)\n\
-      \            self._system = System(self._config_file, device=self._device)\n            ofdm = self._system.params.ofdm\n\
-      \            if ofdm is not None:\n                self._burst_len = int(\n                    ofdm.num_symbols\
-      \ * (ofdm.fft_size + ofdm.cyclic_prefix_length)\n                )\n                self._samp_rate\
-      \ = float(ofdm.samp_rate)\n                self._fft_size = int(ofdm.fft_size)\n               \
-      \ self._cp_len = int(ofdm.cyclic_prefix_length)\n                self._preamble = preamble_time(self._fft_size,\
-      \ self._cp_len)\n                self._preamble_len = int(self._preamble.size)\n               \
-      \ self._search_span = default_search_span(self._preamble_len)\n                self._tpl_rev_conj\
-      \ = preamble_tpl_rev_conj(self._preamble)\n        return self._system\n\n    def _ensure_waveform(self)\
-      \ -> bool:\n        \"\"\"仅从缓存目录加载 x_rg.npy；成功返回 True。\"\"\"\n        if self._x_rg is not None:\n\
-      \            return True\n        system = self._ensure_system()\n        try:\n            self._x_rg\
-      \ = system.load_transmit_x_rg()\n        except (FileNotFoundError, ValueError):\n            return\
-      \ False\n        return True\n\n    def _invalidate(self) -> None:\n        \"\"\"GRC 参数变更时清空 System/波形/缓冲，并重算几何。\"\
-      \"\"\n        self._system = None\n        self._x_rg = None\n        self._buf = np.zeros(0, dtype=np.complex64)\n\
-      \        self._pending_rows.clear()\n        self._pending_cfo_hz = None\n        self._pending_peak\
-      \ = None\n        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n        self._samp_rate\
-      \ = float(resolve_ofdm_samp_rate(self._config_file))\n        self._fft_size, self._cp_len = resolve_ofdm_fft_cp(self._config_file)\n\
-      \        self._dd_vlen = resolve_dd_output_vlen(self._config_file)\n        self._preamble = preamble_time(self._fft_size,\
-      \ self._cp_len)\n        self._preamble_len = int(self._preamble.size)\n        self._search_span\
-      \ = default_search_span(self._preamble_len)\n        self._tpl_rev_conj = preamble_tpl_rev_conj(self._preamble)\n\
-      \n    # -----------------------------------------------------------------------\n    # GRC 可调属性\n\
-      \    # -----------------------------------------------------------------------\n\n    @property\n\
-      \    def config_file(self):\n        \"\"\"TOML 配置路径。\"\"\"\n        return self._config_file\n\n\
-      \    @config_file.setter\n    def config_file(self, value):\n        \"\"\"更新配置并清空运行时状态。\"\"\"\n\
-      \        self._config_file = str(value)\n        self._invalidate()\n\n    @property\n    def device(self):\n\
-      \        \"\"\"Sionna/Torch 计算设备。\"\"\"\n        return self._device\n\n    @device.setter\n   \
-      \ def device(self, value):\n        \"\"\"更新设备并清空运行时状态（需重建 System）。\"\"\"\n        self._device\
-      \ = str(value)\n        self._invalidate()\n\n    @property\n    def seed(self):\n        \"\"\"\
-      随机种子（构建 System 前传给 set_random_seed）。\"\"\"\n        return self._seed\n\n    @seed.setter\n    def\
-      \ seed(self, value):\n        \"\"\"更新种子并清空运行时状态。\"\"\"\n        self._seed = int(value)\n     \
-      \   self._invalidate()\n\n    @property\n    def idle_ms(self):\n        \"\"\"切包后抑制期（毫秒）。\"\"\"\
-      \n        return self._idle_ms\n\n    @idle_ms.setter\n    def idle_ms(self, value):\n        \"\
-      \"\"仅更新抑制时长；不影响已调度的 _suppress_until。\"\"\"\n        self._idle_ms = float(value)\n\n    @property\n\
-      \    def corr_threshold(self):\n        \"\"\"前导归一化相关峰门限。\"\"\"\n        return self._corr_threshold\n\
-      \n    @corr_threshold.setter\n    def corr_threshold(self, value):\n        \"\"\"仅更新门限。\"\"\"\n\
-      \        self._corr_threshold = float(value)\n\n    # -----------------------------------------------------------------------\n\
-      \    # 相关切包\n    # -----------------------------------------------------------------------\n\n \
-      \   def forecast(self, noutput_items, ninputs):\n        \"\"\"向调度器声明希望的输入量（不超过 _FORECAST_MAX）。\"\
-      \"\"\n        del noutput_items\n        # 搜峰态只需短窗进样；等载荷时仍靠内部 _buf 攒齐\n        need = min(max(self._search_span,\
-      \ 4096), _FORECAST_MAX)\n        return [need] * ninputs\n\n    def _trim_buf(self, keep_from_rel:\
-      \ int = 0) -> None:\n        \"\"\"丢弃缓冲前缀。\"\"\"\n        if keep_from_rel <= 0:\n            return\n\
-      \        keep_from_rel = min(keep_from_rel, self._buf.size)\n        self._buf = self._buf[keep_from_rel:]\n\
-      \n    def _queue_dd_frame(self, h_dd: torch.Tensor) -> None:\n        \"\"\"将 h_dd 转为 log 幅度行并入队。\"\
-      \"\"\n        arr = h_dd.detach().cpu().numpy()\n        while arr.ndim > 2:\n            arr =\
-      \ arr[0]\n        log_mag = _dd_log_magnitude(arr)\n        n_rows, n_cols = int(log_mag.shape[0]),\
-      \ int(log_mag.shape[1])\n        vlen = self._dd_vlen\n        for i in range(n_rows):\n       \
-      \     row = np.full(vlen, np.nan, dtype=np.float32)\n            n = min(n_cols, vlen)\n       \
-      \     row[:n] = log_mag[i, :n]\n            self._pending_rows.append((row, i == 0, n_rows))\n\n\
-      \    def _process_burst(self, y_np: np.ndarray) -> None:\n        \"\"\"对一段 y_time（载荷）做解调 → LS →\
-      \ DD，并将谱行入队。\"\"\"\n        if y_np.size < self.burst_len:\n            return\n        y_np = y_np[:\
-      \ self.burst_len]\n\n        system = self._ensure_system()\n        if not self._ensure_waveform():\n\
-      \            return\n        x_rg = self._x_rg\n\n        comps = system.components\n        if\
-      \ comps.demodulator is None:\n            return\n\n        y_time = torch.from_numpy(np.ascontiguousarray(y_np)).to(\n\
-      \            device=system.device,\n            dtype=torch.complex64,\n        )\n        while\
-      \ y_time.dim() < 3:\n            y_time = y_time.unsqueeze(0)\n\n        with torch.inference_mode():\n\
-      \            y_rg = comps.demodulator(y_time)\n            h_freq = comps.ls_channel_estimator(x_rg,\
-      \ y_rg)\n            h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=\"monostatic\")\n   \
-      \         self._queue_dd_frame(h_dd)\n\n    def _finish_pending_burst(self) -> None:\n        \"\
-      \"\"等载荷态：缓冲已从 preamble 起点对齐，齐套后切包处理。\"\"\"\n        need = self._preamble_len + self.burst_len\n\
-      \        if self._buf.size < need:\n            return\n        assert self._pending_cfo_hz is not\
-      \ None\n        y_burst = self._buf[self._preamble_len : need].copy()\n        y_burst = apply_cfo(y_burst,\
-      \ self._pending_cfo_hz, self._samp_rate)\n        peak = float(self._pending_peak or 0.0)\n    \
-      \    cfo = float(self._pending_cfo_hz)\n        self._trim_buf(need)\n        self._pending_cfo_hz\
-      \ = None\n        self._pending_peak = None\n        self._suppress_until = time.monotonic() + max(0.0,\
-      \ self._idle_ms / 1000.0)\n        print(\n            f\"{_LOG_PREFIX} sync peak={peak:.3f} \"\n\
-      \            f\"cfo_hz={cfo:.1f} payload_len={y_burst.size}\",\n            file=sys.stderr,\n \
-      \           flush=True,\n        )\n        try:\n            self._process_burst(y_burst)\n   \
-      \     except Exception:\n            traceback.print_exc(file=sys.stderr)\n\n    def _try_slice_and_process(self)\
-      \ -> None:\n        \"\"\"短窗搜峰 / 等载荷 / 抑制；禁止对整段载荷缓冲做相关。\"\"\"\n        need = self._preamble_len\
-      \ + self.burst_len\n        # 等载荷时允许攒满一帧；搜峰时缓冲上限为 search_span\n        if self._pending_cfo_hz is\
-      \ not None:\n            max_buf = need + self._search_span\n        else:\n            max_buf\
-      \ = self._search_span * 2\n        if self._buf.size > max_buf:\n            self._trim_buf(self._buf.size\
-      \ - max_buf)\n\n        if time.monotonic() < self._suppress_until:\n            # 抑制期：只裁剪，不做相关\n\
-      \            return\n\n        # 等载荷：不再相关\n        if self._pending_cfo_hz is not None:\n      \
-      \      self._finish_pending_burst()\n            return\n\n        # 搜峰态\n        if self._buf.size\
-      \ < self._preamble_len:\n            return\n\n        det = detect_preamble(\n            self._buf,\n\
-      \            self._preamble,\n            threshold=self._corr_threshold,\n            fft_size=self._fft_size,\n\
-      \            cp_len=self._cp_len,\n            samp_rate=self._samp_rate,\n            max_search=self._search_span,\n\
-      \            tpl_rev_conj=self._tpl_rev_conj,\n        )\n        if det is None:\n            #\
-      \ 未命中：只保留短窗尾部\n            if self._buf.size > self._search_span:\n                self._trim_buf(self._buf.size\
-      \ - self._search_span)\n            return\n\n        # 对齐到 preamble 起点，进入等载荷\n        if det.start_idx\
-      \ > 0:\n            self._trim_buf(det.start_idx)\n        self._pending_cfo_hz = float(det.cfo_hz)\n\
-      \        self._pending_peak = float(det.peak_metric)\n        self._finish_pending_burst()\n\n \
-      \   # -----------------------------------------------------------------------\n    # 输出与 general_work\n\
-      \    # -----------------------------------------------------------------------\n\n    def _produce_pending(self,\
-      \ out: np.ndarray) -> int:\n        \"\"\"写出待发送 DD 行，返回写出行数。\"\"\"\n        n_out = len(out)\n \
-      \       produced = 0\n        while produced < n_out and self._pending_rows:\n            row, is_first,\
-      \ n_rows = self._pending_rows.popleft()\n            if is_first:\n                abs_out = self.nitems_written(0)\
-      \ + produced\n                self.add_item_tag(\n                    0, abs_out, _TAG_PACKET_LEN,\
-      \ pmt.from_long(int(n_rows))\n                )\n            out[produced][:] = row\n          \
-      \  produced += 1\n        return produced\n\n    def general_work(self, input_items, output_items):\n\
-      \        \"\"\"\n        主工作函数：消费 IQ → 短窗前导相关切包感知 → 写出 DD 行。\n\n        无 x_rg 缓存时仍 consume 输入以免堵死上游；返回值为本次写出的行数。\n\
-      \        \"\"\"\n        inp = input_items[0]\n        out = output_items[0]\n        n_in = len(inp)\n\
-      \n        if n_in > 0:\n            if not self._ensure_waveform():\n                self.consume(0,\
-      \ n_in)\n            else:\n                self._buf = np.concatenate(\n                    (self._buf,\
-      \ np.asarray(inp, dtype=np.complex64))\n                )\n                self.consume(0, n_in)\n\
-      \                self._try_slice_and_process()\n\n        return self._produce_pending(out)\n"
+    _source_code: "\"\"\"\nGNU Radio 嵌入式 Python 块：OFDM 突发感知接收（GR 同步后 LS/DD）\n\n上游 ``header_payload_demux`` 在 SC 同步 + CFO 补偿后按 OFDM 符号向量（vlen=fft_len）\n输出载荷；本块按符号计数攒齐 ``burst_len`` 样点后异步执行 LS/DD。\n\nSystem / burst_len / OFDM 几何一律来自 TOML（config_file）。\n注意：__init__ 形参默认值须与 GRC 变量保持同步。\n\"\"\"\n\nfrom __future__ import annotations\n\nimport queue\nimport sys\nimport traceback\nfrom collections import deque\nfrom concurrent.futures import ThreadPoolExecutor\nfrom typing import Any\n\nimport numpy as np\nimport pmt\nimport torch\nfrom gnuradio import gr\n\nfrom isac.system import System\nfrom isac.utils import set_random_seed\nfrom isac_imp.burst_pack import TPP_DONT\nfrom isac_imp.gr_setup import (\n    resolve_dd_output_vlen,\n    resolve_ofdm_burst_len,\n    resolve_ofdm_fft_cp,\n    resolve_ofdm_num_symbols,\n)\n\n# ---------------------------------------------------------------------------\n# 模块常量\n# ---------------------------------------------------------------------------\n\n_DEFAULT_CONFIG = \"simulation/sensing/sensing_monostatic.toml\"\n_TAG_PACKET_LEN = pmt.intern(\"packet_len\")\n_TAG_FRAME_LEN = pmt.intern(\"frame_len\")\n_LOG_EPS = 1e-20\n_LOG_PREFIX = \"[OFDM Burst Sensing RX]\"\n\n\ndef _dd_log_magnitude(h_dd: np.ndarray, log_eps: float = _LOG_EPS) -> np.ndarray:\n    \"\"\"|·|² → +ε → log10，形状保持 (n_doppler, n_delay)。\"\"\"\n    mag2 = np.abs(h_dd.astype(np.complex128, copy=False)) ** 2\n    return np.log10(mag2 + float(log_eps)).astype(np.float32)\n\n\nclass blk(gr.sync_block):\n    \"\"\"GR 同步后按 OFDM 符号向量计数攒包的感知接收。\"\"\"\n\n    def __init__(\n        self,\n        config_file=_DEFAULT_CONFIG,\n        device=\"cpu\",\n        seed=42,\n    ):\n        self._config_file = str(config_file)\n        self._device = str(device)\n        self._seed = int(seed)\n        self._fft_size, self._cp_len = resolve_ofdm_fft_cp(self._config_file)\n        self._payload_syms = int(resolve_ofdm_num_symbols(self._config_file))\n        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n        self._dd_vlen = resolve_dd_output_vlen(self._config_file)\n\n        gr.sync_block.__init__(\n            self,\n            name=\"OFDM Burst Sensing RX\",\n            in_sig=[(np.complex64, self._fft_size)],\n            out_sig=[(np.float32, self._dd_vlen)],\n        )\n\n        self._system: System | None = None\n        self._x_rg: Any = None\n\n        self._sym_buf = np.zeros(\n            (self._payload_syms, self._fft_size), dtype=np.complex64\n        )\n        self._sym_idx = 0\n\n        self._executor: ThreadPoolExecutor | None = None\n        self._worker_busy = False\n        self._result_queue: queue.Queue[\n            list[tuple[np.ndarray, bool, int]]\n        ] = queue.Queue()\n        self._pending_rows: deque[tuple[np.ndarray, bool, int]] = deque()\n\n        self.set_tag_propagation_policy(TPP_DONT)\n        self._apply_min_input_buffer()\n\n    def _apply_min_input_buffer(self) -> None:\n        if hasattr(self, \"set_min_input_buffer\"):\n            self.set_min_input_buffer(max(4096, self._payload_syms))\n\n    @property\n    def burst_len(self) -> int:\n        return self._burst_len\n\n    @property\n    def dd_vlen(self) -> int:\n        return self._dd_vlen\n\n    def start(self):\n        self._shutdown_worker()\n        self._executor = ThreadPoolExecutor(\n            max_workers=1, thread_name_prefix=\"sensing_rx\"\n        )\n        self._worker_busy = False\n        self._sym_idx = 0\n        return True\n\n    def stop(self):\n        self._shutdown_worker()\n        return True\n\n    def _shutdown_worker(self) -> None:\n        if self._executor is not None:\n            self._executor.shutdown(wait=False, cancel_futures=True)\n            self._executor = None\n        self._worker_busy = False\n        while True:\n            try:\n                self._result_queue.get_nowait()\n            except queue.Empty:\n                break\n\n    def _ensure_system(self) -> System:\n        if self._system is None:\n            torch.set_num_threads(1)\n            set_random_seed(self._seed)\n            self._system = System(self._config_file, device=self._device)\n            ofdm = self._system.params.ofdm\n            if ofdm is not None:\n                self._fft_size = int(ofdm.fft_size)\n                self._cp_len = int(ofdm.cyclic_prefix_length)\n                self._payload_syms = int(ofdm.num_symbols)\n                self._burst_len = int(\n                    ofdm.num_symbols * (ofdm.fft_size + ofdm.cyclic_prefix_length)\n                )\n                self._sym_buf = np.zeros(\n                    (self._payload_syms, self._fft_size), dtype=np.complex64\n                )\n                self._apply_min_input_buffer()\n        return self._system\n\n    def _ensure_waveform(self) -> bool:\n        if self._x_rg is not None:\n            return True\n        system = self._ensure_system()\n        try:\n            self._x_rg = system.load_transmit_x_rg()\n        except (FileNotFoundError, ValueError):\n            return False\n        return True\n\n    def _invalidate(self) -> None:\n        self._shutdown_worker()\n        self._system = None\n        self._x_rg = None\n        self._sym_idx = 0\n        self._pending_rows.clear()\n        self._fft_size, self._cp_len = resolve_ofdm_fft_cp(self._config_file)\n        self._payload_syms = int(resolve_ofdm_num_symbols(self._config_file))\n        self._burst_len = int(resolve_ofdm_burst_len(self._config_file))\n        self._dd_vlen = resolve_dd_output_vlen(self._config_file)\n        self._sym_buf = np.zeros(\n            (self._payload_syms, self._fft_size), dtype=np.complex64\n        )\n        self._apply_min_input_buffer()\n\n    @property\n    def config_file(self):\n        return self._config_file\n\n    @config_file.setter\n    def config_file(self, value):\n        self._config_file = str(value)\n        self._invalidate()\n\n    @property\n    def device(self):\n        return self._device\n\n    @device.setter\n    def device(self, value):\n        self._device = str(value)\n        self._invalidate()\n\n    @property\n    def seed(self):\n        return self._seed\n\n    @seed.setter\n    def seed(self, value):\n        self._seed = int(value)\n        self._invalidate()\n\n    def _rows_from_h_dd(self, h_dd: torch.Tensor) -> list[tuple[np.ndarray, bool, int]]:\n        arr = h_dd.detach().cpu().numpy()\n        while arr.ndim > 2:\n            arr = arr[0]\n        log_mag = _dd_log_magnitude(arr)\n        n_rows, n_cols = int(log_mag.shape[0]), int(log_mag.shape[1])\n        vlen = self._dd_vlen\n        rows: list[tuple[np.ndarray, bool, int]] = []\n        for i in range(n_rows):\n            row = np.full(vlen, np.nan, dtype=np.float32)\n            n = min(n_cols, vlen)\n            row[:n] = log_mag[i, :n]\n            rows.append((row, i == 0, n_rows))\n        return rows\n\n    def _compute_burst_rows(\n        self, y_np: np.ndarray\n    ) -> list[tuple[np.ndarray, bool, int]]:\n        burst_len = self._burst_len\n        if y_np.size < burst_len:\n            return []\n        y_np = y_np[:burst_len]\n\n        system = self._ensure_system()\n        if self._x_rg is None:\n            return []\n        x_rg = self._x_rg\n\n        comps = system.components\n        if comps.demodulator is None:\n            return []\n\n        y_time = torch.from_numpy(np.ascontiguousarray(y_np)).to(\n            device=system.device,\n            dtype=torch.complex64,\n        )\n        while y_time.dim() < 3:\n            y_time = y_time.unsqueeze(0)\n\n        with torch.inference_mode():\n            y_rg = comps.demodulator(y_time)\n            h_freq = comps.ls_channel_estimator(x_rg, y_rg)\n            h_dd = comps.delay_doppler_spectrum(h_freq, sens_mode=\"monostatic\")\n            return self._rows_from_h_dd(h_dd)\n\n    def _on_burst_done(self, future) -> None:\n        try:\n            rows = future.result()\n            if rows:\n                self._result_queue.put(rows)\n        except Exception:\n            traceback.print_exc(file=sys.stderr)\n        finally:\n            self._worker_busy = False\n\n    def _submit_burst_async(self, y_burst: np.ndarray) -> None:\n        if self._executor is None or self._worker_busy:\n            return\n        self._worker_busy = True\n        print(\n            f\"{_LOG_PREFIX} payload_len={y_burst.size} (GR sync)\",\n            file=sys.stderr,\n            flush=True,\n        )\n        fut = self._executor.submit(self._compute_burst_rows, y_burst)\n        fut.add_done_callback(self._on_burst_done)\n\n    def _drain_worker_results(self) -> None:\n        while True:\n            try:\n                rows = self._result_queue.get_nowait()\n            except queue.Empty:\n                break\n            self._pending_rows.extend(rows)\n\n    def _has_frame_len_tag(self, abs_offset: int) -> bool:\n        for tag in self.get_tags_in_range(0, abs_offset, abs_offset + 1):\n            if tag.key == _TAG_FRAME_LEN:\n                return True\n        return False\n\n    def _finish_burst(self) -> None:\n        y_burst = self._sym_buf.reshape(-1).astype(np.complex64, copy=False)\n        self._sym_idx = 0\n        self._submit_burst_async(y_burst)\n\n    def _process_symbol(self, sym: np.ndarray, abs_offset: int) -> None:\n        if self._sym_idx > 0 and self._has_frame_len_tag(abs_offset):\n            self._sym_idx = 0\n        self._sym_buf[self._sym_idx, :] = np.asarray(sym, dtype=np.complex64).ravel()[\n            : self._fft_size\n        ]\n        self._sym_idx += 1\n        if self._sym_idx >= self._payload_syms:\n            self._finish_burst()\n\n    def work(self, input_items, output_items):\n        self._drain_worker_results()\n\n        inp = input_items[0]\n        out = output_items[0]\n        n_in = len(inp)\n        produced = 0\n\n        if n_in > 0:\n            if not self._ensure_waveform():\n                pass\n            else:\n                base = int(self.nitems_read(0))\n                for i in range(n_in):\n                    self._process_symbol(inp[i], base + i)\n\n        while produced < len(out) and self._pending_rows:\n            row, is_first, n_rows = self._pending_rows.popleft()\n            if is_first:\n                abs_out = self.nitems_written(0) + produced\n                self.add_item_tag(\n                    0, abs_out, _TAG_PACKET_LEN, pmt.from_long(int(n_rows))\n                )\n            out[produced][:] = row\n            produced += 1\n\n        return produced\n"
     affinity: ''
     alias: ''
-    comment: SC short-window corr → LS/DD
+    comment: GR sync + tag-driven payload + async LS/DD
     config_file: config_file
-    corr_threshold: corr_threshold
     device: device
-    idle_ms: idle_ms
     maxoutbuf: '0'
     minoutbuf: '0'
     seed: '42'
   states:
-    _io_cache: ('OFDM Burst Sensing RX', 'blk', [('config_file', "'simulation/sensing/sensing_monostatic.toml'"),
-      ('device', "'cpu'"), ('seed', '42'), ('idle_ms', '900.0'), ('corr_threshold', '0.6')], [('0', 'complex',
-      1)], [('0', 'float', 21)], '\n    按 SC 前导相关切包的 OFDM 感知接收。\n\n    工作流程：IQ 入缓冲 → 前导相关 → CFO 补偿载荷 →
-      LS/DD → 行队列写出。\n    ', ['config_file', 'corr_threshold', 'device', 'idle_ms', 'seed'])
+    _io_cache: "('OFDM Burst Sensing RX', 'blk', [('config_file', \"'simulation/sensing/sensing_monostatic.toml'\"\
+      ), ('device', \"'cpu'\"), ('seed', '42')], [('0', 'complex', 1)], [('0', 'float',\
+      \ 21)], 'GR \u540C\u6B65\u540E\u6309 tag \u5207\u5305\u7684 OFDM \u611F\u77E5\
+      \u63A5\u6536\u3002', ['config_file', 'device', 'seed'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1424
-    - 928.0
+    coordinate: [1728, 1220.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_source
   id: epy_block
   parameters:
-    _source_code: "\"\"\"\nGNU Radio 嵌入式 Python 块：OFDM 突发源（SC 前导 + x_time.npy 时域重放）\n\n周期性输出 OFDM 时域突发，并在流上附加\
-      \ UHD 所需的 stream tag：\n  tx_sob  — 突发开始（Start Of Burst）\n  tx_time — 计划发射时刻（绝对 Unix 时间，秒 + 小数部分）\n\
-      \  tx_eob  — 突发结束（End Of Burst）\n\nStyle 1 约定：下游 USRP Sink 的 len_tag_name 必须留空，由 tag 而非包长 tag 界定突发边界。\n\
-      \n发射链：由 config_file 解析 source.cache_file（缓存目录）与 OFDM 几何，\n加载 x_time.npy（载荷，未缩放）→ 前缀拼接 Schmidl-Cox\
-      \ 时域前导 → 写出时乘\n当前 tx_amp 周期性重放。前导运行时生成，无需重写缓存。\n空口同步由 RX 对前导做相关完成；本块不再发 tx_schedule 消息。\n\n注意：__init__\
-      \ 形参默认值须与 GRC 变量保持同步。\n\"\"\"\n\nfrom __future__ import annotations\n\nimport sys\nimport time\n\
-      from pathlib import Path\n\nimport numpy as np\nfrom gnuradio import gr\n\nfrom isac import PROJECT_ROOT\n\
-      from isac_imp.burst_pack import (\n    TPP_DONT,\n    add_style1_eob,\n    add_style1_sob_time,\n\
-      \    load_burst_buffer,\n    schedule_idle_delay_s,\n)\nfrom isac_imp.gr_setup import resolve_ofdm_fft_cp,\
-      \ resolve_ofdm_samp_rate, resolve_source_cache_file\nfrom isac_imp.ofdm_sc_preamble import preamble_time\n\
-      \n# ---------------------------------------------------------------------------\n# 模块常量\n# ---------------------------------------------------------------------------\n\
-      \n# 默认 TOML（相对 PROJECT_ROOT/config）；须与 GRC 默认值一致\n_DEFAULT_CONFIG = \"simulation/sensing/sensing_monostatic.toml\"\
-      \n_LOG_PREFIX = \"[OFDM Burst Source]\"  # stderr 日志前缀\n\n\nclass blk(gr.basic_block):\n    \"\"\
-      \"\n    Style 1 OFDM 突发源：SC 前导 + x_time.npy，周期性重放并打 UHD 定时 tag。\n\n    工作流程：突发期内从缓存输出样本并打 tag；突发结束后进入\
-      \ idle 静默期，\n    静默期不产出样本（general_work 返回 0），到期再启动下一突发。\n    \"\"\"\n\n    # -----------------------------------------------------------------------\n\
-      \    # 初始化\n    # -----------------------------------------------------------------------\n\n  \
-      \  def __init__(\n        self,\n        config_file=_DEFAULT_CONFIG,\n        idle_ms=900.0,\n\
-      \        tx_amp=0.3,\n        time_lead_s=0.3,\n        startup_delay_s=0.2,\n    ):\n        \"\
-      \"\"\n        参数:\n            - config_file:      TOML 路径；从中解析 source.cache_file（目录）与 OFDM 几何\n\
-      \            - idle_ms:          两次突发之间的纯静默间隔 (毫秒)，不含突发本身时长\n            - tx_amp:           输出幅度缩放（写出时相乘，可实时调节）\n\
-      \            - time_lead_s:      tx_time 相对当前 wall-clock 的提前量 (秒)\n            - startup_delay_s:\
-      \  首突发启动前的初始等待 (秒)\n        \"\"\"\n        gr.basic_block.__init__(\n            self,\n      \
-      \      name=\"OFDM Burst Source\",\n            in_sig=[],\n            out_sig=[np.complex64],\n\
-      \        )\n        self._config_file = str(config_file)\n        self._cache_dir, self._samp_rate,\
-      \ self._fft_size, self._cp_len = (\n            self._resolve_from_config(self._config_file)\n \
-      \       )\n        self._idle_ms = float(idle_ms)\n        self._tx_amp = float(tx_amp)\n      \
-      \  self._time_lead_s = float(time_lead_s)\n        self._startup_delay_s = float(startup_delay_s)\n\
-      \n        # 突发状态机：是否正在输出突发、当前写出位置、下一突发允许开始的 monotonic 时刻\n        self._burst_active = False\n \
-      \       self._burst_idx = 0\n        self._next_burst_at = time.monotonic() + self._startup_delay_s\n\
-      \n        # 未缩放缓存波形（前导+载荷）、样本数、静默时长（秒）；写出时再乘 _tx_amp\n        self._burst_buffer: np.ndarray | None\
-      \ = None\n        self._burst_len = 0\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n\
-      \n        # 源块无输入 tag；缓冲至少能装下一段突发，避免调度器切得过碎\n        self.set_tag_propagation_policy(TPP_DONT)\n\
-      \        self.set_min_output_buffer(4096)\n\n    # -----------------------------------------------------------------------\n\
-      \    # 配置解析与缓存加载\n    # -----------------------------------------------------------------------\n\
-      \n    @staticmethod\n    def _resolve_from_config(config_file: str) -> tuple[str, float, int, int]:\n\
-      \        \"\"\"解析 cache 目录、samp_rate、fft_size、cp（不建 System）。\"\"\"\n        cache_dir = resolve_source_cache_file(config_file)\n\
-      \        samp_rate = float(resolve_ofdm_samp_rate(config_file))\n        fft_size, cp_len = resolve_ofdm_fft_cp(config_file)\n\
-      \        return cache_dir, samp_rate, fft_size, cp_len\n\n    def start(self):\n        \"\"\"流图启动时预热加载波形，避免首包冷启动导致\
-      \ Sink underflow。\"\"\"\n        self._ensure_burst()\n        self._next_burst_at = time.monotonic()\
-      \ + self._startup_delay_s\n        return True\n\n    def _log(self, msg: str) -> None:\n      \
-      \  \"\"\"向 stderr 输出带前缀的日志（flush，便于实时观察）。\"\"\"\n        print(f\"{_LOG_PREFIX} {msg}\", file=sys.stderr,\
-      \ flush=True)\n\n    def _resolve_cache_dir(self) -> Path:\n        \"\"\"将缓存目录解析为绝对路径；相对路径相对 PROJECT_ROOT。\"\
-      \"\"\n        path = Path(self._cache_dir)\n        if not path.is_absolute():\n            path\
-      \ = PROJECT_ROOT / path\n        return path\n\n    def _invalidate_burst(self) -> None:\n     \
-      \   \"\"\"GRC 参数变更时清空本地缓存，下次 general_work 触发重建。\"\"\"\n        self._burst_buffer = None\n\n   \
-      \ def _ensure_burst(self) -> np.ndarray:\n        \"\"\"懒加载入口：缓存未命中时 np.load + 拼前导，返回突发缓冲。\"\"\"\
-      \n        if self._burst_buffer is None:\n            self._load_burst()\n        assert self._burst_buffer\
-      \ is not None\n        return self._burst_buffer\n\n    def _load_burst(self) -> None:\n       \
-      \ \"\"\"加载 x_time.npy，前缀 SC 前导，供写出时乘当前 tx_amp。\"\"\"\n        path = self._resolve_cache_dir() /\
-      \ \"x_time.npy\"\n        payload = load_burst_buffer(path, tx_amp=1.0)\n        preamble = preamble_time(self._fft_size,\
-      \ self._cp_len)\n        burst_buffer = np.concatenate([preamble, payload]).astype(\n          \
-      \  np.complex64, copy=False\n        )\n        self._burst_buffer = burst_buffer\n        self._burst_len\
-      \ = int(burst_buffer.size)\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n        self.set_min_output_buffer(max(4096,\
-      \ self._burst_len * 2))\n        self._log(\n            f\"load x_time.npy + SC preamble ok config={self._config_file!r}\
-      \ \"\n            f\"path={path} preamble_len={preamble.size} payload_len={payload.size} \"\n  \
-      \          f\"burst_len={self._burst_len} samp_rate={self._samp_rate}\"\n        )\n\n    def _recompute_idle(self)\
-      \ -> None:\n        \"\"\"仅 idle_ms 变更时重算静默期，无需重建波形。\"\"\"\n        self._idle_s = max(0.0, self._idle_ms\
-      \ / 1000.0)\n\n    # -----------------------------------------------------------------------\n \
-      \   # GRC 可调属性\n    # -----------------------------------------------------------------------\n\n\
-      \    @property\n    def config_file(self):\n        \"\"\"TOML 配置路径（相对 config/ 或绝对路径）。\"\"\"\n \
-      \       return self._config_file\n\n    @config_file.setter\n    def config_file(self, value):\n\
-      \        \"\"\"更新配置路径，重新解析缓存目录与 OFDM 几何，并清空突发缓存。\"\"\"\n        self._config_file = str(value)\n\
-      \        self._cache_dir, self._samp_rate, self._fft_size, self._cp_len = (\n            self._resolve_from_config(self._config_file)\n\
-      \        )\n        self._invalidate_burst()\n\n    @property\n    def cache_file(self):\n     \
-      \   \"\"\"只读：由 config_file 解析得到的缓存目录路径。\"\"\"\n        return self._cache_dir\n\n    @property\n\
-      \    def samp_rate(self):\n        \"\"\"只读：由 config_file 解析得到的 OFDM 采样率。\"\"\"\n        return\
-      \ self._samp_rate\n\n    @property\n    def burst_len(self):\n        \"\"\"只读：当前突发缓冲的样本数（含前导；未加载前为\
-      \ 0）。\"\"\"\n        return self._burst_len\n\n    @property\n    def idle_ms(self):\n        \"\
-      \"\"两次突发之间的纯静默间隔（毫秒）。\"\"\"\n        return self._idle_ms\n\n    @idle_ms.setter\n    def idle_ms(self,\
-      \ value):\n        \"\"\"更新静默间隔并重算 _idle_s，无需重建波形。\"\"\"\n        self._idle_ms = float(value)\n\
-      \        self._recompute_idle()\n\n    @property\n    def tx_amp(self):\n        \"\"\"输出幅度缩放系数（写出时相乘，可实时调节）。\"\
-      \"\"\n        return self._tx_amp\n\n    @tx_amp.setter\n    def tx_amp(self, value):\n        \"\
-      \"\"仅更新幅度系数；不重载波形，下一写出块立即生效。\"\"\"\n        self._tx_amp = float(value)\n\n    @property\n    def\
-      \ time_lead_s(self):\n        \"\"\"tx_time 相对 wall-clock 的提前量（秒）。\"\"\"\n        return self._time_lead_s\n\
-      \n    @time_lead_s.setter\n    def time_lead_s(self, value):\n        \"\"\"仅更新提前量；已发出的 tag 不受影响。\"\
-      \"\"\n        self._time_lead_s = float(value)\n\n    @property\n    def startup_delay_s(self):\n\
-      \        \"\"\"首突发启动前的初始等待（秒）。\"\"\"\n        return self._startup_delay_s\n\n    @startup_delay_s.setter\n\
-      \    def startup_delay_s(self, value):\n        \"\"\"仅更新参数；已调度的 _next_burst_at 需在 start() 中重设。\"\
-      \"\"\n        self._startup_delay_s = float(value)\n\n    # -----------------------------------------------------------------------\n\
-      \    # 调度与 general_work\n    # -----------------------------------------------------------------------\n\
-      \n    def forecast(self, noutput_items, ninputs):\n        \"\"\"无输入端口，不向调度器声明输入需求。\"\"\"\n    \
-      \    del noutput_items, ninputs\n        return []\n\n    def _schedule_delay_s(self) -> float:\n\
-      \        \"\"\"当前突发结束后到下一突发开始前的纯 idle 时长（秒）。\"\"\"\n        return schedule_idle_delay_s(self._burst_len,\
-      \ self._samp_rate, self._idle_s)\n\n    def general_work(self, input_items, output_items):\n   \
-      \     \"\"\"\n        主工作函数：按块从缓存重放 OFDM 突发，在突发首尾附加 UHD tag。\n\n        静默期内返回 0（不消耗输出缓冲）；突发可分多次\
-      \ general_work 完成。\n        返回值 n 表示本次写入输出端口的有效样本数。\n        \"\"\"\n        del input_items\n \
-      \       burst_buffer = self._ensure_burst()\n        out = output_items[0]\n\n        # idle：未到下一突发时刻则不产出样本\n\
-      \        if not self._burst_active:\n            if time.monotonic() < self._next_burst_at:\n  \
-      \              return 0\n            # 启动新突发\n            self._burst_active = True\n          \
-      \  self._burst_idx = 0\n\n        # 本轮可写样本数：受输出缓冲与突发剩余长度限制\n        n_remain = self._burst_len -\
-      \ self._burst_idx\n        n = min(len(out), n_remain)\n        if n <= 0:\n            return 0\n\
-      \n        # 从缓存拷贝一段并乘当前 tx_amp（实时可调）\n        out[:n] = burst_buffer[self._burst_idx : self._burst_idx\
-      \ + n] * np.float32(\n            self._tx_amp\n        )\n\n        abs_out = self.nitems_written(0)\n\
-      \        # 突发首样本：打 SOB + tx_time（仅服务 USRP 定时；无 tx_schedule）\n        if self._burst_idx == 0:\n\
-      \            epoch = time.time() + self._time_lead_s\n            add_style1_sob_time(self, 0, abs_out,\
-      \ epoch)\n\n        self._burst_idx += n\n        # 突发末样本：打 EOB，进入 idle，调度下一突发时刻\n        if self._burst_idx\
-      \ >= self._burst_len:\n            add_style1_eob(self, 0, abs_out + n - 1)\n            self._burst_active\
-      \ = False\n            self._next_burst_at = time.monotonic() + self._schedule_delay_s()\n\n   \
-      \     return n\n"
+    _source_code: "\"\"\"\nGNU Radio 嵌入式 Python 块：OFDM 突发源（SC 前导 + x_time.npy 时域重放）\n\n周期性输出 OFDM 时域突发，并在流上附加 UHD 所需的 stream tag：\n  tx_sob  — 突发开始（Start Of Burst）\n  tx_eob  — 突发结束（End Of Burst）\n\nStyle 1 约定：下游 USRP Sink 的 len_tag_name 必须留空，由 tag 而非包长 tag 界定突发边界。\n不使用 tx_time 定时发射（RX 已用 SC 前导空口同步）。\n\n发射链：由 config_file 解析 source.cache_file（缓存目录）与 OFDM 几何，\n加载 x_time.npy（载荷，未缩放）→ 前缀拼接 Schmidl-Cox 时域前导 → 写出时乘\n当前 tx_amp 周期性重放。前导运行时生成，无需重写缓存。\n空口同步由 RX 对前导做相关完成；本块不再发 tx_schedule 消息。\n\n注意：__init__ 形参默认值须与 GRC 变量保持同步。\n\"\"\"\n\nfrom __future__ import annotations\n\nimport sys\nimport time\nfrom pathlib import Path\n\nimport numpy as np\nfrom gnuradio import gr\n\nfrom isac import PROJECT_ROOT\nfrom isac_imp.burst_pack import (\n    TPP_DONT,\n    add_style1_eob,\n    add_style1_sob,\n    load_burst_buffer,\n    schedule_idle_delay_s,\n)\nfrom isac_imp.gr_setup import (\n    resolve_gr_preamble_time,\n    resolve_ofdm_fft_cp,\n    resolve_ofdm_samp_rate,\n    resolve_preamble_len,\n    resolve_source_cache_file,\n)\n\n# ---------------------------------------------------------------------------\n# 模块常量\n# ---------------------------------------------------------------------------\n\n# 默认 TOML（相对 PROJECT_ROOT/config）；须与 GRC 默认值一致\n_DEFAULT_CONFIG = \"simulation/sensing/sensing_monostatic.toml\"\n_LOG_PREFIX = \"[OFDM Burst Source]\"  # stderr 日志前缀\n\n\nclass blk(gr.basic_block):\n    \"\"\"\n    Style 1 OFDM 突发源：SC 前导 + x_time.npy，周期性重放并打 SOB/EOB tag。\n\n    工作流程：突发期内从缓存输出样本并打 tag；突发结束后进入 idle 静默期，\n    静默期不产出样本（general_work 返回 0），到期再启动下一突发。\n    \"\"\"\n\n    # -----------------------------------------------------------------------\n    # 初始化\n    # -----------------------------------------------------------------------\n\n    def __init__(\n        self,\n        config_file=_DEFAULT_CONFIG,\n        idle_ms=900.0,\n        tx_amp=0.3,\n        time_lead_s=0.3,\n        startup_delay_s=0.2,\n    ):\n        \"\"\"\n        参数:\n            - config_file:      TOML 路径；从中解析 source.cache_file（目录）与 OFDM 几何\n            - idle_ms:          两次突发之间的纯静默间隔 (毫秒)，不含突发本身时长\n            - tx_amp:           输出幅度缩放（写出时相乘，可实时调节）\n            - time_lead_s:      保留兼容 GRC 形参，已不再使用\n            - startup_delay_s:  首突发启动前的初始等待 (秒)\n        \"\"\"\n        gr.basic_block.__init__(\n            self,\n            name=\"OFDM Burst Source\",\n            in_sig=[],\n            out_sig=[np.complex64],\n        )\n        self._config_file = str(config_file)\n        self._cache_dir, self._samp_rate, self._fft_size, self._cp_len = (\n            self._resolve_from_config(self._config_file)\n        )\n        self._idle_ms = float(idle_ms)\n        self._tx_amp = float(tx_amp)\n        self._time_lead_s = float(time_lead_s)\n        self._startup_delay_s = float(startup_delay_s)\n\n        # 突发状态机：是否正在输出突发、当前写出位置、下一突发允许开始的 monotonic 时刻\n        self._burst_active = False\n        self._burst_idx = 0\n        self._next_burst_at = time.monotonic() + self._startup_delay_s\n\n        # 未缩放缓存波形（前导+载荷）、样本数、静默时长（秒）；写出时再乘 _tx_amp\n        self._burst_buffer: np.ndarray | None = None\n        self._burst_len = 0\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n\n        # 源块无输入 tag；缓冲至少能装下一段突发，避免调度器切得过碎\n        self.set_tag_propagation_policy(TPP_DONT)\n        self.set_min_output_buffer(4096)\n\n    # -----------------------------------------------------------------------\n    # 配置解析与缓存加载\n    # -----------------------------------------------------------------------\n\n    @staticmethod\n    def _resolve_from_config(config_file: str) -> tuple[str, float, int, int]:\n        \"\"\"解析 cache 目录、samp_rate、fft_size、cp（不建 System）。\"\"\"\n        cache_dir = resolve_source_cache_file(config_file)\n        samp_rate = float(resolve_ofdm_samp_rate(config_file))\n        fft_size, cp_len = resolve_ofdm_fft_cp(config_file)\n        return cache_dir, samp_rate, fft_size, cp_len\n\n    def start(self):\n        \"\"\"流图启动时预热加载波形，避免首包冷启动导致 Sink underflow。\"\"\"\n        self._ensure_burst()\n        self._next_burst_at = time.monotonic() + self._startup_delay_s\n        return True\n\n    def _log(self, msg: str) -> None:\n        \"\"\"向 stderr 输出带前缀的日志（flush，便于实时观察）。\"\"\"\n        print(f\"{_LOG_PREFIX} {msg}\", file=sys.stderr, flush=True)\n\n    def _resolve_cache_dir(self) -> Path:\n        \"\"\"将缓存目录解析为绝对路径；相对路径相对 PROJECT_ROOT。\"\"\"\n        path = Path(self._cache_dir)\n        if not path.is_absolute():\n            path = PROJECT_ROOT / path\n        return path\n\n    def _invalidate_burst(self) -> None:\n        \"\"\"GRC 参数变更时清空本地缓存，下次 general_work 触发重建。\"\"\"\n        self._burst_buffer = None\n\n    def _ensure_burst(self) -> np.ndarray:\n        \"\"\"懒加载入口：缓存未命中时 np.load + 拼前导，返回突发缓冲。\"\"\"\n        if self._burst_buffer is None:\n            self._load_burst()\n        assert self._burst_buffer is not None\n        return self._burst_buffer\n\n    def _load_burst(self) -> None:\n        \"\"\"加载 x_time.npy，前缀 SC 前导，供写出时乘当前 tx_amp。\"\"\"\n        path = self._resolve_cache_dir() / \"x_time.npy\"\n        payload = load_burst_buffer(path, tx_amp=1.0)\n        preamble = resolve_gr_preamble_time(self._config_file)\n        burst_buffer = np.concatenate([preamble, payload]).astype(\n            np.complex64, copy=False\n        )\n        self._burst_buffer = burst_buffer\n        self._burst_len = int(burst_buffer.size)\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n        self.set_min_output_buffer(max(4096, self._burst_len))\n        preamble_len = resolve_preamble_len(self._config_file)\n        self._log(\n            f\"load x_time.npy + GR SC preamble ok config={self._config_file!r} \"\n            f\"path={path} preamble_len={preamble_len} payload_len={payload.size} \"\n            f\"burst_len={self._burst_len} samp_rate={self._samp_rate}\"\n        )\n\n    def _recompute_idle(self) -> None:\n        \"\"\"仅 idle_ms 变更时重算静默期，无需重建波形。\"\"\"\n        self._idle_s = max(0.0, self._idle_ms / 1000.0)\n\n    # -----------------------------------------------------------------------\n    # GRC 可调属性\n    # -----------------------------------------------------------------------\n\n    @property\n    def config_file(self):\n        \"\"\"TOML 配置路径（相对 config/ 或绝对路径）。\"\"\"\n        return self._config_file\n\n    @config_file.setter\n    def config_file(self, value):\n        \"\"\"更新配置路径，重新解析缓存目录与 OFDM 几何，并清空突发缓存。\"\"\"\n        self._config_file = str(value)\n        self._cache_dir, self._samp_rate, self._fft_size, self._cp_len = (\n            self._resolve_from_config(self._config_file)\n        )\n        self._invalidate_burst()\n\n    @property\n    def cache_file(self):\n        \"\"\"只读：由 config_file 解析得到的缓存目录路径。\"\"\"\n        return self._cache_dir\n\n    @property\n    def samp_rate(self):\n        \"\"\"只读：由 config_file 解析得到的 OFDM 采样率。\"\"\"\n        return self._samp_rate\n\n    @property\n    def burst_len(self):\n        \"\"\"只读：当前突发缓冲的样本数（含前导；未加载前为 0）。\"\"\"\n        return self._burst_len\n\n    @property\n    def idle_ms(self):\n        \"\"\"两次突发之间的纯静默间隔（毫秒）。\"\"\"\n        return self._idle_ms\n\n    @idle_ms.setter\n    def idle_ms(self, value):\n        \"\"\"更新静默间隔并重算 _idle_s，无需重建波形。\"\"\"\n        self._idle_ms = float(value)\n        self._recompute_idle()\n\n    @property\n    def tx_amp(self):\n        \"\"\"输出幅度缩放系数（写出时相乘，可实时调节）。\"\"\"\n        return self._tx_amp\n\n    @tx_amp.setter\n    def tx_amp(self, value):\n        \"\"\"仅更新幅度系数；不重载波形，下一写出块立即生效。\"\"\"\n        self._tx_amp = float(value)\n\n    @property\n    def time_lead_s(self):\n        \"\"\"保留兼容 GRC；已不再打 tx_time。\"\"\"\n        return self._time_lead_s\n\n    @time_lead_s.setter\n    def time_lead_s(self, value):\n        \"\"\"仅更新提前量；已发出的 tag 不受影响。\"\"\"\n        self._time_lead_s = float(value)\n\n    @property\n    def startup_delay_s(self):\n        \"\"\"首突发启动前的初始等待（秒）。\"\"\"\n        return self._startup_delay_s\n\n    @startup_delay_s.setter\n    def startup_delay_s(self, value):\n        \"\"\"仅更新参数；已调度的 _next_burst_at 需在 start() 中重设。\"\"\"\n        self._startup_delay_s = float(value)\n\n    # -----------------------------------------------------------------------\n    # 调度与 general_work\n    # -----------------------------------------------------------------------\n\n    def forecast(self, noutput_items, ninputs):\n        \"\"\"无输入端口，不向调度器声明输入需求。\"\"\"\n        del noutput_items, ninputs\n        return []\n\n    def _schedule_delay_s(self) -> float:\n        \"\"\"当前突发结束后到下一突发开始前的纯 idle 时长（秒）。\"\"\"\n        return schedule_idle_delay_s(self._burst_len, self._samp_rate, self._idle_s)\n\n    def general_work(self, input_items, output_items):\n        \"\"\"\n        主工作函数：按块从缓存重放 OFDM 突发，在突发首尾附加 UHD tag。\n\n        静默期内返回 0（不消耗输出缓冲）；突发可分多次 general_work 完成。\n        返回值 n 表示本次写入输出端口的有效样本数。\n        \"\"\"\n        del input_items\n        burst_buffer = self._ensure_burst()\n        out = output_items[0]\n\n        # idle：未到下一突发时刻则不产出样本\n        if not self._burst_active:\n            if time.monotonic() < self._next_burst_at:\n                return 0\n            # 启动新突发\n            self._burst_active = True\n            self._burst_idx = 0\n\n        # 本轮可写样本数：受输出缓冲与突发剩余长度限制\n        n_remain = self._burst_len - self._burst_idx\n        n = min(len(out), n_remain)\n        if n <= 0:\n            return 0\n\n        # 从缓存拷贝一段并乘当前 tx_amp（实时可调）\n        out[:n] = burst_buffer[self._burst_idx : self._burst_idx + n] * np.float32(\n            self._tx_amp\n        )\n\n        abs_out = self.nitems_written(0)\n        if self._burst_idx == 0:\n            add_style1_sob(self, 0, abs_out)\n\n        self._burst_idx += n\n        # 突发末样本：打 EOB，进入 idle，调度下一突发时刻\n        if self._burst_idx >= self._burst_len:\n            add_style1_eob(self, 0, abs_out + n - 1)\n            self._burst_active = False\n            self._next_burst_at = time.monotonic() + self._schedule_delay_s()\n\n        return n\n"
     affinity: ''
     alias: ''
-    comment: SC preamble + x_time.npy + UHD SOB/TIME/EOB
+    comment: SC preamble + x_time.npy + SOB/EOB (no tx_time)
     config_file: config_file
     idle_ms: idle_ms
     maxoutbuf: '0'
@@ -706,17 +708,20 @@ blocks:
     time_lead_s: time_lead_s
     tx_amp: tx_amp
   states:
-    _io_cache: ('OFDM Burst Source', 'blk', [('config_file', "'simulation/sensing/sensing_monostatic.toml'"),
-      ('idle_ms', '900.0'), ('tx_amp', '0.3'), ('time_lead_s', '0.3'), ('startup_delay_s', '0.2')], [],
-      [('0', 'complex', 1)], '\n    Style 1 OFDM 突发源：SC 前导 + x_time.npy，周期性重放并打 UHD 定时 tag。\n\n    工作流程：突发期内从缓存输出样本并打
-      tag；突发结束后进入 idle 静默期，\n    静默期不产出样本（general_work 返回 0），到期再启动下一突发。\n    ', ['config_file', 'idle_ms',
-      'startup_delay_s', 'time_lead_s', 'tx_amp'])
+    _io_cache: "('OFDM Burst Source', 'blk', [('config_file', \"'simulation/sensing/sensing_monostatic.toml'\"\
+      ), ('idle_ms', '900.0'), ('tx_amp', '0.3'), ('time_lead_s', '0.3'), ('startup_delay_s',\
+      \ '0.2')], [], [('0', 'complex', 1)], '\\n    Style 1 OFDM \u7A81\u53D1\u6E90\
+      \uFF1ASC \u524D\u5BFC + x_time.npy\uFF0C\u5468\u671F\u6027\u91CD\u653E\u5E76\
+      \u6253 SOB/EOB tag\u3002\\n\\n    \u5DE5\u4F5C\u6D41\u7A0B\uFF1A\u7A81\u53D1\
+      \u671F\u5185\u4ECE\u7F13\u5B58\u8F93\u51FA\u6837\u672C\u5E76\u6253 tag\uFF1B\
+      \u7A81\u53D1\u7ED3\u675F\u540E\u8FDB\u5165 idle \u9759\u9ED8\u671F\uFF0C\\n\
+      \    \u9759\u9ED8\u671F\u4E0D\u4EA7\u51FA\u6837\u672C\uFF08general_work \u8FD4\
+      \u56DE 0\uFF09\uFF0C\u5230\u671F\u518D\u542F\u52A8\u4E0B\u4E00\u7A81\u53D1\u3002\
+      \\n    ', ['config_file', 'idle_ms', 'startup_delay_s', 'time_lead_s', 'tx_amp'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 128
-    - 788.0
+    coordinate: [88, 548.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
@@ -797,9 +802,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1432
-    - 756.0
+    coordinate: [1864, 988.0]
     rotation: 0
     state: disabled
 - name: qtgui_time_sink_tx
@@ -896,9 +899,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 688
-    - 876.0
+    coordinate: [648, 636.0]
     rotation: 0
     state: disabled
 - name: qtgui_time_sink_x_0
@@ -995,9 +996,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1680
-    - 604.0
+    coordinate: [1896, 820.0]
     rotation: 0
     state: disabled
 - name: uhd_usrp_sink_0_0
@@ -1258,7 +1257,7 @@ blocks:
     sd_spec7: ''
     show_lo_controls: 'False'
     start_time: '-1.0'
-    stream_args: ''
+    stream_args: num_send_frames=512,send_buff_size=25000000
     stream_chans: '[0]'
     sync: pc_clock
     time_source0: ''
@@ -1274,9 +1273,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 440
-    - 696.0
+    coordinate: [400, 456.0]
     rotation: 0
     state: true
 - name: uhd_usrp_source_0_0
@@ -1712,48 +1709,30 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate:
-    - 1032
-    - 744.0
+    coordinate: [136, 992.0]
     rotation: 0
     state: true
+
 connections:
-- - blocks_complex_to_mag_0
-  - '0'
-  - qtgui_time_sink_x_0
-  - '0'
-- - blocks_complex_to_mag_tx
-  - '0'
-  - qtgui_time_sink_tx
-  - '0'
-- - ofdm_burst_sensing_rx
-  - '0'
-  - dd_spectrum_plot_0
-  - '0'
-- - ofdm_burst_source
-  - '0'
-  - blocks_complex_to_mag_tx
-  - '0'
-- - ofdm_burst_source
-  - '0'
-  - blocks_tag_debug_0
-  - '0'
-- - ofdm_burst_source
-  - '0'
-  - uhd_usrp_sink_0_0
-  - '0'
-- - uhd_usrp_source_0_0
-  - '0'
-  - blocks_complex_to_mag_0
-  - '0'
-- - uhd_usrp_source_0_0
-  - '0'
-  - ofdm_burst_sensing_rx
-  - '0'
-- - uhd_usrp_source_0_0
-  - '0'
-  - qtgui_freq_sink_x_0
-  - '0'
+- [analog_frequency_modulator_fc_0, '0', blocks_multiply_xx_0, '0']
+- [blocks_complex_to_mag_0, '0', qtgui_time_sink_x_0, '0']
+- [blocks_complex_to_mag_tx, '0', qtgui_time_sink_tx, '0']
+- [blocks_delay_0, '0', blocks_multiply_xx_0, '1']
+- [blocks_message_strobe_0, strobe, digital_header_payload_demux_0, header_data]
+- [blocks_multiply_xx_0, '0', blocks_complex_to_mag_0, '0']
+- [blocks_multiply_xx_0, '0', digital_header_payload_demux_0, '0']
+- [blocks_multiply_xx_0, '0', qtgui_freq_sink_x_0, '0']
+- [digital_header_payload_demux_0, '0', blocks_null_sink_hdr, '0']
+- [digital_header_payload_demux_0, '1', ofdm_burst_sensing_rx, '0']
+- [digital_ofdm_sync_sc_cfb_0, '0', analog_frequency_modulator_fc_0, '0']
+- [digital_ofdm_sync_sc_cfb_0, '1', digital_header_payload_demux_0, '1']
+- [ofdm_burst_sensing_rx, '0', dd_spectrum_plot_0, '0']
+- [ofdm_burst_source, '0', blocks_complex_to_mag_tx, '0']
+- [ofdm_burst_source, '0', blocks_tag_debug_0, '0']
+- [ofdm_burst_source, '0', uhd_usrp_sink_0_0, '0']
+- [uhd_usrp_source_0_0, '0', blocks_delay_0, '0']
+- [uhd_usrp_source_0_0, '0', digital_ofdm_sync_sc_cfb_0, '0']
+
 metadata:
   file_format: 1
   grc_version: 3.10.12.0

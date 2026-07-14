@@ -100,6 +100,11 @@ def schedule_idle_delay_s(burst_len: int, samp_rate: float, idle_s: float) -> fl
 # ---------------------------------------------------------------------------
 
 
+def add_style1_sob(block: Any, port: int, abs_offset: int) -> None:
+    """在 ``abs_offset`` 仅打 ``tx_sob``（无 ``tx_time``，立即突发发射）。"""
+    block.add_item_tag(port, abs_offset, TAG_SOB, pmt.PMT_T)
+
+
 def add_style1_sob_time(
     block: Any,
     port: int,
