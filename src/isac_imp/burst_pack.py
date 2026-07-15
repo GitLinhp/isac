@@ -69,8 +69,6 @@ def make_tx_time_pmt(epoch_s: float):
 # ---------------------------------------------------------------------------
 # 2. 从 x_time.npy 准备时域突发缓冲
 # ---------------------------------------------------------------------------
-
-
 def load_burst_buffer(x_time_path: Path | str, tx_amp: float = 1.0) -> np.ndarray:
     """从 ``x_time.npy`` 加载时域突发：``np.load`` → squeeze → 可选缩放 → ``complex64`` 一维。
 
