@@ -7,7 +7,7 @@ type = "zc"
 root_index = 1
 normalize = true
 num_bits_per_symbol = 2
-cache_file = "out/ofdm_burst_source_large_sacle/transmit"
+cache_file = "out/ofdm_burst_source/transmit"
 
 [ofdm]
 num_symbols = 32          # 符号数

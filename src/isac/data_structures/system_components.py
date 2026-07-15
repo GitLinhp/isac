@@ -38,6 +38,7 @@ from ..sensing.detection import CFARDetector
 from ..sensing.detection.music_estimator import MUSICEstimator
 from ..sensing.evaluation import SensingEstimator
 from ..sensing.clutter import MovingTargetIndication, MovingTargetDetection
+from ..transmit_cache import TransmitCache
 from ..zc_source import ZCSource
 
 
@@ -68,6 +69,8 @@ class SystemComponents:
     """OFDM调制器"""
     demodulator: Optional[OFDMDemodulator] = None
     """OFDM解调器"""
+    transmit_cache: Optional[TransmitCache] = None
+    """发射波形缓存；``source.cache_file`` 非空时构建"""
 
     # 信道组件
     channel: RTChannel | RCSChannel = None
@@ -189,6 +192,16 @@ class SystemComponents:
                 fft_size=ofdm.fft_size,
                 l_min=ofdm.l_min,
                 cyclic_prefix_length=ofdm.cyclic_prefix_length,
+                device=device,
+            )
+
+        # --- 发射缓存：source.cache_file 非空时挂载 TransmitCache ---
+        if (
+            system_params.source is not None
+            and system_params.source.cache_file
+        ):
+            kwargs["transmit_cache"] = TransmitCache.from_cache_file(
+                system_params.source.cache_file,
                 device=device,
             )
 

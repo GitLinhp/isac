@@ -2,11 +2,9 @@
 
 from pathlib import Path
 
-import numpy as np
 from sionna.phy import config as sn_config
 import torch
 
-from . import PROJECT_ROOT
 from .data_structures import SystemParams
 from .data_structures.system_components import SystemComponents
 from .data_structures.types import MetricMode, SensingEstimate, SensMode
@@ -72,106 +70,6 @@ class System:
         )
         return obj
 
-    def resolve_cache_path(self) -> Path | None:
-        """解析 ``source.cache_file`` 为绝对目录路径；未配置时返回 ``None``。
-
-        目录内固定存放 ``b.npy`` / ``x_rg.npy`` / ``x_time.npy``。
-        """
-        raw = self.params.source.cache_file if self.params.source is not None else None
-        if not raw:
-            return None
-        path = Path(raw)
-        if not path.is_absolute():
-            path = PROJECT_ROOT / path
-        return path
-
-    @staticmethod
-    def cache_npy_paths(cache_dir: Path) -> dict[str, Path]:
-        """缓存目录内三个 ``.npy`` 路径。"""
-        return {
-            "b": cache_dir / "b.npy",
-            "x_rg": cache_dir / "x_rg.npy",
-            "x_time": cache_dir / "x_time.npy",
-        }
-
-    def cache_complete(self, cache_dir: Path) -> bool:
-        """三个 ``.npy`` 均存在时视为缓存命中。"""
-        return all(p.is_file() for p in self.cache_npy_paths(cache_dir).values())
-
-    def _load_transmit_cache(
-        self, cache_dir: Path
-    ) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
-        """从缓存目录加载 ``b`` / ``x_rg`` / ``x_time``。"""
-        paths = self.cache_npy_paths(cache_dir)
-        b_np = np.load(paths["b"])
-        x_rg_np = np.load(paths["x_rg"])
-        x_time_np = np.load(paths["x_time"])
-        b: torch.Tensor | None
-        if b_np.size == 0:
-            b = None
-        else:
-            b = torch.from_numpy(b_np).to(device=self.device)
-        x_rg = torch.from_numpy(x_rg_np).to(device=self.device)
-        x_time = torch.from_numpy(x_time_np).to(device=self.device)
-        return b, x_rg, x_time
-
-    def _save_transmit_cache(
-        self,
-        cache_dir: Path,
-        b: torch.Tensor | None,
-        x_rg: torch.Tensor,
-        x_time: torch.Tensor,
-    ) -> None:
-        """将 ``b`` / ``x_rg`` / ``x_time`` 分别写入缓存目录下的 ``.npy``。"""
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        paths = self.cache_npy_paths(cache_dir)
-        b_np = np.array([]) if b is None else b.detach().cpu().numpy()
-        np.save(paths["b"], b_np)
-        np.save(paths["x_rg"], x_rg.detach().cpu().numpy())
-        np.save(paths["x_time"], x_time.detach().cpu().numpy())
-
-    def load_transmit_cache(
-        self,
-    ) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
-        """从 ``source.cache_file`` 目录加载全部发射缓存；未配置或不完整则报错。
-
-        供需要 ``b`` / ``x_rg`` / ``x_time`` 的场景；GRC 收发端应优先用
-        ``load_transmit_x_rg`` / ``load_transmit_x_time`` 按需加载。
-        """
-        cache_dir = self.resolve_cache_path()
-        if cache_dir is None:
-            raise ValueError("source.cache_file 未配置，无法 load_transmit_cache")
-        if not self.cache_complete(cache_dir):
-            raise FileNotFoundError(
-                f"发射波形缓存不完整: {cache_dir} "
-                f"(需要 b.npy / x_rg.npy / x_time.npy)；请先离线运行 transmit() 生成"
-            )
-        return self._load_transmit_cache(cache_dir)
-
-    def load_transmit_x_rg(self) -> torch.Tensor:
-        """仅从缓存目录加载 ``x_rg.npy``（供 GRC RX）。"""
-        cache_dir = self.resolve_cache_path()
-        if cache_dir is None:
-            raise ValueError("source.cache_file 未配置，无法 load_transmit_x_rg")
-        path = self.cache_npy_paths(cache_dir)["x_rg"]
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"发射资源网格缓存不存在: {path}；请先离线运行 transmit() 生成"
-            )
-        return torch.from_numpy(np.load(path)).to(device=self.device)
-
-    def load_transmit_x_time(self) -> torch.Tensor:
-        """仅从缓存目录加载 ``x_time.npy``（供 GRC TX）。"""
-        cache_dir = self.resolve_cache_path()
-        if cache_dir is None:
-            raise ValueError("source.cache_file 未配置，无法 load_transmit_x_time")
-        path = self.cache_npy_paths(cache_dir)["x_time"]
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"发射时域缓存不存在: {path}；请先离线运行 transmit() 生成"
-            )
-        return torch.from_numpy(np.load(path)).to(device=self.device)
-
     # ==================== 发射 ====================
     def transmit(self) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """生成发射波形。
@@ -193,9 +91,9 @@ class System:
         - x_time : torch.Tensor
             时域 OFDM 波形
         """
-        cache_path = self.resolve_cache_path()
-        if cache_path is not None and self.cache_complete(cache_path):
-            return self._load_transmit_cache(cache_path)
+        cache = self.components.transmit_cache
+        if cache is not None and cache.is_complete():
+            return cache.load()
 
         src_type = self.params.source.type
         comps = self.components
@@ -227,8 +125,8 @@ class System:
         x_rg = comps.rg_mapper(x)
         x_time = comps.modulator(x_rg)
 
-        if cache_path is not None:
-            self._save_transmit_cache(cache_path, b, x_rg, x_time)
+        if cache is not None:
+            cache.save(b, x_rg, x_time)
 
         return b, x_rg, x_time
 

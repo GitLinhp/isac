@@ -3,6 +3,7 @@
 子包地图
 --------
 - ``isac.system`` — 顶层编排（``System.transmit`` / ``receive``）
+- ``isac.transmit_cache`` — 发射波形 ``.npy`` 磁盘缓存（``TransmitCache``）
 - ``isac.data_structures`` — TOML 配置 dataclass 与 ``SystemComponents`` 工厂
 - ``isac.channel`` — 信道仿真（RT / RCS / AWGN）
 - ``isac.sensing`` — 感知 DSP（DD 谱、CFAR、MUSIC、MTI/MTD）
