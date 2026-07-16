@@ -25,3 +25,6 @@ gnuradio/flowgraphs/*_sionna_*_0.py
 /data/
 /models/
 /out/
+
+# GNU Radio / 测试 IQ 捕获文件（体积大，本地生成，不纳入版本库）
+**/*.dat
