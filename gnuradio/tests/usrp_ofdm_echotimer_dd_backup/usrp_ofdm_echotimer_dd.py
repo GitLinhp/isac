@@ -6,7 +6,7 @@
 #
 # GNU Radio Python Flow Graph
 # Title: Usrp Ofdm Echotimer Dd
-# Description: USRP OFDM radar zero-Doppler range profile. RX packet_len tags via echotimer; 1D range spectrum via qtgui_vector_sink_f.
+# Description: USRP Sink/Source OFDM radar DD (no echotimer, no Throttle). RX packet_len tags via burst_iq_tag_rx EPY.
 # GNU Radio version: 3.10.12.0
 
 from PyQt5 import Qt
@@ -69,14 +69,11 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.samp_rate = samp_rate = 5e6
-        self.fft_len = fft_len = 64
-        self.zeropadding_fac = zeropadding_fac = 2
-        self.R_max = R_max = 3e8/2/samp_rate*fft_len
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
         self.packet_len = packet_len = 50
         self.occupied_carriers_all = occupied_carriers_all = list((range(-26,27),))
         self.freq = freq = 2.45e9
-        self.R_display = R_display = 1000
+        self.fft_len = fft_len = 64
+        self.zeropadding_fac = zeropadding_fac = 2
         self.wait_to_start = wait_to_start = 0.03
         self.v_max = v_max = 3e8/(4*freq*(fft_len+fft_len/4)/samp_rate)
         self.uhd_dev_args = uhd_dev_args = "type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"
@@ -91,9 +88,9 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.factor = factor = 0.02
-        self.display_bins = display_bins = min(fft_len*zeropadding_fac, int((R_display + range_bin_step - 1) / range_bin_step))
         self.discarded_carriers = discarded_carriers = []
         self.TX_gain = TX_gain = 20
+        self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.RX_gain = RX_gain = 20
 
         ##################################################
@@ -114,49 +111,18 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._RX_gain_win)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), uhd_dev_args, 0, '', 'internal', 'internal', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, uhd_dev_args, 0, '', 'internal', 'internal', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
+        self.radar_transpose_matrix_vcvc_0_0 = radar.transpose_matrix_vcvc(transpose_len, (fft_len*zeropadding_fac), "packet_len")
+        self.radar_transpose_matrix_vcvc_0_0.set_min_output_buffer((2*transpose_len))
+        self.radar_transpose_matrix_vcvc_0 = radar.transpose_matrix_vcvc((fft_len*zeropadding_fac), transpose_len, "packet_len")
+        self.radar_transpose_matrix_vcvc_0.set_min_output_buffer((2*fft_len*zeropadding_fac))
+        self.radar_qtgui_spectrogram_plot_0 = radar.qtgui_spectrogram_plot((fft_len*zeropadding_fac), 500, 'value_range', 'Velocity', 'OFDM Radar', [0,R_max], [0,v_max], [-15,-12], True, "packet_len")
+        self.radar_print_results_0 = radar.print_results(False, "")
+        self.radar_os_cfar_2d_vc_0 = radar.os_cfar_2d_vc((fft_len*zeropadding_fac), [10,10], [0,0], 0.78, 30, "packet_len")
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len-len(discarded_carriers))*zeropadding_fac), (), 0, "packet_len")
         self.radar_ofdm_divide_vcvc_0.set_min_output_buffer((2*transpose_len))
         self.radar_ofdm_cyclic_prefix_remover_cvc_0 = radar.ofdm_cyclic_prefix_remover_cvc(fft_len, (fft_len//4), "packet_len")
         self.radar_ofdm_cyclic_prefix_remover_cvc_0.set_min_output_buffer((2*transpose_len))
-        self.qtgui_vector_sink_f_0 = qtgui.vector_sink_f(
-            display_bins,
-            0,
-            range_bin_step,
-            "Range",
-            "Power (dB)",
-            "Range Profile",
-            1, # Number of inputs
-            None # parent
-        )
-        self.qtgui_vector_sink_f_0.set_update_time(0.10)
-        self.qtgui_vector_sink_f_0.set_y_axis((-40), 0)
-        self.qtgui_vector_sink_f_0.enable_autoscale(True)
-        self.qtgui_vector_sink_f_0.enable_grid(True)
-        self.qtgui_vector_sink_f_0.set_x_axis_units("m")
-        self.qtgui_vector_sink_f_0.set_y_axis_units("dB")
-        self.qtgui_vector_sink_f_0.set_ref_level(0)
-
-
-        labels = ['Range Profile', '', '', '', '',
-            '', '', '', '', '']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ["blue", "red", "green", "black", "cyan",
-            "magenta", "yellow", "dark red", "dark green", "dark blue"]
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
-
-        for i in range(1):
-            if len(labels[i]) == 0:
-                self.qtgui_vector_sink_f_0.set_line_label(i, "Data {0}".format(i))
-            else:
-                self.qtgui_vector_sink_f_0.set_line_label(i, labels[i])
-            self.qtgui_vector_sink_f_0.set_line_width(i, widths[i])
-            self.qtgui_vector_sink_f_0.set_line_color(i, colors[i])
-            self.qtgui_vector_sink_f_0.set_line_alpha(i, alphas[i])
-
-        self._qtgui_vector_sink_f_0_win = sip.wrapinstance(self.qtgui_vector_sink_f_0.qwidget(), Qt.QWidget)
-        self.top_layout.addWidget(self._qtgui_vector_sink_f_0_win)
+        self.radar_estimator_ofdm_0 = radar.estimator_ofdm('range', (fft_len*zeropadding_fac), [0,R_max], 'velocity', transpose_len, [0,v_max,-v_max,0], True)
         self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
             1024, #size
             samp_rate, #samp_rate
@@ -250,6 +216,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
+        self.fft_vxx_0_1_0 = fft.fft_vcc(transpose_len, False, window.blackmanharris(transpose_len), False, 1)
         self.fft_vxx_0_1 = fft.fft_vcc((fft_len*zeropadding_fac), True, window.blackmanharris(fft_len*zeropadding_fac), False, 1)
         self.fft_vxx_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
@@ -264,14 +231,10 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.digital_ofdm_carrier_allocator_cvc_0.set_min_output_buffer((2*transpose_len))
         self.digital_chunks_to_symbols_xx_0_0 = digital.chunks_to_symbols_bc(payload_mod.points(), 1)
         self.digital_chunks_to_symbols_xx_0_0.set_min_output_buffer((2*packet_len*4))
-        self.blocks_vector_to_stream_0 = blocks.vector_to_stream(gr.sizeof_float*1, (fft_len*zeropadding_fac))
-        self.blocks_stream_to_vector_0 = blocks.stream_to_vector(gr.sizeof_float*1, display_bins)
         self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
         self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
-        self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
+        self.blocks_nlog10_ff_0 = blocks.nlog10_ff(1, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
-        self.blocks_keep_m_in_n_0 = blocks.keep_m_in_n(gr.sizeof_float, display_bins, (fft_len*zeropadding_fac), 0)
-        self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
         self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, 1000))), True)
 
@@ -279,27 +242,29 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         # Connections
         ##################################################
+        self.msg_connect((self.radar_estimator_ofdm_0, 'Msg out'), (self.radar_print_results_0, 'Msg in'))
+        self.msg_connect((self.radar_os_cfar_2d_vc_0, 'Msg out'), (self.radar_estimator_ofdm_0, 'Msg in'))
         self.connect((self.analog_random_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0, 0))
-        self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
-        self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
-        self.connect((self.blocks_keep_m_in_n_0, 0), (self.blocks_stream_to_vector_0, 0))
+        self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
-        self.connect((self.blocks_nlog10_ff_0, 0), (self.blocks_vector_to_stream_0, 0))
+        self.connect((self.blocks_nlog10_ff_0, 0), (self.radar_qtgui_spectrogram_plot_0, 0))
         self.connect((self.blocks_repack_bits_bb_0, 0), (self.digital_chunks_to_symbols_xx_0_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
-        self.connect((self.blocks_stream_to_vector_0, 0), (self.qtgui_vector_sink_f_0, 0))
-        self.connect((self.blocks_vector_to_stream_0, 0), (self.blocks_keep_m_in_n_0, 0))
         self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.fft_vxx_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.radar_ofdm_divide_vcvc_0, 0))
         self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
         self.connect((self.fft_vxx_0, 0), (self.digital_ofdm_cyclic_prefixer_0, 0))
         self.connect((self.fft_vxx_0_0, 0), (self.radar_ofdm_divide_vcvc_0, 1))
-        self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
+        self.connect((self.fft_vxx_0_1, 0), (self.radar_transpose_matrix_vcvc_0, 0))
+        self.connect((self.fft_vxx_0_1_0, 0), (self.radar_transpose_matrix_vcvc_0_0, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
         self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
+        self.connect((self.radar_transpose_matrix_vcvc_0, 0), (self.fft_vxx_0_1_0, 0))
+        self.connect((self.radar_transpose_matrix_vcvc_0_0, 0), (self.blocks_complex_to_mag_squared_0, 0))
+        self.connect((self.radar_transpose_matrix_vcvc_0_0, 0), (self.radar_os_cfar_2d_vc_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 1))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_time_sink_x_0, 1))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
@@ -322,43 +287,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
-
-    def get_fft_len(self):
-        return self.fft_len
-
-    def set_fft_len(self, fft_len):
-        self.fft_len = fft_len
-        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
-        self.set_display_bins(min(self.fft_len*self.zeropadding_fac, int((self.R_display + self.range_bin_step - 1) / self.range_bin_step)))
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
-        self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
-        self.blocks_keep_m_in_n_0.set_n((self.fft_len*self.zeropadding_fac))
-        self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
-
-    def get_zeropadding_fac(self):
-        return self.zeropadding_fac
-
-    def set_zeropadding_fac(self, zeropadding_fac):
-        self.zeropadding_fac = zeropadding_fac
-        self.set_display_bins(min(self.fft_len*self.zeropadding_fac, int((self.R_display + self.range_bin_step - 1) / self.range_bin_step)))
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
-        self.blocks_keep_m_in_n_0.set_n((self.fft_len*self.zeropadding_fac))
-        self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
-
-    def get_R_max(self):
-        return self.R_max
-
-    def set_R_max(self, R_max):
-        self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
-
-    def get_range_bin_step(self):
-        return self.range_bin_step
-
-    def set_range_bin_step(self, range_bin_step):
-        self.range_bin_step = range_bin_step
-        self.set_display_bins(min(self.fft_len*self.zeropadding_fac, int((self.R_display + self.range_bin_step - 1) / self.range_bin_step)))
-        self.qtgui_vector_sink_f_0.set_x_axis(0, self.range_bin_step)
 
     def get_packet_len(self):
         return self.packet_len
@@ -384,12 +312,21 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.freq = freq
         self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
 
-    def get_R_display(self):
-        return self.R_display
+    def get_fft_len(self):
+        return self.fft_len
 
-    def set_R_display(self, R_display):
-        self.R_display = R_display
-        self.set_display_bins(min(self.fft_len*self.zeropadding_fac, int((self.R_display + self.range_bin_step - 1) / self.range_bin_step)))
+    def set_fft_len(self, fft_len):
+        self.fft_len = fft_len
+        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
+        self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
+
+    def get_zeropadding_fac(self):
+        return self.zeropadding_fac
+
+    def set_zeropadding_fac(self, zeropadding_fac):
+        self.zeropadding_fac = zeropadding_fac
+        self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start
@@ -414,6 +351,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_transpose_len(self, transpose_len):
         self.transpose_len = transpose_len
+        self.fft_vxx_0_1_0.set_window(window.blackmanharris(self.transpose_len))
 
     def get_sync_word2(self):
         return self.sync_word2
@@ -477,13 +415,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.factor = factor
         self.blocks_multiply_const_vxx_0.set_k(self.factor)
 
-    def get_display_bins(self):
-        return self.display_bins
-
-    def set_display_bins(self, display_bins):
-        self.display_bins = display_bins
-        self.blocks_keep_m_in_n_0.set_m(self.display_bins)
-
     def get_discarded_carriers(self):
         return self.discarded_carriers
 
@@ -496,6 +427,12 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_TX_gain(self, TX_gain):
         self.TX_gain = TX_gain
         self.radar_usrp_echotimer_cc_0.set_tx_gain(self.TX_gain)
+
+    def get_R_max(self):
+        return self.R_max
+
+    def set_R_max(self, R_max):
+        self.R_max = R_max
 
     def get_RX_gain(self):
         return self.RX_gain
