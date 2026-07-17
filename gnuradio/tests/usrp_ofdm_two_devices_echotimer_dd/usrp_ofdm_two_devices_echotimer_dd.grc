@@ -288,18 +288,6 @@ blocks:
     coordinate: [736, 8.0]
     rotation: 0
     state: enabled
-- name: uhd_dev_args
-  id: variable
-  parameters:
-    comment: 'X410: RJ45 mgmt 1.100 + QSFP sfp0 10.2; host needs 192.168.10.1 on enp1s0f0np0'
-    value: '"type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2480, 656.0]
-    rotation: 0
-    state: enabled
 - name: wait_to_start
   id: variable
   parameters:
@@ -322,6 +310,40 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [696, 128.0]
+    rotation: 0
+    state: enabled
+- name: address0
+  id: parameter
+  parameters:
+    alias: ''
+    comment: ''
+    hide: none
+    label: UHD dev args
+    short_id: ''
+    type: str
+    value: '"type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2560, 324.0]
+    rotation: 0
+    state: enabled
+- name: address1
+  id: parameter
+  parameters:
+    alias: ''
+    comment: ''
+    hide: none
+    label: UHD dev args
+    short_id: ''
+    type: str
+    value: '"type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2336, 324.0]
     rotation: 0
     state: enabled
 - name: analog_random_source_x_0
@@ -874,8 +896,8 @@ blocks:
     alias: ''
     antenna_rx: '''RX1'''
     antenna_tx: '''TX/RX'''
-    args_rx: uhd_dev_args
-    args_tx: uhd_dev_args
+    args_rx: address0
+    args_tx: address0
     center_freq: freq
     channel_rx: '0'
     channel_tx: '0'

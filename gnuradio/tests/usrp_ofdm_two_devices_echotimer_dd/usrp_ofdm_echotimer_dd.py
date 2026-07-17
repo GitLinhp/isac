@@ -33,7 +33,7 @@ import threading
 
 class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
-    def __init__(self):
+    def __init__(self, address0="type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2", address1="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"):
         gr.top_block.__init__(self, "Usrp Ofdm Echotimer Dd", catch_exceptions=True)
         Qt.QWidget.__init__(self)
         self.setWindowTitle("Usrp Ofdm Echotimer Dd")
@@ -65,6 +65,12 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.flowgraph_started = threading.Event()
 
         ##################################################
+        # Parameters
+        ##################################################
+        self.address0 = address0
+        self.address1 = address1
+
+        ##################################################
         # Variables
         ##################################################
         self.subcarrier_spacing = subcarrier_spacing = 60e3
@@ -76,7 +82,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
-        self.uhd_dev_args = uhd_dev_args = "type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
@@ -105,7 +110,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
-        self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), uhd_dev_args, 0, '', 'internal', 'internal', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, uhd_dev_args, 0, '', 'internal', 'internal', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
+        self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), address1, 0, '', 'internal', 'internal', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, address0, 0, '', 'internal', 'internal', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
         self.radar_ofdm_divide_vcvc_0.set_min_output_buffer((2*transpose_len))
@@ -302,6 +307,18 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
         event.accept()
 
+    def get_address0(self):
+        return self.address0
+
+    def set_address0(self, address0):
+        self.address0 = address0
+
+    def get_address1(self):
+        return self.address1
+
+    def set_address1(self, address1):
+        self.address1 = address1
+
     def get_subcarrier_spacing(self):
         return self.subcarrier_spacing
 
@@ -376,12 +393,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_wait_to_start(self, wait_to_start):
         self.wait_to_start = wait_to_start
 
-    def get_uhd_dev_args(self):
-        return self.uhd_dev_args
-
-    def set_uhd_dev_args(self, uhd_dev_args):
-        self.uhd_dev_args = uhd_dev_args
-
     def get_range_bin_step(self):
         return self.range_bin_step
 
@@ -455,12 +466,25 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
 
 
+def argument_parser():
+    description = 'USRP OFDM radar zero-Doppler range profile (full 0~R_max). RX packet_len tags via echotimer; range spectrum via qtgui_vector_sink_f.'
+    parser = ArgumentParser(description=description)
+    parser.add_argument(
+        "--address0", dest="address0", type=str, default="type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2",
+        help="Set UHD dev args [default=%(default)r]")
+    parser.add_argument(
+        "--address1", dest="address1", type=str, default="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2",
+        help="Set UHD dev args [default=%(default)r]")
+    return parser
+
 
 def main(top_block_cls=usrp_ofdm_echotimer_dd, options=None):
+    if options is None:
+        options = argument_parser().parse_args()
 
     qapp = Qt.QApplication(sys.argv)
 
-    tb = top_block_cls()
+    tb = top_block_cls(address0=options.address0, address1=options.address1)
 
     tb.start()
     tb.flowgraph_started.set()
