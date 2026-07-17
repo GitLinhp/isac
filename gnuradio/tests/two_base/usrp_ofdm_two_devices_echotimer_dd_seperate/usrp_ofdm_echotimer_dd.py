@@ -33,7 +33,7 @@ import threading
 
 class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
-    def __init__(self, address0="type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2", address1="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"):
+    def __init__(self, address0="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external", address1="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"):
         gr.top_block.__init__(self, "Usrp Ofdm Echotimer Dd", catch_exceptions=True)
         Qt.QWidget.__init__(self)
         self.setWindowTitle("Usrp Ofdm Echotimer Dd")
@@ -94,10 +94,10 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq1 = freq1 = 5.9e9
         self.freq0 = freq0 = 6.1e9
-        self.TX_gain1 = TX_gain1 = 30
-        self.TX_gain0 = TX_gain0 = 30
-        self.RX_gain1 = RX_gain1 = 30
-        self.RX_gain0 = RX_gain0 = 30
+        self.TX_gain1 = TX_gain1 = 20
+        self.TX_gain0 = TX_gain0 = 20
+        self.RX_gain1 = RX_gain1 = 20
+        self.RX_gain0 = RX_gain0 = 20
 
         ##################################################
         # Blocks
@@ -131,37 +131,37 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(1, 2):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain1_range = qtgui.Range(0, 50, 1, 30, 200)
+        self._TX_gain1_range = qtgui.Range(0, 50, 1, 20, 200)
         self._TX_gain1_win = qtgui.RangeWidget(self._TX_gain1_range, self.set_TX_gain1, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain1_win, 0, 2, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain0_range = qtgui.Range(0, 50, 1, 30, 200)
+        self._TX_gain0_range = qtgui.Range(0, 50, 1, 20, 200)
         self._TX_gain0_win = qtgui.RangeWidget(self._TX_gain0_range, self.set_TX_gain0, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain0_win, 3, 2, 1, 1)
         for r in range(3, 4):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain1_range = qtgui.Range(0, 50, 1, 30, 200)
+        self._RX_gain1_range = qtgui.Range(0, 50, 1, 20, 200)
         self._RX_gain1_win = qtgui.RangeWidget(self._RX_gain1_range, self.set_RX_gain1, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain1_win, 0, 3, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(3, 4):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain0_range = qtgui.Range(0, 50, 1, 30, 200)
+        self._RX_gain0_range = qtgui.Range(0, 50, 1, 20, 200)
         self._RX_gain0_win = qtgui.RangeWidget(self._RX_gain0_range, self.set_RX_gain0, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain0_win, 3, 3, 1, 1)
         for r in range(3, 4):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(3, 4):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self.radar_usrp_echotimer_cc_0_0 = radar.usrp_echotimer_cc(int(samp_rate), freq0, int(num_delay_samp0), address0, 0, '', 'internal', 'internal', 'TX/RX', TX_gain0, 0.2, wait_to_start, 0, address0, 0, '', 'internal', 'internal', 'RX1', RX_gain0, 0.2, wait_to_start, 0, "packet_len")
+        self.radar_usrp_echotimer_cc_0_0 = radar.usrp_echotimer_cc(int(samp_rate), freq0, int(num_delay_samp0), address0, 0, '', 'external', 'external', 'TX/RX', TX_gain0, 0.2, wait_to_start, 0, address0, 0, '', 'external', 'external', 'RX1', RX_gain0, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0_0.set_min_output_buffer(min_out_buf_val)
-        self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq1, int(num_delay_samp1), address1, 0, '', 'internal', 'internal', 'TX/RX', TX_gain1, 0.2, wait_to_start, 0, address1, 0, '', 'internal', 'internal', 'RX1', RX_gain1, 0.2, wait_to_start, 0, "packet_len")
+        self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq1, int(num_delay_samp1), address1, 0, '', 'external', 'external', 'TX/RX', TX_gain1, 0.2, wait_to_start, 0, address1, 0, '', 'external', 'external', 'RX1', RX_gain1, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
         self.radar_ofdm_divide_vcvc_0_0.set_min_output_buffer((2*transpose_len))
@@ -766,11 +766,11 @@ def argument_parser():
     description = 'USRP OFDM radar zero-Doppler range profile (full 0~R_max). RX packet_len tags via echotimer; range spectrum via qtgui_vector_sink_f.'
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        "--address0", dest="address0", type=str, default="type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2",
-        help="Set UHD dev args [default=%(default)r]")
+        "--address0", dest="address0", type=str, default="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external",
+        help="Set address0 (33ABFDE) [default=%(default)r]")
     parser.add_argument(
-        "--address1", dest="address1", type=str, default="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2",
-        help="Set UHD dev args [default=%(default)r]")
+        "--address1", dest="address1", type=str, default="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external",
+        help="Set address1 (349B642) [default=%(default)r]")
     return parser
 
 

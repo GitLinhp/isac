@@ -411,12 +411,12 @@ blocks:
   id: parameter
   parameters:
     alias: ''
-    comment: ''
+    comment: 'USRP 33ABFDE; QSFP 11.2; external 10MHz+PPS'
     hide: none
-    label: UHD dev args
+    label: address0 (33ABFDE)
     short_id: ''
     type: str
-    value: '"type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2"'
+    value: '"type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
@@ -428,12 +428,12 @@ blocks:
   id: parameter
   parameters:
     alias: ''
-    comment: ''
+    comment: 'USRP 349B642; QSFP 10.2; external 10MHz+PPS'
     hide: none
-    label: UHD dev args
+    label: address1 (349B642)
     short_id: ''
     type: str
-    value: '"type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"'
+    value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
@@ -1539,8 +1539,8 @@ blocks:
     center_freq: freq1
     channel_rx: '0'
     channel_tx: '0'
-    clock_source_rx: '''internal'''
-    clock_source_tx: '''internal'''
+    clock_source_rx: '''external'''
+    clock_source_tx: '''external'''
     comment: ''
     gain_rx: RX_gain1
     gain_tx: TX_gain1
@@ -1551,8 +1551,8 @@ blocks:
     minoutbuf: min_out_buf_val
     num_delay_samps: int(num_delay_samp1)
     samp_rate: int(samp_rate)
-    time_source_rx: '''internal'''
-    time_source_tx: '''internal'''
+    time_source_rx: '''external'''
+    time_source_tx: '''external'''
     timeout_rx: '0.2'
     timeout_tx: '0.2'
     wait_rx: wait_to_start
@@ -1578,8 +1578,8 @@ blocks:
     center_freq: freq0
     channel_rx: '0'
     channel_tx: '0'
-    clock_source_rx: '''internal'''
-    clock_source_tx: '''internal'''
+    clock_source_rx: '''external'''
+    clock_source_tx: '''external'''
     comment: ''
     gain_rx: RX_gain0
     gain_tx: TX_gain0
@@ -1590,8 +1590,8 @@ blocks:
     minoutbuf: min_out_buf_val
     num_delay_samps: int(num_delay_samp0)
     samp_rate: int(samp_rate)
-    time_source_rx: '''internal'''
-    time_source_tx: '''internal'''
+    time_source_rx: '''external'''
+    time_source_tx: '''external'''
     timeout_rx: '0.2'
     timeout_tx: '0.2'
     wait_rx: wait_to_start
