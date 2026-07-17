@@ -144,7 +144,7 @@ blocks:
     coordinate: [504, 20.0]
     rotation: 0
     state: enabled
-- name: address
+- name: address0
   id: parameter
   parameters:
     alias: ''
@@ -158,7 +158,24 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1128, 52.0]
+    coordinate: [920, 44.0]
+    rotation: 0
+    state: enabled
+- name: address1
+  id: parameter
+  parameters:
+    alias: ''
+    comment: ''
+    hide: none
+    label: UHD dev args
+    short_id: ''
+    type: str
+    value: '"type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [696, 44.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
@@ -807,7 +824,7 @@ blocks:
     clock_source6: ''
     clock_source7: ''
     comment: ''
-    dev_addr: address
+    dev_addr: address1
     dev_args: '""'
     gain0: TX_gain
     gain1: '0'
@@ -1148,7 +1165,7 @@ blocks:
     dc_offs_enb7: default
     dc_offs_enb8: default
     dc_offs_enb9: default
-    dev_addr: address
+    dev_addr: address0
     dev_args: '""'
     gain0: RX_gain
     gain1: '0'
