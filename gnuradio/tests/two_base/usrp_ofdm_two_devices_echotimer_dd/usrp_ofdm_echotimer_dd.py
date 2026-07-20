@@ -13,8 +13,6 @@ from PyQt5 import Qt
 from gnuradio import qtgui
 from PyQt5 import QtCore
 from gnuradio import blocks
-import numpy
-from gnuradio import digital
 from gnuradio import fft
 from gnuradio.fft import window
 from gnuradio import gr
@@ -28,12 +26,13 @@ from gnuradio import eng_notation
 from gnuradio import radar
 import sip
 import threading
+import usrp_ofdm_echotimer_dd_echotimer_transmit_cache_0 as echotimer_transmit_cache_0  # embedded python block
 
 
 
 class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
-    def __init__(self, address0="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external", address1="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"):
+    def __init__(self, address1="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"):
         gr.top_block.__init__(self, "Usrp Ofdm Echotimer Dd", catch_exceptions=True)
         Qt.QWidget.__init__(self)
         self.setWindowTitle("Usrp Ofdm Echotimer Dd")
@@ -67,7 +66,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         # Parameters
         ##################################################
-        self.address0 = address0
         self.address1 = address1
 
         ##################################################
@@ -80,17 +78,17 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.n_carriers = n_carriers = fft_len - 2
         self.zeropadding_fac = zeropadding_fac = 2
         self.packet_len = packet_len = transpose_len * n_carriers // 4
+        self.cp_len = cp_len = fft_len//4
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
-        self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
-        self.payload_mod = payload_mod = digital.constellation_qpsk()
-        self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
         self.num_delay_samp = num_delay_samp = 162
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
         self.factor = factor = 0.004
+        self.config_file = config_file = "implementaion/ofdm_echotimer_dd.toml"
+        self.burst_len_samples = burst_len_samples = transpose_len * (fft_len + cp_len)
         self.TX_gain = TX_gain = 30
         self.RX_gain = RX_gain = 30
 
@@ -110,7 +108,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
-        self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), address1, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, address0, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
+        self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), address1, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, address1, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
         self.radar_ofdm_divide_vcvc_0.set_min_output_buffer((2*transpose_len))
@@ -251,46 +249,25 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.fft_vxx_0_1 = fft.fft_vcc((fft_len*zeropadding_fac), True, window.blackmanharris(fft_len*zeropadding_fac), False, 1)
         self.fft_vxx_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
-        self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)
-        self.fft_vxx_0.set_min_output_buffer((2*transpose_len))
-        self.digital_ofdm_cyclic_prefixer_0 = digital.ofdm_cyclic_prefixer(
-            fft_len,
-            fft_len + fft_len//4,
-            0,
-            length_tag_key)
-        self.digital_ofdm_cyclic_prefixer_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
-        self.digital_ofdm_carrier_allocator_cvc_0 = digital.ofdm_carrier_allocator_cvc( fft_len, occupied_carriers, ((),), ((),), (), length_tag_key, True)
-        self.digital_ofdm_carrier_allocator_cvc_0.set_min_output_buffer((4*transpose_len))
-        self.digital_chunks_to_symbols_xx_0_0 = digital.chunks_to_symbols_bc(payload_mod.points(), 1)
-        self.digital_chunks_to_symbols_xx_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
-        self.blocks_stream_to_tagged_stream_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
-        self.blocks_repack_bits_bb_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
+        self.echotimer_transmit_cache_0 = echotimer_transmit_cache_0.EchotimerTransmitCacheBlock(config_file=config_file, length_tag_key=length_tag_key, fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=cp_len)
+        self.echotimer_transmit_cache_0.set_min_output_buffer((int(2*burst_len_samples)))
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
-        self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, packet_len))), True)
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.analog_random_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0, 0))
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
-        self.connect((self.blocks_repack_bits_bb_0, 0), (self.digital_chunks_to_symbols_xx_0_0, 0))
-        self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
-        self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
-        self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.fft_vxx_0, 0))
-        self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.radar_ofdm_divide_vcvc_0, 0))
-        self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
-        self.connect((self.fft_vxx_0, 0), (self.digital_ofdm_cyclic_prefixer_0, 0))
+        self.connect((self.echotimer_transmit_cache_0, 0), (self.blocks_multiply_const_vxx_0, 0))
+        self.connect((self.echotimer_transmit_cache_0, 1), (self.radar_ofdm_divide_vcvc_0, 0))
         self.connect((self.fft_vxx_0_0, 0), (self.radar_ofdm_divide_vcvc_0, 1))
         self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
@@ -306,12 +283,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.wait()
 
         event.accept()
-
-    def get_address0(self):
-        return self.address0
-
-    def set_address0(self, address0):
-        self.address0 = address0
 
     def get_address1(self):
         return self.address1
@@ -332,6 +303,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_fft_len(self, fft_len):
         self.fft_len = fft_len
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.cp_len))
+        self.set_cp_len(self.fft_len//4)
         self.set_n_carriers(self.fft_len - 2)
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
@@ -342,8 +315,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_transpose_len(self, transpose_len):
         self.transpose_len = transpose_len
+        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.cp_len))
         self.set_packet_len(self.transpose_len * self.n_carriers // 4)
-        self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
 
     def get_samp_rate(self):
         return self.samp_rate
@@ -359,9 +332,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_n_carriers(self, n_carriers):
         self.n_carriers = n_carriers
-        self.set_occupied_carriers(list((list(range(-self.n_carriers//2, 0)) + list(range(1, self.n_carriers//2 + 1)),)))
         self.set_packet_len(self.transpose_len * self.n_carriers // 4)
-        self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
 
     def get_zeropadding_fac(self):
         return self.zeropadding_fac
@@ -377,8 +348,13 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_packet_len(self, packet_len):
         self.packet_len = packet_len
         self.set_min_out_buf_val(self.packet_len*2)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
+
+    def get_cp_len(self):
+        return self.cp_len
+
+    def set_cp_len(self, cp_len):
+        self.cp_len = cp_len
+        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.cp_len))
 
     def get_R_max(self):
         return self.R_max
@@ -399,24 +375,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_range_bin_step(self, range_bin_step):
         self.range_bin_step = range_bin_step
         self.qtgui_vector_sink_f_0.set_x_axis(0, self.range_bin_step)
-
-    def get_qpsk_symbols_per_packet(self):
-        return self.qpsk_symbols_per_packet
-
-    def set_qpsk_symbols_per_packet(self, qpsk_symbols_per_packet):
-        self.qpsk_symbols_per_packet = qpsk_symbols_per_packet
-
-    def get_payload_mod(self):
-        return self.payload_mod
-
-    def set_payload_mod(self, payload_mod):
-        self.payload_mod = payload_mod
-
-    def get_occupied_carriers(self):
-        return self.occupied_carriers
-
-    def set_occupied_carriers(self, occupied_carriers):
-        self.occupied_carriers = occupied_carriers
 
     def get_num_delay_samp(self):
         return self.num_delay_samp
@@ -450,6 +408,18 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.factor = factor
         self.blocks_multiply_const_vxx_0.set_k(self.factor)
 
+    def get_config_file(self):
+        return self.config_file
+
+    def set_config_file(self, config_file):
+        self.config_file = config_file
+
+    def get_burst_len_samples(self):
+        return self.burst_len_samples
+
+    def set_burst_len_samples(self, burst_len_samples):
+        self.burst_len_samples = burst_len_samples
+
     def get_TX_gain(self):
         return self.TX_gain
 
@@ -470,9 +440,6 @@ def argument_parser():
     description = 'USRP OFDM radar zero-Doppler range profile (full 0~R_max). RX packet_len tags via echotimer; range spectrum via qtgui_vector_sink_f.'
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        "--address0", dest="address0", type=str, default="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external",
-        help="Set address0 (RX) [default=%(default)r]")
-    parser.add_argument(
         "--address1", dest="address1", type=str, default="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external",
         help="Set address1 (TX) [default=%(default)r]")
     return parser
@@ -484,7 +451,7 @@ def main(top_block_cls=usrp_ofdm_echotimer_dd, options=None):
 
     qapp = Qt.QApplication(sys.argv)
 
-    tb = top_block_cls(address0=options.address0, address1=options.address1)
+    tb = top_block_cls(address1=options.address1)
 
     tb.start()
     tb.flowgraph_started.set()

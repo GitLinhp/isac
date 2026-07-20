@@ -1,0 +1,22 @@
+{
+  "vlen": 4096,
+  "label": "",
+  "data_type": "linear_power",
+  "input0_device": "dev1",
+  "input1_device": "dev0",
+  "total_frames": 128,
+  "shard_count": 1,
+  "flush_every": 1200,
+  "frame_rate_hz": 12000.0,
+  "finalized": true,
+  "fft_len": 2048,
+  "samp_rate": 122880000.0,
+  "R_max": 2500.0,
+  "range_bin_step": 0.6103515625,
+  "zeropadding_fac": 2,
+  "transpose_len": 4,
+  "freq0": 6030000000.0,
+  "freq1": 5970000000.0,
+  "num_delay_samp0": 161,
+  "num_delay_samp1": 161
+}

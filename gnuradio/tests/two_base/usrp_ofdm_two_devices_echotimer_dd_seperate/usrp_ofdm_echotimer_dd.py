@@ -28,6 +28,8 @@ from gnuradio import eng_notation
 from gnuradio import radar
 import sip
 import threading
+import usrp_ofdm_echotimer_dd_range_profile_recorder_dev0 as range_profile_recorder_dev0  # embedded python block
+import usrp_ofdm_echotimer_dd_range_profile_recorder_dev1 as range_profile_recorder_dev1  # embedded python block
 
 
 
@@ -82,6 +84,10 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
+        self.record_output_dir = record_output_dir = "dataset/run_001"
+        self.record_label = record_label = ""
+        self.record_flush_every = record_flush_every = 1200
+        self.record_enable = record_enable = False
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
@@ -103,6 +109,17 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
+        _record_enable_check_box = Qt.QCheckBox("Record Enable")
+        self._record_enable_choices = {True: True, False: False}
+        self._record_enable_choices_inv = dict((v,k) for k,v in self._record_enable_choices.items())
+        self._record_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_record_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._record_enable_choices_inv[i]))
+        self._record_enable_callback(self.record_enable)
+        _record_enable_check_box.stateChanged.connect(lambda i: self.set_record_enable(self._record_enable_choices[bool(i)]))
+        self.top_grid_layout.addWidget(_record_enable_check_box, 1, 4, 1, 1)
+        for r in range(1, 2):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(4, 5):
+            self.top_grid_layout.setColumnStretch(c, 1)
         self._num_delay_samp1_range = qtgui.Range(0, packet_len, 1, 161, 200)
         self._num_delay_samp1_win = qtgui.RangeWidget(self._num_delay_samp1_range, self.set_num_delay_samp1, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._num_delay_samp1_win, 0, 0, 1, 1)
@@ -152,6 +169,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(3, 4):
             self.top_grid_layout.setColumnStretch(c, 1)
+        self.range_profile_recorder_dev1 = range_profile_recorder_dev1.Dev1RangeProfileRecorderBlock(vlen=fft_len*zeropadding_fac, record_enable=record_enable, output_dir=record_output_dir, label=record_label, flush_every=record_flush_every, fft_len=fft_len, samp_rate=samp_rate, R_max=R_max, range_bin_step=range_bin_step, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len, freq0=freq0, freq1=freq1, num_delay_samp0=num_delay_samp0, num_delay_samp1=num_delay_samp1)
+        self.range_profile_recorder_dev0 = range_profile_recorder_dev0.Dev0RangeProfileRecorderBlock(vlen=fft_len*zeropadding_fac, record_enable=record_enable, output_dir=record_output_dir, label=record_label, flush_every=record_flush_every, fft_len=fft_len, samp_rate=samp_rate, R_max=R_max, range_bin_step=range_bin_step, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len, freq0=freq0, freq1=freq1, num_delay_samp0=num_delay_samp0, num_delay_samp1=num_delay_samp1)
         self.radar_usrp_echotimer_cc_0_0 = radar.usrp_echotimer_cc(int(samp_rate), freq0, int(num_delay_samp0), address0, 0, '', 'external', 'external', 'TX/RX', TX_gain0, 0.2, wait_to_start, 0, address0, 0, '', 'external', 'external', 'RX1', RX_gain0, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0_0.set_min_output_buffer(min_out_buf_val)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq1, int(num_delay_samp1), address1, 0, '', 'external', 'external', 'TX/RX', TX_gain1, 0.2, wait_to_start, 0, address1, 0, '', 'external', 'external', 'RX1', RX_gain1, 0.2, wait_to_start, 0, "packet_len")
@@ -164,49 +183,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.radar_ofdm_cyclic_prefix_remover_cvc_0_0.set_min_output_buffer((2*transpose_len))
         self.radar_ofdm_cyclic_prefix_remover_cvc_0 = radar.ofdm_cyclic_prefix_remover_cvc(fft_len, (fft_len//4), "packet_len")
         self.radar_ofdm_cyclic_prefix_remover_cvc_0.set_min_output_buffer((2*transpose_len))
-        self.qtgui_vector_sink_f_0_0 = qtgui.vector_sink_f(
-            (fft_len*zeropadding_fac),
-            0,
-            range_bin_step,
-            "Range",
-            "Power (dB)",
-            "Device 0 Range Profile",
-            1, # Number of inputs
-            None # parent
-        )
-        self.qtgui_vector_sink_f_0_0.set_update_time(0.10)
-        self.qtgui_vector_sink_f_0_0.set_y_axis((-40), 0)
-        self.qtgui_vector_sink_f_0_0.enable_autoscale(True)
-        self.qtgui_vector_sink_f_0_0.enable_grid(True)
-        self.qtgui_vector_sink_f_0_0.set_x_axis_units("m")
-        self.qtgui_vector_sink_f_0_0.set_y_axis_units("dB")
-        self.qtgui_vector_sink_f_0_0.set_ref_level(0)
-
-
-        labels = ['Range Profile', '', '', '', '',
-            '', '', '', '', '']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ["blue", "red", "green", "black", "cyan",
-            "magenta", "yellow", "dark red", "dark green", "dark blue"]
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
-
-        for i in range(1):
-            if len(labels[i]) == 0:
-                self.qtgui_vector_sink_f_0_0.set_line_label(i, "Data {0}".format(i))
-            else:
-                self.qtgui_vector_sink_f_0_0.set_line_label(i, labels[i])
-            self.qtgui_vector_sink_f_0_0.set_line_width(i, widths[i])
-            self.qtgui_vector_sink_f_0_0.set_line_color(i, colors[i])
-            self.qtgui_vector_sink_f_0_0.set_line_alpha(i, alphas[i])
-
-        self._qtgui_vector_sink_f_0_0_win = sip.wrapinstance(self.qtgui_vector_sink_f_0_0.qwidget(), Qt.QWidget)
-        self.top_grid_layout.addWidget(self._qtgui_vector_sink_f_0_0_win, 4, 0, 1, 4)
-        for r in range(4, 5):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 4):
-            self.top_grid_layout.setColumnStretch(c, 1)
         self.qtgui_vector_sink_f_0 = qtgui.vector_sink_f(
             (fft_len*zeropadding_fac),
             0,
@@ -214,7 +190,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
             "Range",
             "Power (dB)",
             "Device 1 Range Profile",
-            1, # Number of inputs
+            2, # Number of inputs
             None # parent
         )
         self.qtgui_vector_sink_f_0.set_update_time(0.10)
@@ -235,7 +211,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
             1.0, 1.0, 1.0, 1.0, 1.0]
 
-        for i in range(1):
+        for i in range(2):
             if len(labels[i]) == 0:
                 self.qtgui_vector_sink_f_0.set_line_label(i, "Data {0}".format(i))
             else:
@@ -481,6 +457,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.blocks_stream_to_tagged_stream_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
         self.blocks_repack_bits_bb_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
+        self.blocks_null_sink_rec_dev1 = blocks.null_sink(gr.sizeof_float*1)
+        self.blocks_null_sink_rec_dev0 = blocks.null_sink(gr.sizeof_float*1)
         self.blocks_nlog10_ff_0_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(multi_fac1)
@@ -499,13 +477,15 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_complex_to_mag_squared_0_0, 0), (self.blocks_integrate_xx_0_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
+        self.connect((self.blocks_integrate_xx_0, 0), (self.range_profile_recorder_dev1, 0))
         self.connect((self.blocks_integrate_xx_0_0, 0), (self.blocks_nlog10_ff_0_0, 0))
+        self.connect((self.blocks_integrate_xx_0_0, 0), (self.range_profile_recorder_dev0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
-        self.connect((self.blocks_nlog10_ff_0_0, 0), (self.qtgui_vector_sink_f_0_0, 0))
+        self.connect((self.blocks_nlog10_ff_0_0, 0), (self.qtgui_vector_sink_f_0, 1))
         self.connect((self.blocks_repack_bits_bb_0, 0), (self.digital_chunks_to_symbols_xx_0_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
         self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
@@ -526,6 +506,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0_0, 0), (self.qtgui_freq_sink_x_0_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0_0, 0))
+        self.connect((self.range_profile_recorder_dev0, 0), (self.blocks_null_sink_rec_dev0, 0))
+        self.connect((self.range_profile_recorder_dev1, 0), (self.blocks_null_sink_rec_dev1, 0))
 
 
     def closeEvent(self, event):
@@ -626,13 +608,45 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_wait_to_start(self, wait_to_start):
         self.wait_to_start = wait_to_start
 
+    def get_record_output_dir(self):
+        return self.record_output_dir
+
+    def set_record_output_dir(self, record_output_dir):
+        self.record_output_dir = record_output_dir
+        self.range_profile_recorder_dev0.output_dir = self.record_output_dir
+        self.range_profile_recorder_dev1.output_dir = self.record_output_dir
+
+    def get_record_label(self):
+        return self.record_label
+
+    def set_record_label(self, record_label):
+        self.record_label = record_label
+        self.range_profile_recorder_dev0.label = self.record_label
+        self.range_profile_recorder_dev1.label = self.record_label
+
+    def get_record_flush_every(self):
+        return self.record_flush_every
+
+    def set_record_flush_every(self, record_flush_every):
+        self.record_flush_every = record_flush_every
+        self.range_profile_recorder_dev0.flush_every = self.record_flush_every
+        self.range_profile_recorder_dev1.flush_every = self.record_flush_every
+
+    def get_record_enable(self):
+        return self.record_enable
+
+    def set_record_enable(self, record_enable):
+        self.record_enable = record_enable
+        self._record_enable_callback(self.record_enable)
+        self.range_profile_recorder_dev0.record_enable = self.record_enable
+        self.range_profile_recorder_dev1.record_enable = self.record_enable
+
     def get_range_bin_step(self):
         return self.range_bin_step
 
     def set_range_bin_step(self, range_bin_step):
         self.range_bin_step = range_bin_step
         self.qtgui_vector_sink_f_0.set_x_axis(0, self.range_bin_step)
-        self.qtgui_vector_sink_f_0_0.set_x_axis(0, self.range_bin_step)
 
     def get_qpsk_symbols_per_packet(self):
         return self.qpsk_symbols_per_packet

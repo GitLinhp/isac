@@ -1,0 +1,3 @@
+from isac_imp.data_collection.grc_recorder import Dev1RangeProfileRecorderBlock
+
+blk = Dev1RangeProfileRecorderBlock

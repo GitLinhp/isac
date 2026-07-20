@@ -347,6 +347,59 @@ blocks:
     coordinate: [1112, 16.0]
     rotation: 0
     state: enabled
+- name: record_enable
+  id: variable_qtgui_check_box
+  parameters:
+    comment: Set True to record paired range profiles to disk
+    false: 'False'
+    gui_hint: 1,4,1,1
+    label: Record Enable
+    true: 'True'
+    type: bool
+    value: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [960, 16.0]
+    rotation: 0
+    state: enabled
+- name: record_flush_every
+  id: variable
+  parameters:
+    comment: Flush shard every N CPI frames (~0.1s at 1200)
+    value: '1200'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1608, 120.0]
+    rotation: 0
+    state: enabled
+- name: record_label
+  id: variable
+  parameters:
+    comment: Scene label stored in meta.json
+    value: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 112.0]
+    rotation: 0
+    state: enabled
+- name: record_output_dir
+  id: variable
+  parameters:
+    comment: Output directory for shard_*.npz and meta.json
+    value: '"dataset/run_001"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1960, 96.0]
+    rotation: 0
+    state: enabled
 - name: samp_rate
   id: variable
   parameters:
@@ -582,6 +635,40 @@ blocks:
     bus_structure: null
     coordinate: [328, 1268.0]
     rotation: 180
+    state: enabled
+- name: blocks_null_sink_rec_dev0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [776, 1544.0]
+    rotation: 0
+    state: enabled
+- name: blocks_null_sink_rec_dev1
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [728, 904.0]
+    rotation: 0
     state: enabled
 - name: blocks_repack_bits_bb_0
   id: blocks_repack_bits_bb
@@ -1188,7 +1275,7 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     name: '"Device 1 Range Profile"'
-    nconnections: '1'
+    nconnections: '2'
     ref_level: '0'
     showports: 'False'
     update_time: '0.10'
@@ -1215,81 +1302,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [40, 600.0]
-    rotation: 180
-    state: enabled
-- name: qtgui_vector_sink_f_0_0
-  id: qtgui_vector_sink_f
-  parameters:
-    affinity: ''
-    alias: ''
-    alpha1: '1.0'
-    alpha10: '1.0'
-    alpha2: '1.0'
-    alpha3: '1.0'
-    alpha4: '1.0'
-    alpha5: '1.0'
-    alpha6: '1.0'
-    alpha7: '1.0'
-    alpha8: '1.0'
-    alpha9: '1.0'
-    autoscale: 'True'
-    average: '1.0'
-    color1: '"blue"'
-    color10: '"dark blue"'
-    color2: '"red"'
-    color3: '"green"'
-    color4: '"black"'
-    color5: '"cyan"'
-    color6: '"magenta"'
-    color7: '"yellow"'
-    color8: '"dark red"'
-    color9: '"dark green"'
-    comment: Zero-Doppler range profile, 0~R_max m (full spectrum)
-    grid: 'True'
-    gui_hint: 4,0,1,4
-    label1: Range Profile
-    label10: ''
-    label2: ''
-    label3: ''
-    label4: ''
-    label5: ''
-    label6: ''
-    label7: ''
-    label8: ''
-    label9: ''
-    legend: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    name: '"Device 0 Range Profile"'
-    nconnections: '1'
-    ref_level: '0'
-    showports: 'False'
-    update_time: '0.10'
-    vlen: fft_len*zeropadding_fac
-    width1: '1'
-    width10: '1'
-    width2: '1'
-    width3: '1'
-    width4: '1'
-    width5: '1'
-    width6: '1'
-    width7: '1'
-    width8: '1'
-    width9: '1'
-    x_axis_label: '"Range"'
-    x_start: '0'
-    x_step: range_bin_step
-    x_units: '"m"'
-    y_axis_label: '"Power (dB)"'
-    y_units: '"dB"'
-    ymax: '0'
-    ymin: '-40'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [72, 1232.0]
+    coordinate: [48, 616.0]
     rotation: 180
     state: enabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0
@@ -1446,19 +1459,109 @@ blocks:
     coordinate: [1900.0, 1080]
     rotation: 270
     state: enabled
+- name: range_profile_recorder_dev0
+  id: epy_block
+  parameters:
+    R_max: R_max
+    _source_code: 'from isac_imp.data_collection.grc_recorder import Dev0RangeProfileRecorderBlock
+
+
+      blk = Dev0RangeProfileRecorderBlock
+
+      '
+    affinity: ''
+    alias: ''
+    comment: dev0 linear range profile recorder
+    fft_len: fft_len
+    flush_every: record_flush_every
+    freq0: freq0
+    freq1: freq1
+    label: record_label
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_delay_samp0: num_delay_samp0
+    num_delay_samp1: num_delay_samp1
+    output_dir: record_output_dir
+    range_bin_step: range_bin_step
+    record_enable: record_enable
+    samp_rate: samp_rate
+    transpose_len: transpose_len
+    vlen: fft_len*zeropadding_fac
+    zeropadding_fac: zeropadding_fac
+  states:
+    _io_cache: "('DevRangeProfileRecorder_dev0', 'Dev0RangeProfileRecorderBlock',\
+      \ [('vlen', '4096'), ('record_enable', 'False'), ('output_dir', \"'dataset/run_001'\"\
+      ), ('label', \"''\"), ('flush_every', '1200'), ('fft_len', '2048'), ('samp_rate',\
+      \ '122880000.0'), ('R_max', '2500.0'), ('range_bin_step', '0.61'), ('zeropadding_fac',\
+      \ '2'), ('transpose_len', '4'), ('freq0', '6030000000.0'), ('freq1', '5970000000.0'),\
+      \ ('num_delay_samp0', '161'), ('num_delay_samp1', '161')], [('0', 'float', 4096)],\
+      \ [('0', 'float', 1)], 'dev0 \u5F55\u5236\u5757\uFF1BGRC \u8BF7 import \u4E3A\
+      \ blk\u3002', ['flush_every', 'label', 'output_dir', 'record_enable'])"
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [512, 1408.0]
+    rotation: 0
+    state: enabled
+- name: range_profile_recorder_dev1
+  id: epy_block
+  parameters:
+    R_max: R_max
+    _source_code: 'from isac_imp.data_collection.grc_recorder import Dev1RangeProfileRecorderBlock
+
+
+      blk = Dev1RangeProfileRecorderBlock
+
+      '
+    affinity: ''
+    alias: ''
+    comment: dev1 linear range profile recorder
+    fft_len: fft_len
+    flush_every: record_flush_every
+    freq0: freq0
+    freq1: freq1
+    label: record_label
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_delay_samp0: num_delay_samp0
+    num_delay_samp1: num_delay_samp1
+    output_dir: record_output_dir
+    range_bin_step: range_bin_step
+    record_enable: record_enable
+    samp_rate: samp_rate
+    transpose_len: transpose_len
+    vlen: fft_len*zeropadding_fac
+    zeropadding_fac: zeropadding_fac
+  states:
+    _io_cache: "('DevRangeProfileRecorder_dev1', 'Dev1RangeProfileRecorderBlock',\
+      \ [('vlen', '4096'), ('record_enable', 'False'), ('output_dir', \"'dataset/run_001'\"\
+      ), ('label', \"''\"), ('flush_every', '1200'), ('fft_len', '2048'), ('samp_rate',\
+      \ '122880000.0'), ('R_max', '2500.0'), ('range_bin_step', '0.61'), ('zeropadding_fac',\
+      \ '2'), ('transpose_len', '4'), ('freq0', '6030000000.0'), ('freq1', '5970000000.0'),\
+      \ ('num_delay_samp0', '161'), ('num_delay_samp1', '161')], [('0', 'float', 4096)],\
+      \ [('0', 'float', 1)], 'dev1 \u5F55\u5236\u5757\uFF1BGRC \u8BF7 import \u4E3A\
+      \ blk\u3002', ['flush_every', 'label', 'output_dir', 'record_enable'])"
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 768.0]
+    rotation: 0
+    state: enabled
 
 connections:
 - [analog_random_source_x_0, '0', blocks_stream_to_tagged_stream_0, '0']
 - [blocks_complex_to_mag_squared_0, '0', blocks_integrate_xx_0, '0']
 - [blocks_complex_to_mag_squared_0_0, '0', blocks_integrate_xx_0_0, '0']
 - [blocks_integrate_xx_0, '0', blocks_nlog10_ff_0, '0']
+- [blocks_integrate_xx_0, '0', range_profile_recorder_dev1, '0']
 - [blocks_integrate_xx_0_0, '0', blocks_nlog10_ff_0_0, '0']
+- [blocks_integrate_xx_0_0, '0', range_profile_recorder_dev0, '0']
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0_0, '0']
 - [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0, '0']
 - [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0_0, '0']
 - [blocks_nlog10_ff_0, '0', qtgui_vector_sink_f_0, '0']
-- [blocks_nlog10_ff_0_0, '0', qtgui_vector_sink_f_0_0, '0']
+- [blocks_nlog10_ff_0_0, '0', qtgui_vector_sink_f_0, '1']
 - [blocks_repack_bits_bb_0, '0', digital_chunks_to_symbols_xx_0_0, '0']
 - [blocks_stream_to_tagged_stream_0, '0', blocks_repack_bits_bb_0, '0']
 - [digital_chunks_to_symbols_xx_0_0, '0', digital_ofdm_carrier_allocator_cvc_0, '0']
@@ -1479,6 +1582,8 @@ connections:
 - [radar_usrp_echotimer_cc_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
 - [radar_usrp_echotimer_cc_0_0, '0', qtgui_freq_sink_x_0_0, '0']
 - [radar_usrp_echotimer_cc_0_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0_0, '0']
+- [range_profile_recorder_dev0, '0', blocks_null_sink_rec_dev0, '0']
+- [range_profile_recorder_dev1, '0', blocks_null_sink_rec_dev1, '0']
 
 metadata:
   file_format: 1
