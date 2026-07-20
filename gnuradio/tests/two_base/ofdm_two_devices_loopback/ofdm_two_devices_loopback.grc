@@ -148,34 +148,34 @@ blocks:
   id: parameter
   parameters:
     alias: ''
-    comment: ''
+    comment: USRP 33ABFDE; QSFP 11.2; external 10MHz+PPS
     hide: none
-    label: UHD dev args
+    label: address0 (33ABFDE)
     short_id: ''
     type: str
-    value: '"type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2"'
+    value: '"type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 44.0]
+    coordinate: [936, 28.0]
     rotation: 0
     state: enabled
 - name: address1
   id: parameter
   parameters:
     alias: ''
-    comment: ''
+    comment: USRP 349B642; QSFP 10.2; external 10MHz+PPS
     hide: none
-    label: UHD dev args
+    label: address1 (349B642)
     short_id: ''
     type: str
-    value: '"type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2"'
+    value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [696, 44.0]
+    coordinate: [680, 36.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
@@ -193,7 +193,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 256.0]
+    coordinate: [832, 256.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_tagged_stream_0
@@ -212,7 +212,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [344, 244.0]
+    coordinate: [360, 248.0]
     rotation: 0
     state: enabled
 - name: blocks_tag_debug_0
@@ -266,7 +266,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [104, 236.0]
+    coordinate: [168, 244.0]
     rotation: 0
     state: enabled
 - name: digital_ofdm_rx_0
@@ -321,7 +321,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [576, 172.0]
+    coordinate: [592, 176.0]
     rotation: 0
     state: enabled
 - name: freq
@@ -516,7 +516,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [992, 556.0]
+    coordinate: [936, 556.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_1
@@ -613,7 +613,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1096, 420.0]
+    coordinate: [1128, 420.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_2
@@ -987,7 +987,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1088, 176.0]
+    coordinate: [1120, 176.0]
     rotation: 0
     state: enabled
 - name: uhd_usrp_source_0_0

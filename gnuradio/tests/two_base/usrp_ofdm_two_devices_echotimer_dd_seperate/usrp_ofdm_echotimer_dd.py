@@ -75,7 +75,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         self.subcarrier_spacing = subcarrier_spacing = 60e3
         self.fft_len = fft_len = 2048
-        self.transpose_len = transpose_len = 2
+        self.transpose_len = transpose_len = 4
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
         self.n_carriers = n_carriers = fft_len - 2
         self.zeropadding_fac = zeropadding_fac = 2
@@ -86,14 +86,14 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
-        self.num_delay_samp1 = num_delay_samp1 = 162
-        self.num_delay_samp0 = num_delay_samp0 = 162
+        self.num_delay_samp1 = num_delay_samp1 = 161
+        self.num_delay_samp0 = num_delay_samp0 = 161
         self.multi_fac1 = multi_fac1 = 0.004
         self.multi_fac0 = multi_fac0 = 0.004
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
-        self.freq1 = freq1 = 5.9e9
-        self.freq0 = freq0 = 6.1e9
+        self.freq1 = freq1 = 5.97e9
+        self.freq0 = freq0 = 6.03e9
         self.TX_gain1 = TX_gain1 = 20
         self.TX_gain0 = TX_gain0 = 20
         self.RX_gain1 = RX_gain1 = 20
@@ -103,14 +103,14 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._num_delay_samp1_range = qtgui.Range(0, packet_len, 1, 162, 200)
+        self._num_delay_samp1_range = qtgui.Range(0, packet_len, 1, 161, 200)
         self._num_delay_samp1_win = qtgui.RangeWidget(self._num_delay_samp1_range, self.set_num_delay_samp1, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._num_delay_samp1_win, 0, 0, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._num_delay_samp0_range = qtgui.Range(0, packet_len, 1, 162, 200)
+        self._num_delay_samp0_range = qtgui.Range(0, packet_len, 1, 161, 200)
         self._num_delay_samp0_win = qtgui.RangeWidget(self._num_delay_samp0_range, self.set_num_delay_samp0, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._num_delay_samp0_win, 3, 0, 1, 1)
         for r in range(3, 4):
@@ -121,13 +121,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._multi_fac1_win = qtgui.RangeWidget(self._multi_fac1_range, self.set_multi_fac1, "TX scale", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._multi_fac1_win, 0, 1, 1, 1)
         for r in range(0, 1):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.top_grid_layout.setColumnStretch(c, 1)
-        self._multi_fac0_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
-        self._multi_fac0_win = qtgui.RangeWidget(self._multi_fac0_range, self.set_multi_fac0, "TX scale", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_grid_layout.addWidget(self._multi_fac0_win, 3, 1, 1, 1)
-        for r in range(3, 4):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(1, 2):
             self.top_grid_layout.setColumnStretch(c, 1)
@@ -459,8 +452,13 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 4):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self.fft_vxx_0_2 = fft.fft_vcc(fft_len, False, (), True, 1)
-        self.fft_vxx_0_2.set_min_output_buffer((2*transpose_len))
+        self._multi_fac0_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
+        self._multi_fac0_win = qtgui.RangeWidget(self._multi_fac0_range, self.set_multi_fac0, "TX scale", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._multi_fac0_win, 3, 1, 1, 1)
+        for r in range(3, 4):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(1, 2):
+            self.top_grid_layout.setColumnStretch(c, 1)
         self.fft_vxx_0_1_0 = fft.fft_vcc((fft_len*zeropadding_fac), True, window.blackmanharris(fft_len*zeropadding_fac), False, 1)
         self.fft_vxx_0_1 = fft.fft_vcc((fft_len*zeropadding_fac), True, window.blackmanharris(fft_len*zeropadding_fac), False, 1)
         self.fft_vxx_0_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
@@ -469,45 +467,28 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
         self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)
         self.fft_vxx_0.set_min_output_buffer((2*transpose_len))
-        self.digital_ofdm_cyclic_prefixer_0_0 = digital.ofdm_cyclic_prefixer(
-            fft_len,
-            fft_len + fft_len//4,
-            0,
-            length_tag_key)
-        self.digital_ofdm_cyclic_prefixer_0_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.digital_ofdm_cyclic_prefixer_0 = digital.ofdm_cyclic_prefixer(
             fft_len,
             fft_len + fft_len//4,
             0,
             length_tag_key)
         self.digital_ofdm_cyclic_prefixer_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
-        self.digital_ofdm_carrier_allocator_cvc_0_0 = digital.ofdm_carrier_allocator_cvc( fft_len, occupied_carriers, ((),), ((),), (), length_tag_key, True)
-        self.digital_ofdm_carrier_allocator_cvc_0_0.set_min_output_buffer((4*transpose_len))
         self.digital_ofdm_carrier_allocator_cvc_0 = digital.ofdm_carrier_allocator_cvc( fft_len, occupied_carriers, ((),), ((),), (), length_tag_key, True)
         self.digital_ofdm_carrier_allocator_cvc_0.set_min_output_buffer((4*transpose_len))
-        self.digital_chunks_to_symbols_xx_0_0_0 = digital.chunks_to_symbols_bc(payload_mod.points(), 1)
-        self.digital_chunks_to_symbols_xx_0_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.digital_chunks_to_symbols_xx_0_0 = digital.chunks_to_symbols_bc(payload_mod.points(), 1)
         self.digital_chunks_to_symbols_xx_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_stream_to_tagged_stream_0_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
-        self.blocks_stream_to_tagged_stream_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
         self.blocks_stream_to_tagged_stream_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_repack_bits_bb_0_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
-        self.blocks_repack_bits_bb_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
         self.blocks_repack_bits_bb_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_nlog10_ff_0_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
-        self.blocks_multiply_const_vxx_0_0 = blocks.multiply_const_cc(multi_fac0)
-        self.blocks_multiply_const_vxx_0_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(multi_fac1)
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.blocks_integrate_xx_0_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
-        self.analog_random_source_x_0_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, packet_len))), True)
         self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, packet_len))), True)
 
 
@@ -515,35 +496,28 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.connect((self.analog_random_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0, 0))
-        self.connect((self.analog_random_source_x_0_0, 0), (self.blocks_stream_to_tagged_stream_0_0, 0))
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_complex_to_mag_squared_0_0, 0), (self.blocks_integrate_xx_0_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_integrate_xx_0_0, 0), (self.blocks_nlog10_ff_0_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
-        self.connect((self.blocks_multiply_const_vxx_0_0, 0), (self.qtgui_time_sink_x_0_0, 0))
-        self.connect((self.blocks_multiply_const_vxx_0_0, 0), (self.radar_usrp_echotimer_cc_0_0, 0))
+        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
         self.connect((self.blocks_nlog10_ff_0_0, 0), (self.qtgui_vector_sink_f_0_0, 0))
         self.connect((self.blocks_repack_bits_bb_0, 0), (self.digital_chunks_to_symbols_xx_0_0, 0))
-        self.connect((self.blocks_repack_bits_bb_0_0, 0), (self.digital_chunks_to_symbols_xx_0_0_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
-        self.connect((self.blocks_stream_to_tagged_stream_0_0, 0), (self.blocks_repack_bits_bb_0_0, 0))
         self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
-        self.connect((self.digital_chunks_to_symbols_xx_0_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.fft_vxx_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.radar_ofdm_divide_vcvc_0, 0))
-        self.connect((self.digital_ofdm_carrier_allocator_cvc_0_0, 0), (self.fft_vxx_0_2, 0))
-        self.connect((self.digital_ofdm_carrier_allocator_cvc_0_0, 0), (self.radar_ofdm_divide_vcvc_0_0, 0))
+        self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.radar_ofdm_divide_vcvc_0_0, 0))
         self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
-        self.connect((self.digital_ofdm_cyclic_prefixer_0_0, 0), (self.blocks_multiply_const_vxx_0_0, 0))
         self.connect((self.fft_vxx_0, 0), (self.digital_ofdm_cyclic_prefixer_0, 0))
         self.connect((self.fft_vxx_0_0, 0), (self.radar_ofdm_divide_vcvc_0, 1))
         self.connect((self.fft_vxx_0_0_0, 0), (self.radar_ofdm_divide_vcvc_0_0, 1))
         self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
         self.connect((self.fft_vxx_0_1_0, 0), (self.blocks_complex_to_mag_squared_0_0, 0))
-        self.connect((self.fft_vxx_0_2, 0), (self.digital_ofdm_cyclic_prefixer_0_0, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0_0, 0), (self.fft_vxx_0_0_0, 0))
         self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
@@ -638,8 +612,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_min_out_buf_val(self.packet_len*2)
         self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
         self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
-        self.blocks_stream_to_tagged_stream_0_0.set_packet_len(self.packet_len)
-        self.blocks_stream_to_tagged_stream_0_0.set_packet_len_pmt(self.packet_len)
 
     def get_R_max(self):
         return self.R_max
@@ -706,7 +678,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_multi_fac0(self, multi_fac0):
         self.multi_fac0 = multi_fac0
-        self.blocks_multiply_const_vxx_0_0.set_k(self.multi_fac0)
 
     def get_min_out_buf_val(self):
         return self.min_out_buf_val

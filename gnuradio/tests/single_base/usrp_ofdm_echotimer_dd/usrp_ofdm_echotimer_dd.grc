@@ -183,7 +183,7 @@ blocks:
     start: '0'
     step: '1'
     stop: packet_len
-    value: '162'
+    value: '161'
     widget: counter_slider
   states:
     bus_sink: false
@@ -291,13 +291,14 @@ blocks:
 - name: uhd_dev_args
   id: variable
   parameters:
-    comment: 'X410 349B642; QSFP 10.2; external 10MHz+PPS: clock/time=external in args and Echotimer'
+    comment: 'X410 349B642; QSFP 10.2; external 10MHz+PPS: clock/time=external in
+      args and Echotimer'
     value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2480, 656.0]
+    coordinate: [2304, 704.0]
     rotation: 0
     state: enabled
 - name: wait_to_start
@@ -334,7 +335,7 @@ blocks:
     maxoutbuf: '0'
     min: '0'
     minoutbuf: '0'
-    num_samps: packet_len
+    num_samps: packet_len*8
     repeat: 'True'
     type: byte
   states:
@@ -881,7 +882,7 @@ blocks:
     channel_tx: '0'
     clock_source_rx: '''external'''
     clock_source_tx: '''external'''
-    comment: 'external 10MHz REF IN + PPS IN; must match device args'
+    comment: external 10MHz REF IN + PPS IN; must match device args
     gain_rx: RX_gain
     gain_tx: TX_gain
     len_key: '"packet_len"'

@@ -81,7 +81,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
-        self.num_delay_samp = num_delay_samp = 162
+        self.num_delay_samp = num_delay_samp = 161
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
@@ -93,7 +93,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 162, 200)
+        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 161, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
         self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
@@ -267,7 +267,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
-        self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, packet_len))), True)
+        self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, (packet_len*8)))), True)
 
 
         ##################################################

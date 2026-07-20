@@ -32,7 +32,7 @@ import threading
 
 class ofdm_loopback_example(gr.top_block, Qt.QWidget):
 
-    def __init__(self, address0="type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2", address1="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2", freq=6.0e9):
+    def __init__(self, freq=6.0e9, address1="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external", address0="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external"):
         gr.top_block.__init__(self, "OFDM Loopback Example", catch_exceptions=True)
         Qt.QWidget.__init__(self)
         self.setWindowTitle("OFDM Loopback Example")
@@ -66,9 +66,9 @@ class ofdm_loopback_example(gr.top_block, Qt.QWidget):
         ##################################################
         # Parameters
         ##################################################
-        self.address0 = address0
-        self.address1 = address1
         self.freq = freq
+        self.address1 = address1
+        self.address0 = address0
 
         ##################################################
         # Variables
@@ -383,18 +383,6 @@ class ofdm_loopback_example(gr.top_block, Qt.QWidget):
 
         event.accept()
 
-    def get_address0(self):
-        return self.address0
-
-    def set_address0(self, address0):
-        self.address0 = address0
-
-    def get_address1(self):
-        return self.address1
-
-    def set_address1(self, address1):
-        self.address1 = address1
-
     def get_freq(self):
         return self.freq
 
@@ -402,6 +390,18 @@ class ofdm_loopback_example(gr.top_block, Qt.QWidget):
         self.freq = freq
         self.uhd_usrp_sink_0_0.set_center_freq(self.freq, 0)
         self.uhd_usrp_source_0_0.set_center_freq(self.freq, 0)
+
+    def get_address1(self):
+        return self.address1
+
+    def set_address1(self, address1):
+        self.address1 = address1
+
+    def get_address0(self):
+        return self.address0
+
+    def set_address0(self, address0):
+        self.address0 = address0
 
     def get_samp_rate(self):
         return self.samp_rate
@@ -463,14 +463,14 @@ def argument_parser():
     description = 'Transmit a pre-defined signal (a complex sine) as OFDM packets.'
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        "--address0", dest="address0", type=str, default="type=x4xx,mgmt_addr=192.168.1.101,addr=192.168.11.2",
-        help="Set UHD dev args [default=%(default)r]")
-    parser.add_argument(
-        "--address1", dest="address1", type=str, default="type=x4xx,mgmt_addr=192.168.1.100,addr=192.168.10.2",
-        help="Set UHD dev args [default=%(default)r]")
-    parser.add_argument(
         "-f", "--freq", dest="freq", type=eng_float, default=eng_notation.num_to_str(float(6.0e9)),
         help="Set Default Frequency [default=%(default)r]")
+    parser.add_argument(
+        "--address1", dest="address1", type=str, default="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external",
+        help="Set address1 (349B642) [default=%(default)r]")
+    parser.add_argument(
+        "--address0", dest="address0", type=str, default="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external",
+        help="Set address0 (33ABFDE) [default=%(default)r]")
     return parser
 
 
@@ -480,7 +480,7 @@ def main(top_block_cls=ofdm_loopback_example, options=None):
 
     qapp = Qt.QApplication(sys.argv)
 
-    tb = top_block_cls(address0=options.address0, address1=options.address1, freq=options.freq)
+    tb = top_block_cls(freq=options.freq, address1=options.address1, address0=options.address0)
 
     tb.start()
     tb.flowgraph_started.set()
