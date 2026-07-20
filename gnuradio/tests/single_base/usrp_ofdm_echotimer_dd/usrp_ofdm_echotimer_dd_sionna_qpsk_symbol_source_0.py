@@ -1,0 +1,3 @@
+from isac_imp.sionna_qpsk_symbol_source import SionnaQpskSymbolSourceBlock
+
+blk = SionnaQpskSymbolSourceBlock

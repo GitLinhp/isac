@@ -13,7 +13,6 @@ from PyQt5 import Qt
 from gnuradio import qtgui
 from PyQt5 import QtCore
 from gnuradio import blocks
-import numpy
 from gnuradio import digital
 from gnuradio import fft
 from gnuradio.fft import window
@@ -28,6 +27,7 @@ from gnuradio import eng_notation
 from gnuradio import radar
 import sip
 import threading
+import usrp_ofdm_echotimer_dd_sionna_qpsk_symbol_source_0 as sionna_qpsk_symbol_source_0  # embedded python block
 
 
 
@@ -85,7 +85,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
-        self.factor = factor = 0.004
+        self.factor = factor = 0.008
         self.TX_gain = TX_gain = 30
         self.RX_gain = RX_gain = 30
 
@@ -96,7 +96,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 161, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
-        self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
+        self._factor_range = qtgui.Range(0, 1, 0.001, 0.008, 200)
         self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._factor_win)
         self._TX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
@@ -105,6 +105,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
+        self.sionna_qpsk_symbol_source_0 = sionna_qpsk_symbol_source_0.SionnaQpskSymbolSourceBlock(qpsk_symbols_per_packet=qpsk_symbols_per_packet, length_tag_key=length_tag_key, num_bits_per_symbol=2, device='cpu', seed=42)
+        self.sionna_qpsk_symbol_source_0.set_min_output_buffer((int(2*qpsk_symbols_per_packet)))
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), uhd_dev_args, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, uhd_dev_args, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
@@ -256,32 +258,21 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.digital_ofdm_cyclic_prefixer_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.digital_ofdm_carrier_allocator_cvc_0 = digital.ofdm_carrier_allocator_cvc( fft_len, occupied_carriers, ((),), ((),), (), length_tag_key, True)
         self.digital_ofdm_carrier_allocator_cvc_0.set_min_output_buffer((4*transpose_len))
-        self.digital_chunks_to_symbols_xx_0_0 = digital.chunks_to_symbols_bc(payload_mod.points(), 1)
-        self.digital_chunks_to_symbols_xx_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
-        self.blocks_stream_to_tagged_stream_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
-        self.blocks_repack_bits_bb_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
-        self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, (packet_len*8)))), True)
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.analog_random_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0, 0))
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
-        self.connect((self.blocks_repack_bits_bb_0, 0), (self.digital_chunks_to_symbols_xx_0_0, 0))
-        self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
-        self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.fft_vxx_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.radar_ofdm_divide_vcvc_0, 0))
         self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
@@ -292,6 +283,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
+        self.connect((self.sionna_qpsk_symbol_source_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
 
 
     def closeEvent(self, event):
@@ -360,8 +352,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_packet_len(self, packet_len):
         self.packet_len = packet_len
         self.set_min_out_buf_val(self.packet_len*2)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
 
     def get_R_max(self):
         return self.R_max

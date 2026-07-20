@@ -101,7 +101,7 @@ blocks:
     start: '0'
     step: '0.001'
     stop: '1'
-    value: '0.004'
+    value: '0.008'
     widget: counter_slider
   states:
     bus_sink: false
@@ -216,18 +216,6 @@ blocks:
     coordinate: [560, 16.0]
     rotation: 0
     state: enabled
-- name: payload_mod
-  id: variable
-  parameters:
-    comment: ''
-    value: digital.constellation_qpsk()
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [16, 128.0]
-    rotation: 0
-    state: enabled
 - name: qpsk_symbols_per_packet
   id: variable
   parameters:
@@ -325,26 +313,6 @@ blocks:
     coordinate: [696, 128.0]
     rotation: 0
     state: enabled
-- name: analog_random_source_x_0
-  id: analog_random_source_x
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    max: '255'
-    maxoutbuf: '0'
-    min: '0'
-    minoutbuf: '0'
-    num_samps: packet_len*8
-    repeat: 'True'
-    type: byte
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [40, 324.0]
-    rotation: 0
-    state: enabled
 - name: blocks_complex_to_mag_squared_0
   id: blocks_complex_to_mag_squared
   parameters:
@@ -414,65 +382,6 @@ blocks:
     bus_structure: null
     coordinate: [296, 636.0]
     rotation: 180
-    state: enabled
-- name: blocks_repack_bits_bb_0
-  id: blocks_repack_bits_bb
-  parameters:
-    affinity: ''
-    alias: ''
-    align_output: 'False'
-    comment: ''
-    endianness: gr.GR_LSB_FIRST
-    k: '8'
-    l: payload_mod.bits_per_symbol()
-    len_tag_key: length_tag_key
-    maxoutbuf: '0'
-    minoutbuf: 2*qpsk_symbols_per_packet
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [456, 344.0]
-    rotation: 0
-    state: enabled
-- name: blocks_stream_to_tagged_stream_0
-  id: blocks_stream_to_tagged_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    len_tag_key: length_tag_key
-    maxoutbuf: '0'
-    minoutbuf: 2*qpsk_symbols_per_packet
-    packet_len: packet_len
-    type: byte
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [240, 344.0]
-    rotation: 0
-    state: enabled
-- name: digital_chunks_to_symbols_xx_0_0
-  id: digital_chunks_to_symbols_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    dimension: '1'
-    in_type: byte
-    maxoutbuf: '0'
-    minoutbuf: 2*qpsk_symbols_per_packet
-    num_ports: '1'
-    out_type: complex
-    symbol_table: payload_mod.points()
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [720, 360.0]
-    rotation: 0
     state: enabled
 - name: digital_ofdm_carrier_allocator_cvc_0
   id: digital_ofdm_carrier_allocator_cvc
@@ -907,17 +816,44 @@ blocks:
     coordinate: [1868.0, 456]
     rotation: 270
     state: enabled
+- name: sionna_qpsk_symbol_source_0
+  id: epy_block
+  parameters:
+    _source_code: 'from isac_imp.sionna_qpsk_symbol_source import SionnaQpskSymbolSourceBlock
+
+
+      blk = SionnaQpskSymbolSourceBlock
+
+      '
+    affinity: ''
+    alias: ''
+    comment: Sionna BinarySource + Mapper QPSK; fixed seed replay per CPI
+    device: '''cpu'''
+    length_tag_key: length_tag_key
+    maxoutbuf: '0'
+    minoutbuf: int(2*qpsk_symbols_per_packet)
+    num_bits_per_symbol: '2'
+    qpsk_symbols_per_packet: qpsk_symbols_per_packet
+    seed: '42'
+  states:
+    _io_cache: "('Sionna QPSK Symbol Source', 'SionnaQpskSymbolSourceBlock', [('qpsk_symbols_per_packet',\
+      \ '8184'), ('length_tag_key', \"'packet_len'\"), ('num_bits_per_symbol', '2'),\
+      \ ('device', \"'cpu'\"), ('seed', '42')], [], [('0', 'complex', 1)], '\u56FA\
+      \u5B9A seed \u751F\u6210 QPSK \u7B26\u53F7\u5E76\u5FAA\u73AF\u91CD\u653E\uFF1B\
+      CPI \u9996\u7B26\u53F7\u6253 ``length_tag_key`` tag\u3002', [])"
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [40, 324.0]
+    rotation: 0
+    state: enabled
 
 connections:
-- [analog_random_source_x_0, '0', blocks_stream_to_tagged_stream_0, '0']
 - [blocks_complex_to_mag_squared_0, '0', blocks_integrate_xx_0, '0']
 - [blocks_integrate_xx_0, '0', blocks_nlog10_ff_0, '0']
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
 - [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0, '0']
 - [blocks_nlog10_ff_0, '0', qtgui_vector_sink_f_0, '0']
-- [blocks_repack_bits_bb_0, '0', digital_chunks_to_symbols_xx_0_0, '0']
-- [blocks_stream_to_tagged_stream_0, '0', blocks_repack_bits_bb_0, '0']
-- [digital_chunks_to_symbols_xx_0_0, '0', digital_ofdm_carrier_allocator_cvc_0, '0']
 - [digital_ofdm_carrier_allocator_cvc_0, '0', fft_vxx_0, '0']
 - [digital_ofdm_carrier_allocator_cvc_0, '0', radar_ofdm_divide_vcvc_0, '0']
 - [digital_ofdm_cyclic_prefixer_0, '0', blocks_multiply_const_vxx_0, '0']
@@ -928,6 +864,7 @@ connections:
 - [radar_ofdm_divide_vcvc_0, '0', fft_vxx_0_1, '0']
 - [radar_usrp_echotimer_cc_0, '0', qtgui_freq_sink_x_0, '0']
 - [radar_usrp_echotimer_cc_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
+- [sionna_qpsk_symbol_source_0, '0', digital_ofdm_carrier_allocator_cvc_0, '0']
 
 metadata:
   file_format: 1
