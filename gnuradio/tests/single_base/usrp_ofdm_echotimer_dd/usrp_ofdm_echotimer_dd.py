@@ -107,7 +107,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
-        self.sionna_ofdm_tx_0 = sionna_ofdm_tx_0.SionnaOfdmTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, factor=factor, device='cpu', seed=42)
+        self.sionna_ofdm_tx_0 = sionna_ofdm_tx_0.SionnaOfdmTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device='cpu', seed=42)
         self.sionna_ofdm_tx_0.set_min_output_buffer((int(2*burst_len_samples)))
         self.sionna_ofdm_rx_0 = sionna_ofdm_rx_0.SionnaOfdmRxBlock(fft_len=fft_len, transpose_len=transpose_len, cp_len=fft_len//4, l_min=0, length_tag_key=length_tag_key, device='cpu')
         self.sionna_ofdm_rx_0.set_min_output_buffer((2*transpose_len))
@@ -249,6 +249,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
         self.fft_vxx_0_1 = fft.fft_vcc((fft_len*zeropadding_fac), True, window.blackmanharris(fft_len*zeropadding_fac), False, 1)
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
+        self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
+        self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*burst_len_samples)))
         self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
 
@@ -258,15 +260,16 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
+        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
         self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
         self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.sionna_ofdm_rx_0, 0))
         self.connect((self.sionna_ofdm_rx_0, 0), (self.radar_ofdm_divide_vcvc_0, 1))
-        self.connect((self.sionna_ofdm_tx_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.sionna_ofdm_tx_0, 0), (self.blocks_multiply_const_vxx_0, 0))
         self.connect((self.sionna_ofdm_tx_0, 1), (self.radar_ofdm_divide_vcvc_0, 0))
-        self.connect((self.sionna_ofdm_tx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
 
 
     def closeEvent(self, event):
@@ -391,6 +394,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_factor(self, factor):
         self.factor = factor
+        self.blocks_multiply_const_vxx_0.set_k(self.factor)
 
     def get_burst_len_samples(self):
         return self.burst_len_samples

@@ -104,7 +104,6 @@ class SionnaOfdmTxBlock(gr.basic_block):
         cp_len: int = 512,
         length_tag_key: str = "packet_len",
         num_bits_per_symbol: int = 2,
-        factor: float = 0.008,
         device: str = "cpu",
         seed: int = 42,
     ) -> None:
@@ -121,10 +120,8 @@ class SionnaOfdmTxBlock(gr.basic_block):
         self._cp_len = int(cp_len)
         self._length_tag_key = pmt.intern(length_tag_key)
         self._num_bits_per_symbol = int(num_bits_per_symbol)
-        self._factor = float(factor)
         self._device = str(device)
         self._seed = int(seed)
-        self._time_buf_raw: np.ndarray | None = None
         self._time_buf: np.ndarray | None = None
         self._freq_buf: np.ndarray | None = None
         self._time_idx = 0
@@ -136,20 +133,9 @@ class SionnaOfdmTxBlock(gr.basic_block):
     def _log(self, msg: str) -> None:
         print(f"{_LOG_PREFIX} {msg}", file=sys.stderr, flush=True)
 
-    def _apply_factor(self) -> None:
-        if self._time_buf_raw is None:
-            return
-        self._time_buf = (self._time_buf_raw * self._factor).astype(
-            np.complex64, copy=False
-        )
-
-    def set_factor(self, factor: float) -> None:
-        self._factor = float(factor)
-        self._apply_factor()
-
     def start(self) -> bool:
         torch.set_num_threads(1)
-        time_raw, freq, guards, n_data = _build_waveforms(
+        time_buf, freq, guards, n_data = _build_waveforms(
             fft_len=self._fft_len,
             transpose_len=self._transpose_len,
             subcarrier_spacing=self._subcarrier_spacing,
@@ -158,15 +144,13 @@ class SionnaOfdmTxBlock(gr.basic_block):
             device=self._device,
             seed=self._seed,
         )
-        self._time_buf_raw = time_raw
+        self._time_buf = time_buf
         self._freq_buf = freq
-        self._apply_factor()
         self._time_idx = 0
         self._sym_idx = 0
         self._log(
             f"loaded burst_len={self._burst_len_samples} freq={freq.shape} "
-            f"num_data_symbols={n_data} guards={guards} factor={self._factor} "
-            f"seed={self._seed}"
+            f"num_data_symbols={n_data} guards={guards} seed={self._seed}"
         )
         return True
 
