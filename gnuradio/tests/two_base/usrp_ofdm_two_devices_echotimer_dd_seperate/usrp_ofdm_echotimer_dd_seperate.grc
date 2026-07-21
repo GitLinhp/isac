@@ -351,10 +351,10 @@ blocks:
   id: variable_qtgui_check_box
   parameters:
     comment: Set True to record paired range profiles to disk
-    false: 'False'
+    'false': 'False'
     gui_hint: 1,4,1,1
     label: Record Enable
-    true: 'True'
+    'true': 'True'
     type: bool
     value: 'False'
   states:

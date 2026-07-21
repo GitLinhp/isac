@@ -1,4 +1,15 @@
-"""Sionna 发射链：ResourceGridMapper + OFDMModulator，替代 GR carrier_allocator / IFFT / CP。"""
+"""Sionna ResourceGrid 发射频域 epy 块。
+
+在 ``usrp_ofdm_echotimer_dd`` 流图中替代 GR ``digital_ofdm_carrier_allocator``，
+输出 fftshift 后的频域 OFDM 符号向量流（vlen=fft_len）::
+
+    SionnaResourceGridTx out0
+      ├→ GR IFFT + CP → echotimer（时域发射）
+      └→ OfdmRangeProfileBlock in0（TX 频域参考）
+
+``start()`` 按 ``seed`` 一次性生成固定 CPI 频域栅格；``work()`` 周期性重放，
+并在每个 CPI 首符号打 ``packet_len`` tag（值为 ``transpose_len`` 符号数）。
+"""
 
 from __future__ import annotations
 
@@ -9,16 +20,20 @@ import pmt
 import torch
 from gnuradio import gr
 from sionna.phy.mapping import BinarySource, Mapper
-from sionna.phy.ofdm import OFDMModulator, ResourceGrid, ResourceGridMapper
+from sionna.phy.ofdm import ResourceGrid, ResourceGridMapper
 
 from isac.utils.misc import set_random_seed
 from isac_imp.burst_pack import TPP_DONT
 
-_LOG_PREFIX = "[SionnaOfdmTx]"
+_LOG_PREFIX = "[SionnaResourceGridTx]"
 
 
 def _resolve_guard_carriers(fft_len: int, transpose_len: int) -> tuple[int, int]:
-    """Return ``num_guard_carriers`` so ``rg.num_data_symbols == transpose_len * (fft_len - 2)``."""
+    """选取 guard 配置，使 ``rg.num_data_symbols == transpose_len * (fft_len - 2)``。
+
+    与流图变量 ``n_carriers = fft_len - 2``、QPSK（2 bit/符号）下的
+    ``packet_len = transpose_len * n_carriers // 4`` 保持一致。
+    """
     target = int(transpose_len) * (int(fft_len) - 2)
     for guards in ((1, 0), (0, 1)):
         rg = ResourceGrid(
@@ -38,7 +53,7 @@ def _resolve_guard_carriers(fft_len: int, transpose_len: int) -> tuple[int, int]
     )
 
 
-def _build_waveforms(
+def _build_freq_grid(
     *,
     fft_len: int,
     transpose_len: int,
@@ -47,7 +62,15 @@ def _build_waveforms(
     num_bits_per_symbol: int,
     device: str,
     seed: int,
-) -> tuple[np.ndarray, np.ndarray, tuple[int, int], int]:
+) -> tuple[np.ndarray, tuple[int, int], int]:
+    """BinarySource → QAM → ResourceGridMapper，返回 fftshift 频域 CPI。
+
+    Returns:
+        freq: 形状 ``(transpose_len, fft_len)``，与 GR carrier_allocator
+            ``output_is_shifted=True`` 一致。
+        guards: 选用的 ``num_guard_carriers`` 元组。
+        num_data_symbols: ResourceGrid 数据 RE 总数。
+    """
     set_random_seed(seed)
     guards = _resolve_guard_carriers(fft_len, transpose_len)
     rg = ResourceGrid(
@@ -69,32 +92,24 @@ def _build_waveforms(
     binary_source = BinarySource(device=device)
     mapper = Mapper("qam", int(num_bits_per_symbol), device=device)
     rg_mapper = ResourceGridMapper(rg, device=device)
-    modulator = OFDMModulator(cyclic_prefix_length=int(cp_len), device=device)
 
     with torch.inference_mode():
         bits = binary_source([1, 1, 1, rg.num_data_symbols * int(num_bits_per_symbol)])
         x = mapper(bits)
         x_rg = rg_mapper(x)
-        x_time = modulator(x_rg)
         x_rg_np = x_rg.squeeze().cpu().numpy().astype(np.complex64, copy=False)
-        x_time_np = x_time.reshape(-1).cpu().numpy().astype(np.complex64, copy=False)
 
     if x_rg_np.ndim == 1:
         x_rg_np = x_rg_np.reshape(1, -1)
     if x_rg_np.shape != (int(transpose_len), int(fft_len)):
         x_rg_np = x_rg_np.reshape(int(transpose_len), int(fft_len))
 
-    burst_len = int(transpose_len) * (int(fft_len) + int(cp_len))
-    if x_time_np.size != burst_len:
-        raise ValueError(f"x_time 样点数 {x_time_np.size} != 期望 {burst_len}")
-
-    # 自然序资源网格（与 OFDMDemodulator 输出一致，供 divide port0）
-    freq = x_rg_np.astype(np.complex64, copy=False)
-    return x_time_np, freq, guards, int(rg.num_data_symbols)
+    freq = np.fft.fftshift(x_rg_np, axes=-1).astype(np.complex64, copy=False)
+    return freq, guards, int(rg.num_data_symbols)
 
 
-class SionnaOfdmTxBlock(gr.basic_block):
-    """BinarySource + Mapper + ResourceGridMapper + OFDMModulator 双输出发射源。"""
+class SionnaResourceGridTxBlock(gr.sync_block):
+    """无输入；输出 fftshift 频域 OFDM 符号向量流（vlen=fft_len）。"""
 
     def __init__(
         self,
@@ -109,12 +124,11 @@ class SionnaOfdmTxBlock(gr.basic_block):
     ) -> None:
         self._fft_len = int(fft_len)
         self._transpose_len = int(transpose_len)
-        self._burst_len_samples = self._transpose_len * (self._fft_len + int(cp_len))
-        gr.basic_block.__init__(
+        gr.sync_block.__init__(
             self,
-            name="Sionna OFDM TX",
+            name="Sionna ResourceGrid TX",
             in_sig=None,
-            out_sig=[np.complex64, (np.complex64, self._fft_len)],
+            out_sig=[(np.complex64, self._fft_len)],
         )
         self._subcarrier_spacing = float(subcarrier_spacing)
         self._cp_len = int(cp_len)
@@ -122,20 +136,17 @@ class SionnaOfdmTxBlock(gr.basic_block):
         self._num_bits_per_symbol = int(num_bits_per_symbol)
         self._device = str(device)
         self._seed = int(seed)
-        self._time_buf: np.ndarray | None = None
         self._freq_buf: np.ndarray | None = None
-        self._time_idx = 0
         self._sym_idx = 0
 
+        # 本块在 CPI 首符号自行打 packet_len tag，不传播上游 tag。
         self.set_tag_propagation_policy(TPP_DONT)
-        self.set_min_output_buffer(max(self._burst_len_samples * 2, self._transpose_len * 2))
-
-    def _log(self, msg: str) -> None:
-        print(f"{_LOG_PREFIX} {msg}", file=sys.stderr, flush=True)
+        self.set_min_output_buffer(self._transpose_len * 4)
 
     def start(self) -> bool:
+        # 限制 Torch 线程，避免与 GR scheduler 争抢 CPU。
         torch.set_num_threads(1)
-        time_buf, freq, guards, n_data = _build_waveforms(
+        freq, guards, n_data = _build_freq_grid(
             fft_len=self._fft_len,
             transpose_len=self._transpose_len,
             subcarrier_spacing=self._subcarrier_spacing,
@@ -144,71 +155,31 @@ class SionnaOfdmTxBlock(gr.basic_block):
             device=self._device,
             seed=self._seed,
         )
-        self._time_buf = time_buf
         self._freq_buf = freq
-        self._time_idx = 0
         self._sym_idx = 0
-        self._log(
-            f"loaded burst_len={self._burst_len_samples} freq={freq.shape} "
-            f"num_data_symbols={n_data} guards={guards} seed={self._seed}"
-        )
         return True
 
-    def forecast(self, noutput_items: int, ninputs: int) -> list:
-        del noutput_items, ninputs
-        return []
-
-    def general_work(self, input_items, output_items) -> int:
+    def work(self, input_items, output_items) -> int:
         del input_items
-        if self._time_buf is None or self._freq_buf is None:
+        if self._freq_buf is None:
             return 0
 
-        out_time = output_items[0]
-        out_freq = output_items[1]
-        max_time = len(out_time)
-        max_freq = len(out_freq)
+        out = output_items[0]
+        n_out = len(out)
+        abs_base = self.nitems_written(0)
 
-        n_time = 0
-        n_freq = 0
-        abs_time_base = self.nitems_written(0)
-        abs_freq_base = self.nitems_written(1)
-
-        while n_time < max_time:
-            if self._time_idx == 0:
+        for i in range(n_out):
+            if self._sym_idx == 0:
+                # tag 值 = CPI 符号数（非 packet_len 字节数），供 CP prefixer 对齐。
                 self.add_item_tag(
                     0,
-                    abs_time_base + n_time,
-                    self._length_tag_key,
-                    pmt.from_long(self._burst_len_samples),
-                )
-            out_time[n_time] = self._time_buf[self._time_idx]
-            n_time += 1
-            self._time_idx += 1
-            if self._time_idx >= self._burst_len_samples:
-                self._time_idx = 0
-
-        while n_freq < max_freq:
-            if self._sym_idx == 0:
-                self.add_item_tag(
-                    1,
-                    abs_freq_base + n_freq,
+                    abs_base + i,
                     self._length_tag_key,
                     pmt.from_long(self._transpose_len),
                 )
-            out_freq[n_freq][:] = self._freq_buf[self._sym_idx]
-            n_freq += 1
+            out[i][:] = self._freq_buf[self._sym_idx]
             self._sym_idx += 1
             if self._sym_idx >= self._transpose_len:
                 self._sym_idx = 0
 
-        if n_freq > 0:
-            self.produce(1, n_freq)
-        if n_time > 0:
-            return n_time
-        if n_freq > 0:
-            return gr.WORK_CALLED_PRODUCE
-        return 0
-
-
-# 兼容旧 GRC / import
-SionnaResourceGridTxBlock = SionnaOfdmTxBlock
+        return n_out

@@ -6,7 +6,7 @@
 #
 # GNU Radio Python Flow Graph
 # Title: Usrp Ofdm Echotimer Dd
-# Description: USRP OFDM radar 2D range-Doppler (echotimer + Sionna TX + GR divide/DD chain). RX packet_len tags via echotimer; DD spectrum via spectrogram/CFAR.
+# Description: USRP OFDM radar 1D range profile (0~R_max) + DD spectrogram. RX packet_len tags via echotimer.
 # GNU Radio version: 3.10.12.0
 
 from PyQt5 import Qt
@@ -76,19 +76,20 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         self.subcarrier_spacing = subcarrier_spacing = 60e3
         self.fft_len = fft_len = 2048
-        self.transpose_len = transpose_len = 4
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
-        self.n_carriers = n_carriers = fft_len - 2
-        self.zeropadding_fac = zeropadding_fac = 2
-        self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.freq = freq = 6.0e9
+        self.zeropadding_fac = zeropadding_fac = 2
+        self.v_max = v_max = 3e8/(4*freq*(fft_len+fft_len/4)/samp_rate)
+        self.transpose_len = transpose_len = 4
+        self.n_carriers = n_carriers = fft_len - 2
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
-        self.value_range = value_range = 100
-        self.v_max = v_max = 3e8/(4*freq*(fft_len+fft_len/4)/samp_rate)
+        self.velocity_bin_step = velocity_bin_step = 2*v_max/transpose_len
+        self.value_range = value_range = "Range (m)"
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
-        self.num_delay_samp = num_delay_samp = fft_len + fft_len//4
-        self.min_out_buf_val = min_out_buf_val = packet_len*2
+        self.packet_len = packet_len = transpose_len * n_carriers // 4
+        self.num_delay_samp = num_delay_samp = 161
+        self.min_out_buf_val = min_out_buf_val = int(2*transpose_len*(fft_len+fft_len/4))
         self.length_tag_key = length_tag_key = "packet_len"
         self.factor = factor = 0.008
         self.discarded_carriers = discarded_carriers = []
@@ -100,7 +101,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._num_delay_samp_range = qtgui.Range(0, burst_len_samples, fft_len + fft_len//4, fft_len + fft_len//4, 200)
+        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 161, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
         self._factor_range = qtgui.Range(0, 1, 0.001, 0.008, 200)
@@ -120,11 +121,50 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.radar_transpose_matrix_vcvc_0_0.set_min_output_buffer((2*fft_len*zeropadding_fac))
         self.radar_transpose_matrix_vcvc_0 = radar.transpose_matrix_vcvc((fft_len*zeropadding_fac), transpose_len, "packet_len")
         self.radar_transpose_matrix_vcvc_0.set_min_output_buffer((2*fft_len*zeropadding_fac))
-        self.radar_qtgui_spectrogram_plot_0 = radar.qtgui_spectrogram_plot((fft_len*zeropadding_fac), 500, 'value_range', 'Velocity', 'OFDM Radar', [0,R_max], [0,v_max], [-15,-12], True, "packet_len")
+        self.radar_qtgui_spectrogram_plot_0 = radar.qtgui_spectrogram_plot((fft_len*zeropadding_fac), 500, value_range, 'Velocity (m/s)', 'OFDM Radar DD', [0,R_max], [0,v_max], [-15,-12], True, "packet_len")
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len-len(discarded_carriers))*zeropadding_fac), discarded_carriers, 0, "packet_len")
         self.radar_ofdm_divide_vcvc_0.set_min_output_buffer((2*transpose_len))
         self.radar_ofdm_cyclic_prefix_remover_cvc_0 = radar.ofdm_cyclic_prefix_remover_cvc(fft_len, (fft_len//4), "packet_len")
         self.radar_ofdm_cyclic_prefix_remover_cvc_0.set_min_output_buffer((2*transpose_len))
+        self.qtgui_vector_sink_f_0 = qtgui.vector_sink_f(
+            (fft_len*zeropadding_fac),
+            0,
+            range_bin_step,
+            "Range",
+            "Power (dB)",
+            "Range Profile",
+            1, # Number of inputs
+            None # parent
+        )
+        self.qtgui_vector_sink_f_0.set_update_time(0.10)
+        self.qtgui_vector_sink_f_0.set_y_axis((-40), 0)
+        self.qtgui_vector_sink_f_0.enable_autoscale(True)
+        self.qtgui_vector_sink_f_0.enable_grid(True)
+        self.qtgui_vector_sink_f_0.set_x_axis_units("m")
+        self.qtgui_vector_sink_f_0.set_y_axis_units("dB")
+        self.qtgui_vector_sink_f_0.set_ref_level(0)
+
+
+        labels = ['Range Profile', '', '', '', '',
+            '', '', '', '', '']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ["blue", "red", "green", "black", "cyan",
+            "magenta", "yellow", "dark red", "dark green", "dark blue"]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_vector_sink_f_0.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_vector_sink_f_0.set_line_label(i, labels[i])
+            self.qtgui_vector_sink_f_0.set_line_width(i, widths[i])
+            self.qtgui_vector_sink_f_0.set_line_color(i, colors[i])
+            self.qtgui_vector_sink_f_0.set_line_alpha(i, alphas[i])
+
+        self._qtgui_vector_sink_f_0_win = sip.wrapinstance(self.qtgui_vector_sink_f_0.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_vector_sink_f_0_win)
         self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
             (fft_len + fft_len//4), #size
             samp_rate, #samp_rate
@@ -236,25 +276,30 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
             0,
             length_tag_key)
         self.digital_ofdm_cyclic_prefixer_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
-        self.blocks_null_sink_0 = blocks.null_sink(gr.sizeof_float*(fft_len*zeropadding_fac))
-        self.blocks_nlog10_ff_0 = blocks.nlog10_ff(1, (fft_len*zeropadding_fac), 0)
+        self.blocks_nlog10_ff_0_0 = blocks.nlog10_ff(1, (fft_len*zeropadding_fac), 0)
+        self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
+        self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
+        self.blocks_complex_to_mag_squared_0_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
+        self.blocks_complex_to_mag_squared_0_0.set_min_output_buffer((2*fft_len*zeropadding_fac))
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
-        self.blocks_complex_to_mag_squared_0.set_min_output_buffer((2*fft_len*zeropadding_fac))
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_nlog10_ff_0, 0))
+        self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
+        self.connect((self.blocks_complex_to_mag_squared_0_0, 0), (self.blocks_nlog10_ff_0_0, 0))
+        self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
-        self.connect((self.blocks_nlog10_ff_0, 0), (self.blocks_null_sink_0, 0))
-        self.connect((self.blocks_nlog10_ff_0, 0), (self.radar_qtgui_spectrogram_plot_0, 0))
+        self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
+        self.connect((self.blocks_nlog10_ff_0_0, 0), (self.radar_qtgui_spectrogram_plot_0, 0))
         self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
         self.connect((self.fft_vxx_0, 0), (self.digital_ofdm_cyclic_prefixer_0, 0))
         self.connect((self.fft_vxx_0_0, 0), (self.ofdm_cpi_tag_normalizer_rx_0, 0))
+        self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
         self.connect((self.fft_vxx_0_1, 0), (self.radar_transpose_matrix_vcvc_0, 0))
         self.connect((self.fft_vxx_0_1_0, 0), (self.radar_transpose_matrix_vcvc_0_0, 0))
         self.connect((self.ofdm_cpi_tag_normalizer_rx_0, 0), (self.radar_ofdm_divide_vcvc_0, 1))
@@ -262,7 +307,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
         self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
         self.connect((self.radar_transpose_matrix_vcvc_0, 0), (self.fft_vxx_0_1_0, 0))
-        self.connect((self.radar_transpose_matrix_vcvc_0_0, 0), (self.blocks_complex_to_mag_squared_0, 0))
+        self.connect((self.radar_transpose_matrix_vcvc_0_0, 0), (self.blocks_complex_to_mag_squared_0_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
         self.connect((self.sionna_resource_grid_tx_0, 0), (self.fft_vxx_0, 0))
@@ -297,21 +342,12 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.fft_len = fft_len
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
+        self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
         self.set_n_carriers(self.fft_len - 2)
-        self.set_num_delay_samp(self.fft_len + self.fft_len//4)
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
-
-    def get_transpose_len(self):
-        return self.transpose_len
-
-    def set_transpose_len(self, transpose_len):
-        self.transpose_len = transpose_len
-        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
-        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
-        self.fft_vxx_0_1_0.set_window(window.blackmanharris(self.transpose_len))
 
     def get_samp_rate(self):
         return self.samp_rate
@@ -323,12 +359,12 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
-    def get_n_carriers(self):
-        return self.n_carriers
+    def get_freq(self):
+        return self.freq
 
-    def set_n_carriers(self, n_carriers):
-        self.n_carriers = n_carriers
-        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
+    def set_freq(self, freq):
+        self.freq = freq
+        self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
 
     def get_zeropadding_fac(self):
         return self.zeropadding_fac
@@ -338,19 +374,30 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
-    def get_packet_len(self):
-        return self.packet_len
+    def get_v_max(self):
+        return self.v_max
 
-    def set_packet_len(self, packet_len):
-        self.packet_len = packet_len
-        self.set_min_out_buf_val(self.packet_len*2)
+    def set_v_max(self, v_max):
+        self.v_max = v_max
+        self.set_velocity_bin_step(2*self.v_max/self.transpose_len)
 
-    def get_freq(self):
-        return self.freq
+    def get_transpose_len(self):
+        return self.transpose_len
 
-    def set_freq(self, freq):
-        self.freq = freq
-        self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
+    def set_transpose_len(self, transpose_len):
+        self.transpose_len = transpose_len
+        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
+        self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
+        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
+        self.set_velocity_bin_step(2*self.v_max/self.transpose_len)
+        self.fft_vxx_0_1_0.set_window(window.blackmanharris(self.transpose_len))
+
+    def get_n_carriers(self):
+        return self.n_carriers
+
+    def set_n_carriers(self, n_carriers):
+        self.n_carriers = n_carriers
+        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
 
     def get_R_max(self):
         return self.R_max
@@ -365,23 +412,30 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_wait_to_start(self, wait_to_start):
         self.wait_to_start = wait_to_start
 
+    def get_velocity_bin_step(self):
+        return self.velocity_bin_step
+
+    def set_velocity_bin_step(self, velocity_bin_step):
+        self.velocity_bin_step = velocity_bin_step
+
     def get_value_range(self):
         return self.value_range
 
     def set_value_range(self, value_range):
         self.value_range = value_range
 
-    def get_v_max(self):
-        return self.v_max
-
-    def set_v_max(self, v_max):
-        self.v_max = v_max
-
     def get_range_bin_step(self):
         return self.range_bin_step
 
     def set_range_bin_step(self, range_bin_step):
         self.range_bin_step = range_bin_step
+        self.qtgui_vector_sink_f_0.set_x_axis(0, self.range_bin_step)
+
+    def get_packet_len(self):
+        return self.packet_len
+
+    def set_packet_len(self, packet_len):
+        self.packet_len = packet_len
 
     def get_num_delay_samp(self):
         return self.num_delay_samp
@@ -438,7 +492,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
 
 def argument_parser():
-    description = 'USRP OFDM radar 2D range-Doppler (echotimer + Sionna TX + GR divide/DD chain). RX packet_len tags via echotimer; DD spectrum via spectrogram/CFAR.'
+    description = 'USRP OFDM radar 1D range profile (0~R_max) + DD spectrogram. RX packet_len tags via echotimer.'
     parser = ArgumentParser(description=description)
     parser.add_argument(
         "--address", dest="address", type=str, default="type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external",
