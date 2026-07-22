@@ -6,8 +6,9 @@ import numpy as np
 import torch
 from scipy.constants import c
 
-# 判定 TX/RX 是否视为共址（monostatic）：间距小于等于该阈值 (m)
-MONOSTATIC_TX_RX_EPS_M = 1e-3
+# 判定 TX/RX 是否视为共址（monostatic）：间距小于等于该阈值 (m)。
+# 0.1 m 允许同逻辑名下 RX 相对 TX 的厘米级 rx_position_offset 仍按单基地处理。
+MONOSTATIC_TX_RX_EPS_M = 0.1
 
 
 _STATE_FIELD_IDX = {"pos": 0, "vel": 1}

@@ -220,3 +220,46 @@ def test_bistatic_config_rx_tx_states() -> None:
     assert "bs2_tx" in rt.tx_states
     assert "bs2_rx" not in rt.rx_states
     assert "bs1_tx" not in rt.tx_states
+
+
+def test_rt_transceiver_rx_position_offset_colocated() -> None:
+    """同逻辑名 tx+rx 时 RX 应用偏移，TX 保持名义位置，间距仍 ≤ 共址阈值。"""
+    import numpy as np
+
+    from isac.channel.rt.rt_transceiver import RTTransceiver
+    from isac.sensing.geometry import MONOSTATIC_TX_RX_EPS_M
+
+    nominal = [-4.5, -2.5, 1.5]
+    offset = [0.0, 0.0, 0.05]
+    tc = RTTransceiver(
+        name="bs1",
+        position=nominal,
+        transceiver_type=["tx", "rx"],
+        rx_position_offset=offset,
+    )
+    assert tc.tx is not None and tc.rx is not None
+    tx_pos = np.asarray(tc.tx.position, dtype=np.float64).reshape(3)
+    rx_pos = np.asarray(tc.rx.position, dtype=np.float64).reshape(3)
+    assert np.allclose(tx_pos, nominal)
+    assert np.allclose(rx_pos, np.asarray(nominal) + np.asarray(offset))
+    assert np.allclose(tc.position, nominal)
+    sep = float(np.linalg.norm(rx_pos - tx_pos))
+    assert sep == pytest.approx(0.05)
+    assert sep <= MONOSTATIC_TX_RX_EPS_M
+
+
+def test_rt_transceiver_rx_offset_ignored_when_rx_only() -> None:
+    """仅 RX 时忽略 rx_position_offset，避免误伤分离拓扑。"""
+    import numpy as np
+
+    from isac.channel.rt.rt_transceiver import RTTransceiver
+
+    tc = RTTransceiver(
+        name="bs1",
+        position=[1.0, 2.0, 3.0],
+        transceiver_type=["rx"],
+        rx_position_offset=[0.0, 0.0, 0.05],
+    )
+    assert tc.tx is None and tc.rx is not None
+    rx_pos = np.asarray(tc.rx.position, dtype=np.float64).reshape(3)
+    assert np.allclose(rx_pos, [1.0, 2.0, 3.0])

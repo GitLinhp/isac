@@ -68,14 +68,17 @@ class TransceiverParams:
     look_at: list[float] = field(default_factory=lambda: [0, 0, 30])
     type: str = "tx"
     power_dbm: float = 44.0
+    rx_position_offset: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TransceiverParams":
+        offset = config_dict.get("rx_position_offset", [0.0, 0.0, 0.0])
         return cls(
             position=config_dict.get("position", [0, 100, 50]),
             look_at=config_dict.get("look_at", [0, 0, 30]),
             type=config_dict.get("type", "tx"),
             power_dbm=config_dict.get("power_dbm", 44.0),
+            rx_position_offset=list(offset),
         )
 
 
@@ -86,6 +89,7 @@ class TargetMaterialParams:
     type: str = "metal"
     thickness: float = 0.01
     color: list[float] = field(default_factory=lambda: [0, 0.2, 0.6])
+    scattering_coefficient: float = 0.0
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TargetMaterialParams":
@@ -93,6 +97,9 @@ class TargetMaterialParams:
             type=config_dict.get("type", "metal"),
             thickness=config_dict.get("thickness", 0.01),
             color=config_dict.get("color", [0, 0.2, 0.6]),
+            scattering_coefficient=float(
+                config_dict.get("scattering_coefficient", 0.0)
+            ),
         )
 
 

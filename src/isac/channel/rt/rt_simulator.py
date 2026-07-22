@@ -157,6 +157,7 @@ class RTSimulator:
                 look_at=transceiver_params.look_at,
                 transceiver_type=transceiver_params.type,
                 power_dbm=transceiver_params.power_dbm,
+                rx_position_offset=transceiver_params.rx_position_offset,
             )
 
             if not self.scene_filter(transceiver.position):
@@ -186,6 +187,7 @@ class RTSimulator:
                 itu_type=target_material_params.type,
                 thickness=target_material_params.thickness,
                 color=target_material_params.color,
+                scattering_coefficient=target_material_params.scattering_coefficient,
             )
             self.target_materials[name] = material
 

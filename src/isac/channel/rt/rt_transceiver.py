@@ -2,9 +2,12 @@
 
 典型由 ``RTSimulator._init_transceivers`` 按 TOML 创建，校验通过后 ``scene.add`` 加入场景。
 ``transceiver_type`` 决定 ``self.tx`` / ``self.rx`` 是否为 ``None``（可仅 TX、仅 RX 或二者兼有）。
+
+同逻辑名同时含 TX/RX 时，可通过 ``rx_position_offset`` 将 RX 相对名义 ``position``
+错开一小段，避免完全共址；``self.position`` 仍为名义位置（供场景过滤等使用）。
 """
 
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Sequence, Union, List, Tuple
 import numpy as np
 from sionna.rt import Transmitter, Receiver
 
@@ -19,6 +22,8 @@ class RTTransceiver:
     - 逻辑名 ``name`` 对应 Sionna 实例名 ``{name}_tx`` / ``{name}_rx``
     - ``orientation``（欧拉角）与 ``look_at``（观察点）遵循 Sionna 惯例，通常择一配置
     - 构造与 property setter 均经 ``_validate_*`` 校验后再写入内部状态
+    - ``position`` 为 TOML/调用方名义位置；同时含 tx+rx 且配置了
+      ``rx_position_offset`` 时，``rx.position = position + offset``，``tx.position`` 不变
     """
 
     def __init__(
@@ -31,6 +36,7 @@ class RTTransceiver:
         tx_color: Optional[Tuple[float, float, float]] = None,
         rx_color: Optional[Tuple[float, float, float]] = None,
         power_dbm: Optional[float] = 44.0,
+        rx_position_offset: Optional[Sequence[float]] = None,
     ):
         """初始化收发器并创建 Sionna ``Transmitter`` / ``Receiver``（按 ``transceiver_type``）。
 
@@ -39,7 +45,7 @@ class RTTransceiver:
         - name: str
             收发器逻辑名；Sionna 实例名为 ``{name}_tx`` / ``{name}_rx``。
         - position: list[float] | tuple[float, ...]
-            世界坐标 ``[x, y, z]``（米），构造时必填。
+            世界坐标 ``[x, y, z]``（米），构造时必填（名义位置）。
         - orientation: list[float] | tuple[float, ...] | None
             欧拉角 ``[roll, pitch, yaw]``（弧度），与 ``look_at`` 通常择一。
         - look_at: list[float] | tuple[float, ...] | None
@@ -52,18 +58,32 @@ class RTTransceiver:
             接收机可视化 RGB ``[0, 1]``；默认 ``DEFAULT_RX_COLOR``。
         - power_dbm: float | None
             发射功率（dBm），仅传入 ``Transmitter``；``None`` 时用 Sionna 库默认。
+        - rx_position_offset: sequence[float] | None
+            RX 相对名义 ``position`` 的偏移 ``[dx, dy, dz]``（米）；``None`` 视为零。
+            **仅当同时创建 TX 与 RX 时** 应用到 ``Receiver``；仅 TX / 仅 RX 时忽略。
         """
         self._name = self._validate_name(name)
         self._position = self._validate_position(position)
         self._orientation = self._validate_orientation(orientation)
         self._look_at = self._validate_look_at(look_at)
         type_list = self._validate_type(transceiver_type)
+        self._rx_position_offset = self._validate_rx_position_offset(rx_position_offset)
+
+        has_tx = "tx" in type_list
+        has_rx = "rx" in type_list
+        # 仅共址（同逻辑名同时含 tx+rx）时错开 RX，避免误伤分离拓扑
+        if has_tx and has_rx:
+            rx_pos = [
+                self._position[i] + self._rx_position_offset[i] for i in range(3)
+            ]
+        else:
+            rx_pos = self._position
 
         # 按 type 创建 Sionna Transmitter（name_tx）
-        if "tx" in type_list:
+        if has_tx:
             self.tx = Transmitter(
                 name=name + "_tx",
-                position=position,
+                position=self._position,
                 orientation=orientation,
                 look_at=look_at,
                 color=tx_color or DEFAULT_TX_COLOR,
@@ -73,10 +93,10 @@ class RTTransceiver:
             self.tx = None
 
         # 按 type 创建 Sionna Receiver（name_rx）
-        if "rx" in type_list:
+        if has_rx:
             self.rx = Receiver(
                 name=name + "_rx",
-                position=position,
+                position=rx_pos,
                 orientation=orientation,
                 look_at=look_at,
                 color=rx_color or DEFAULT_RX_COLOR,
@@ -97,13 +117,22 @@ class RTTransceiver:
 
     @property
     def position(self) -> list[float]:
-        """世界坐标 ``[x, y, z]``（米）；返回副本，避免外部修改内部状态。"""
+        """名义世界坐标 ``[x, y, z]``（米）；返回副本。
+
+        与 ``tx.position`` / ``rx.position`` 可能不同：共址时 RX 可含
+        ``rx_position_offset``。
+        """
         return self._position.copy()
 
     @position.setter
     def position(self, position: list[float]) -> None:
-        """设置位置（经 ``_validate_position`` 校验后写入）。"""
+        """设置名义位置（经 ``_validate_position`` 校验后写入；不写回 Sionna 实体）。"""
         self._position = self._validate_position(position)
+
+    @property
+    def rx_position_offset(self) -> list[float]:
+        """RX 相对名义位置的偏移 ``[dx, dy, dz]``（米）；返回副本。"""
+        return self._rx_position_offset.copy()
 
     @property
     def orientation(self) -> list[float]:
@@ -175,6 +204,23 @@ class RTTransceiver:
                 raise TypeError(f"位置坐标[{i}]必须是数值类型，当前类型: {type(coord)}")
 
         return list(position)
+
+    def _validate_rx_position_offset(
+        self, offset: Optional[Sequence[float]]
+    ) -> list[float]:
+        """RX 偏移校验：三维数值向量 ``[dx, dy, dz]``（米）；``None`` → ``[0, 0, 0]``。"""
+        if offset is None:
+            return [0.0, 0.0, 0.0]
+        if not isinstance(offset, (list, tuple)):
+            raise TypeError("rx_position_offset 必须是列表或元组类型")
+        if len(offset) != 3:
+            raise ValueError("rx_position_offset 必须包含 3 个分量 (dx, dy, dz)")
+        for i, coord in enumerate(offset):
+            if not isinstance(coord, (int, float)):
+                raise TypeError(
+                    f"rx_position_offset[{i}] 必须是数值类型，当前类型: {type(coord)}"
+                )
+        return [float(x) for x in offset]
 
     def _validate_orientation(
         self, orientation: Optional[Union[list[float], tuple[float, ...]]]

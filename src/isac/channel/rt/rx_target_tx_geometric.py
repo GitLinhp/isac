@@ -153,7 +153,7 @@ class RxTargetTxGeometric:
         device: torch.device | None
             输出张量所在设备；``None`` 时使用 CPU（与 ``RTSimulator.rx_target_tx_geometric`` 一致）。
         tx_rx_colocated_eps_m: float
-            判定单基地的 TX–RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``（1 mm）。
+            判定单基地的 TX–RX 共址阈值 (m)，默认 ``MONOSTATIC_TX_RX_EPS_M``（0.1 m）。
 
         返回:
         -------
