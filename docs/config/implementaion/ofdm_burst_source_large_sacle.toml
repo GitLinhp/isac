@@ -1,0 +1,46 @@
+carrier_frequency = 6e9 # 载波频率(Hz)
+
+# 信源参数
+# binary（比特+QAM）| zc（Zadoff-Chu）；ZC 须 gcd(root_index, num_data_symbols)=1
+[source]
+type = "zc"
+root_index = 1
+normalize = true
+num_bits_per_symbol = 2
+cache_file = "out/ofdm_burst_source_large_sacle/transmit"
+
+# OFDM 参数
+[ofdm]
+num_symbols = 512         # 符号数
+fft_size = 2048           # FFT 大小
+subcarrier_spacing = 30e3 # 子载波间隔(Hz)
+cyclic_prefix_length = 0  # 循环前缀长度
+l_min = 0                 # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
+# 时延/多普勒窗参数
+[windows.delay_window]
+type = "general_hamming"
+alpha = 0.7
+
+[windows.doppler_window]
+type = "general_hamming"
+alpha = 0.54
+
+# CFAR 参数
+[cfar]
+type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/cfar.py）
+# k = 24               # 仅 type=os 时需要：有序统计索引
+guard = 2           # 保护单元
+trailing = 20       # 参考单元
+pfa = 1e-4          # 虚警率
+detector = "linear" # 检测器: linear | squarelaw
+# offset = 0.0         # 阈值缩放；不设置则按 pfa 自动计算
+
+# MUSIC 参数
+[music]
+threshold = 0.1
+
+# 时延–多普勒谱 ROI（物理量裁剪）
+[dd_spectrum_roi]
+max_range_m = 50
+max_velocity_mps = 10.0

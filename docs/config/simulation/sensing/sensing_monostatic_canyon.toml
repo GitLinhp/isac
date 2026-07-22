@@ -1,0 +1,113 @@
+carrier_frequency = 4.9e9 # 载波频率(Hz)
+
+# 信源参数
+[source]
+type = "zc"
+root_index = 1
+normalize = true
+
+# OFDM 参数
+[ofdm]
+num_symbols = 512            # 符号数
+fft_size = 2048              # FFT 大小
+subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
+cyclic_prefix_length = 512      # 循环前缀长度
+l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
+# 信道参数
+[channel]
+type = "rt"
+snr_db = 10               # 信噪比(dB)
+
+# 射线追踪场景参数
+[rt_simulator]
+filename = "simple_street_canyon"
+merge_shapes = false              # 是否合并相同材质的形状
+
+# 相机参数
+[rt_simulator.camera]
+position = [0, 0, 250] # 相机位置
+look_at = [0, 0, 0]    # 相机朝向
+
+# 天线阵列参数
+[rt_simulator.antenna_arrays]
+# 发射天线阵列参数
+[rt_simulator.antenna_arrays.tx_array]
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+# 接收天线阵列参数
+[rt_simulator.antenna_arrays.rx_array]
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+
+# 收发机参数
+[rt_simulator.transceivers]
+[rt_simulator.transceivers.bs1]
+position = [-10, -7.5, 30]
+look_at = [0, 0, 0]
+type = ["tx", "rx"]
+
+# 目标材质参数
+[rt_simulator.target_materials]
+[rt_simulator.target_materials.car_material]
+type = "metal"
+thickness = 0.01
+color = [0, 0.2, 0.6]
+
+# 目标参数
+[rt_simulator.targets]
+[rt_simulator.targets.car]
+fname = "low_poly_car"
+material = "car_material"
+position = [0, 0, 0]
+velocity = [0, 0, 0]
+
+# 路径解析器参数
+[rt_simulator.path_solver]
+max_depth = 3               # 最大路径交互次数
+max_num_paths_per_src = 1e6 # 每个信号源的最大路径数
+samples_per_src = 1e6       # 每个信号源的射线采样数
+los = true                  # 是否考虑LOS路径
+specular_reflection = true  # 是否考虑镜面反射
+diffuse_reflection = true   # 是否考虑漫反射
+refraction = true           # 是否考虑折射
+diffraction = true          # 是否考虑衍射
+edge_diffraction = true     # 是否考虑边缘衍射
+synthetic_array = true      # 是否使用合成阵列
+seed = 42                   # 随机种子
+
+# 时延/多普勒窗参数
+[windows.delay_window]
+type = "general_hamming"
+alpha = 0.7
+
+[windows.doppler_window]
+type = "general_hamming"
+alpha = 0.54
+
+# CFAR 参数
+[cfar]
+type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/cfar.py）
+# k = 24               # 仅 type=os 时需要：有序统计索引
+guard = 2           # 保护单元
+trailing = 20       # 参考单元
+pfa = 1e-4          # 虚警率
+detector = "linear" # 检测器: linear | squarelaw
+# offset = 0.0         # 阈值缩放；不设置则按 pfa 自动计算
+
+# MUSIC 参数
+[music]
+threshold = 0.1
+
+# 时延–多普勒谱 ROI（物理量裁剪）
+[dd_spectrum_roi]
+max_range_m = 310.0
+max_velocity_mps = 150.0

@@ -1,0 +1,114 @@
+carrier_frequency = 3.5e9 # 载波频率(Hz)
+
+# 信源参数
+[source]
+type = "zc"
+
+# OFDM 参数
+[ofdm]
+num_symbols = 1024           # 符号数
+fft_size = 1024              # FFT 大小
+subcarrier_spacing = 30000.0 # 子载波间隔(Hz)
+cyclic_prefix_length = 0     # 循环前缀长度
+l_min = -6                   # OFDM 解调器最小时延抽头索引（Sionna OFDMDemodulator）
+
+# 信道参数
+[channel]
+type = "rt"
+snr_db = -5 # 接收端 SNR (dB)：no = E[|y_clean|^2] / 10^(snr_db/10)
+
+# 射线追踪场景参数
+[rt_simulator]
+filename = "simple_reflector" # 场景文件名
+merge_shapes = false          # 是否合并相同材质的形状
+
+# 相机参数
+[rt_simulator.camera]
+position = [0, 100, 50] # 相机位置
+look_at = [0, 0, 30]    # 相机朝向
+
+# 天线阵列参数
+[rt_simulator.antenna_arrays]
+# 发射天线阵列参数
+[rt_simulator.antenna_arrays.tx_array]
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+# 接收天线阵列参数
+[rt_simulator.antenna_arrays.rx_array]
+num_rows = 1
+num_cols = 1
+vertical_spacing = 0.5
+horizontal_spacing = 0.5
+pattern = "iso"
+polarization = "V"
+
+# 收发机参数
+[rt_simulator.transceivers]
+# 基站1参数
+[rt_simulator.transceivers.bs1]
+position = [-25, 0.1, 50]
+type = "tx"
+# power_dbm = 44  # 可选；不设则用 Sionna Transmitter 默认 44 dBm
+# 基站2参数
+[rt_simulator.transceivers.bs2]
+position = [25, 0.1, 50]
+type = "rx"
+
+# 目标材质参数
+[rt_simulator.target_materials]
+
+# 目标参数
+[rt_simulator.targets]
+
+# 路径解析器参数
+[rt_simulator.path_solver]
+max_depth = 1              # 最大路径交互次数
+los = true                 # 是否考虑LOS路径
+specular_reflection = true # 是否考虑镜面反射
+diffuse_reflection = false # 是否考虑漫反射
+refraction = false         # 是否考虑折射
+diffraction = false        # 是否考虑衍射
+edge_diffraction = false   # 是否考虑边缘衍射
+synthetic_array = true     # 是否使用合成阵列
+
+# 时延/多普勒窗参数
+[windows]
+
+# 时延窗函数参数
+[windows.delay_window]
+# type = "hamming"
+type = "general_hamming"
+alpha = 0.7
+# type = "chebwin" # 窗函数类型
+# at = 45          # 窗函数衰减(dB)
+
+# 多普勒窗函数参数
+[windows.doppler_window]
+# type = "hamming"
+type = "general_hamming"
+alpha = 0.54
+# type = "chebwin" # 窗函数类型
+# at = 45          # 窗函数衰减(dB)
+
+# CFAR 参数
+[cfar]
+type = "ca" # ca: CA-CFAR | os: OS-CFAR（二维实现见 sensing/cfar.py）
+# k = 24               # 仅 type=os 时需要：有序统计索引
+guard = 2           # 保护单元
+trailing = 20       # 参考单元
+pfa = 1e-4          # 虚警率
+detector = "linear" # 检测器: linear | squarelaw
+# offset = 0.0         # 阈值缩放；不设置则按 pfa 自动计算
+
+# MUSIC 参数
+[music]
+threshold = 0.1
+
+# 时延–多普勒谱 ROI（物理量裁剪）
+[dd_spectrum_roi]
+max_range_m = 310.0
+max_velocity_mps = 150.0

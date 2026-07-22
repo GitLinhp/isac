@@ -1,0 +1,1198 @@
+options:
+  parameters:
+    author: ''
+    catch_exceptions: 'True'
+    category: Custom
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: Load calibrated SIC FIR taps and record CPI complex range profiles
+      with targets present.
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: .:..
+    id: range_profile_collection
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: Range Profile Collection
+    window_size: 2000,2000
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [10, 10]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: RX_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: ''
+    label: RX Gain
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '50'
+    value: '30'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2600, 492.0]
+    rotation: 0
+    state: enabled
+- name: R_max
+  id: variable
+  parameters:
+    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)\uFF0CR = c/(2\xB7BW)\xB7\
+      N_fft"
+    value: 3e8/2/samp_rate*fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 16.0]
+    rotation: 0
+    state: enabled
+- name: TX_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: ''
+    label: TX Gain
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '50'
+    value: '30'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2480, 492.0]
+    rotation: 0
+    state: enabled
+- name: factor
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: ''
+    label: ''
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '0.001'
+    stop: '1'
+    value: '0.004'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1744, 44.0]
+    rotation: 0
+    state: enabled
+- name: fft_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [176, 8.0]
+    rotation: 0
+    state: enabled
+- name: frame_rate_hz
+  id: variable
+  parameters:
+    comment: CPI range-profile frame rate written into file_meta header
+    value: samp_rate / (transpose_len * (fft_len + fft_len // 4))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [880, 16.0]
+    rotation: 0
+    state: enabled
+- name: freq
+  id: variable
+  parameters:
+    comment: "\u8F7D\u9891 (Hz)\uFF1B\u987B\u4E0E v_max \u516C\u5F0F\u4E00\u81F4\uFF0C\
+      \u5426\u5219\u901F\u5EA6\u4F30\u8BA1\u4F1A\u504F"
+    value: 6.0e9
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1472, 16.0]
+    rotation: 0
+    state: enabled
+- name: length_tag_key
+  id: variable
+  parameters:
+    comment: ''
+    value: '"packet_len"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [408, 8.0]
+    rotation: 0
+    state: enabled
+- name: min_out_buf_val
+  id: variable
+  parameters:
+    comment: ''
+    value: int(2*transpose_len*(fft_len+fft_len/4))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1304, 16.0]
+    rotation: 0
+    state: enabled
+- name: n_carriers
+  id: variable
+  parameters:
+    comment: occupied subcarriers (full band minus DC); matches gr_setup.resolve_gr_carrier_tuples
+    value: fft_len - 2
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [200, 128.0]
+    rotation: 0
+    state: enabled
+- name: num_delay_samp
+  id: variable_qtgui_range
+  parameters:
+    comment: Recalibrate after fft_len/rate change; align loopback peak to 0 m
+    gui_hint: ''
+    label: Number of delayed samples
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: packet_len
+    value: '276'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2288, 492.0]
+    rotation: 0
+    state: enabled
+- name: occupied_carriers
+  id: variable
+  parameters:
+    comment: ''
+    value: list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [520, 120.0]
+    rotation: 0
+    state: enabled
+- name: packet_len
+  id: variable
+  parameters:
+    comment: QPSK bytes per burst; derived from CPI symbol count
+    value: transpose_len * n_carriers // 4
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 16.0]
+    rotation: 0
+    state: enabled
+- name: payload_mod
+  id: variable
+  parameters:
+    comment: ''
+    value: digital.constellation_qpsk()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [16, 128.0]
+    rotation: 0
+    state: enabled
+- name: qpsk_symbols_per_packet
+  id: variable
+  parameters:
+    comment: QPSK complex symbols per burst after repack_bits
+    value: transpose_len * n_carriers
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [872, 128.0]
+    rotation: 0
+    state: enabled
+- name: range_bin_step
+  id: variable
+  parameters:
+    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)"
+    value: R_max/(fft_len*zeropadding_fac)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1064, 16.0]
+    rotation: 0
+    state: enabled
+- name: record_enable
+  id: variable_qtgui_check_box
+  parameters:
+    comment: Set True to record linear-power range profiles to disk
+    'false': 'False'
+    gui_hint: 1,4,1,1
+    label: Record Enable
+    'true': 'True'
+    type: bool
+    value: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1280, 172.0]
+    rotation: 0
+    state: enabled
+- name: record_file_path
+  id: variable
+  parameters:
+    comment: Fixed absolute path shared with range_profile_playback.grc
+    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/range_profile_collection/dataset/run_001/range_profiles"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1960, 96.0]
+    rotation: 0
+    state: enabled
+- name: record_output_index
+  id: variable
+  parameters:
+    comment: Selector output; 0=file_sink, 1=null_sink
+    value: 0 if record_enable else 1
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1608, 120.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: int(fft_len * subcarrier_spacing)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [280, 8.0]
+    rotation: 0
+    state: enabled
+- name: sic_enable
+  id: variable_qtgui_check_box
+  parameters:
+    comment: Enable fixed-FIR self-interference cancellation on RX path
+    'false': 'False'
+    gui_hint: 1,6,1,1
+    label: SIC Enable
+    'true': 'True'
+    type: bool
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 172.0]
+    rotation: 0
+    state: enabled
+- name: sic_input_index
+  id: variable
+  parameters:
+    comment: Selector input; 0=SIC subtract output, 1=raw RX bypass
+    value: 0 if sic_enable else 1
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1520, 120.0]
+    rotation: 0
+    state: enabled
+- name: sic_num_taps
+  id: variable
+  parameters:
+    comment: FIR length; must match estimate_sic_taps.py --num-taps
+    value: '64'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1360, 96.0]
+    rotation: 0
+    state: enabled
+- name: sic_taps
+  id: variable
+  parameters:
+    comment: Loaded at flowgraph start from sic_taps_path; zeros if missing
+    value: '[0j]*int(sic_num_taps)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1360, 16.0]
+    rotation: 0
+    state: enabled
+- name: sic_taps_path
+  id: variable
+  parameters:
+    comment: FIR taps from script/implementation/estimate_sic_taps.py
+    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/sic_taps.npy"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 16.0]
+    rotation: 0
+    state: enabled
+- name: subcarrier_spacing
+  id: variable
+  parameters:
+    comment: ''
+    value: 120e3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [344, 120.0]
+    rotation: 0
+    state: enabled
+- name: transpose_len
+  id: variable
+  parameters:
+    comment: CPI OFDM symbols per burst; 4 avoids qpsk>8192 sched limit at fft_len=2048
+    value: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [736, 8.0]
+    rotation: 0
+    state: enabled
+- name: uhd_dev_args
+  id: variable
+  parameters:
+    comment: 'X410 349B642; QSFP 10.2; external 10MHz+PPS: clock/time=external in
+      args and Echotimer'
+    value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2304, 704.0]
+    rotation: 0
+    state: enabled
+- name: wait_to_start
+  id: variable
+  parameters:
+    comment: ''
+    value: '0.03'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2144, 488.0]
+    rotation: 0
+    state: enabled
+- name: zeropadding_fac
+  id: variable
+  parameters:
+    comment: ''
+    value: '2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [696, 128.0]
+    rotation: 0
+    state: enabled
+- name: analog_random_source_x_0
+  id: analog_random_source_x
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    max: '255'
+    maxoutbuf: '0'
+    min: '0'
+    minoutbuf: '0'
+    num_samps: packet_len*8
+    repeat: 'True'
+    type: byte
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [40, 324.0]
+    rotation: 0
+    state: enabled
+- name: blocks_complex_to_mag_squared_0
+  id: blocks_complex_to_mag_squared
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [704, 656.0]
+    rotation: 180
+    state: enabled
+- name: blocks_file_sink_0
+  id: blocks_file_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    append: 'False'
+    comment: Record CPI coherently-integrated complex range profiles
+    file: record_file_path
+    type: complex
+    unbuffered: 'False'
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [784, 836.0]
+    rotation: 0
+    state: enabled
+- name: blocks_integrate_xx_0
+  id: blocks_integrate_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Non-coherent sum over CPI symbols (decim=transpose_len)
+    decim: transpose_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: float
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [504, 648.0]
+    rotation: 180
+    state: enabled
+- name: blocks_integrate_xx_0_cx
+  id: blocks_integrate_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Coherent sum over CPI symbols for complex range-profile recording
+    decim: transpose_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: complex
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [704, 740.0]
+    rotation: 180
+    state: enabled
+- name: blocks_multiply_const_vxx_0
+  id: blocks_multiply_const_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    const: factor
+    maxoutbuf: '0'
+    minoutbuf: int(2*transpose_len*(fft_len+fft_len/4))
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1656, 368.0]
+    rotation: 0
+    state: enabled
+- name: blocks_nlog10_ff_0
+  id: blocks_nlog10_ff
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    k: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n: '10'
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [296, 636.0]
+    rotation: 180
+    state: enabled
+- name: blocks_null_sink_rec_0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: Discard complex integrate stream when recording disabled
+    num_inputs: '1'
+    type: complex
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [784, 1008.0]
+    rotation: 0
+    state: enabled
+- name: blocks_repack_bits_bb_0
+  id: blocks_repack_bits_bb
+  parameters:
+    affinity: ''
+    alias: ''
+    align_output: 'False'
+    comment: ''
+    endianness: gr.GR_LSB_FIRST
+    k: '8'
+    l: payload_mod.bits_per_symbol()
+    len_tag_key: length_tag_key
+    maxoutbuf: '0'
+    minoutbuf: 2*qpsk_symbols_per_packet
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [456, 344.0]
+    rotation: 0
+    state: enabled
+- name: blocks_selector_0
+  id: blocks_selector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Route coherently-integrated complex range profile to file sink or null
+      sink
+    enabled: 'True'
+    input_index: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '1'
+    num_outputs: '2'
+    output_index: record_output_index
+    showports: 'False'
+    type: complex
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [528, 836.0]
+    rotation: 0
+    state: enabled
+- name: blocks_selector_sic_0
+  id: blocks_selector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Route SIC-cancelled or raw RX to CP remover
+    enabled: 'True'
+    input_index: sic_input_index
+    maxoutbuf: '0'
+    minoutbuf: min_out_buf_val
+    num_inputs: '2'
+    num_outputs: '1'
+    output_index: '0'
+    showports: 'True'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1848, 692.0]
+    rotation: 180
+    state: enabled
+- name: blocks_stream_to_tagged_stream_0
+  id: blocks_stream_to_tagged_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    len_tag_key: length_tag_key
+    maxoutbuf: '0'
+    minoutbuf: 2*qpsk_symbols_per_packet
+    packet_len: packet_len
+    type: byte
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 344.0]
+    rotation: 0
+    state: enabled
+- name: blocks_sub_cc_sic_0
+  id: blocks_sub_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: y_clean = RX - h*TX_ref
+    maxoutbuf: '0'
+    minoutbuf: min_out_buf_val
+    num_inputs: '2'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1840, 576.0]
+    rotation: 180
+    state: enabled
+- name: digital_chunks_to_symbols_xx_0_0
+  id: digital_chunks_to_symbols_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    dimension: '1'
+    in_type: byte
+    maxoutbuf: '0'
+    minoutbuf: 2*qpsk_symbols_per_packet
+    num_ports: '1'
+    out_type: complex
+    symbol_table: payload_mod.points()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [720, 360.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_carrier_allocator_cvc_0
+  id: digital_ofdm_carrier_allocator_cvc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    fft_len: fft_len
+    len_tag_key: length_tag_key
+    maxoutbuf: '0'
+    minoutbuf: 4*transpose_len
+    occupied_carriers: occupied_carriers
+    output_is_shifted: 'True'
+    pilot_carriers: ((),)
+    pilot_symbols: ((),)
+    sync_words: ()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [968, 312.0]
+    rotation: 0
+    state: enabled
+- name: digital_ofdm_cyclic_prefixer_0
+  id: digital_ofdm_cyclic_prefixer
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    cp_len: fft_len//4
+    input_size: fft_len
+    maxoutbuf: '0'
+    minoutbuf: int(2*transpose_len*(fft_len+fft_len/4))
+    rolloff: '0'
+    tagname: length_tag_key
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1440, 348.0]
+    rotation: 0
+    state: enabled
+- name: fft_vxx_0
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'False'
+    maxoutbuf: '0'
+    minoutbuf: 2*transpose_len
+    nthreads: '1'
+    shift: 'True'
+    type: complex
+    window: ()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1224, 332.0]
+    rotation: 0
+    state: enabled
+- name: fft_vxx_0_0
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: 2*transpose_len
+    nthreads: '1'
+    shift: 'True'
+    type: complex
+    window: ()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1408, 636.0]
+    rotation: 180
+    state: enabled
+- name: fft_vxx_0_1
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    fft_size: fft_len*zeropadding_fac
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: window.blackmanharris(fft_len*zeropadding_fac)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [904, 620.0]
+    rotation: 180
+    state: enabled
+- name: filter_fir_filter_ccc_sic_0
+  id: fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: SIC leakage FIR; taps from estimate_sic_taps.py
+    decim: '1'
+    maxoutbuf: '0'
+    minoutbuf: min_out_buf_val
+    samp_delay: '0'
+    taps: sic_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1784, 480.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_freq_sink_x_0
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    average: '1.0'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: fft_len
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label: Relative Gain
+    label1: ''
+    label10: ''''''
+    label2: ''''''
+    label3: ''''''
+    label4: ''''''
+    label5: ''''''
+    label6: ''''''
+    label7: ''''''
+    label8: ''''''
+    label9: ''''''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2040, 692.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_time_sink_x_0
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label1: Signal 1
+    label10: Signal 10
+    label2: Signal 2
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'True'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '""'
+    nconnections: '1'
+    size: fft_len + fft_len//4
+    srate: samp_rate
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: Amplitude
+    ymax: '1'
+    ymin: '-1'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1864, 276.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_vector_sink_f_0
+  id: qtgui_vector_sink_f
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    average: '1.0'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: Zero-Doppler range profile, 0~R_max m (full spectrum)
+    grid: 'True'
+    gui_hint: ''
+    label1: Range Profile
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Range Profile"'
+    nconnections: '1'
+    ref_level: '0'
+    showports: 'False'
+    update_time: '0.10'
+    vlen: fft_len*zeropadding_fac
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    x_axis_label: '"Range"'
+    x_start: '0'
+    x_step: range_bin_step
+    x_units: '"m"'
+    y_axis_label: '"Power (dB)"'
+    y_units: '"dB"'
+    ymax: '0'
+    ymin: '-40'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [40, 600.0]
+    rotation: 180
+    state: enabled
+- name: radar_ofdm_cyclic_prefix_remover_cvc_0
+  id: radar_ofdm_cyclic_prefix_remover_cvc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    cp_len: fft_len//4
+    fft_len: fft_len
+    len_key: '"packet_len"'
+    maxoutbuf: '0'
+    minoutbuf: 2*transpose_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1624, 652.0]
+    rotation: 180
+    state: enabled
+- name: radar_ofdm_divide_vcvc_0
+  id: radar_ofdm_divide_vcvc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    discarded_carriers: ()
+    len_key: '"packet_len"'
+    maxoutbuf: '0'
+    minoutbuf: 2*transpose_len
+    num_sync_words: '0'
+    vlen_in: fft_len
+    vlen_out: (fft_len)*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 620.0]
+    rotation: 180
+    state: enabled
+- name: radar_usrp_echotimer_cc_0
+  id: radar_usrp_echotimer_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    antenna_rx: '''RX1'''
+    antenna_tx: '''TX/RX'''
+    args_rx: uhd_dev_args
+    args_tx: uhd_dev_args
+    center_freq: freq
+    channel_rx: '0'
+    channel_tx: '0'
+    clock_source_rx: '''external'''
+    clock_source_tx: '''external'''
+    comment: external 10MHz REF IN + PPS IN; must match device args
+    gain_rx: RX_gain
+    gain_tx: TX_gain
+    len_key: '"packet_len"'
+    lo_offset_rx: '0'
+    lo_offset_tx: '0'
+    maxoutbuf: '0'
+    minoutbuf: min_out_buf_val
+    num_delay_samps: int(num_delay_samp)
+    samp_rate: int(samp_rate)
+    time_source_rx: '''external'''
+    time_source_tx: '''external'''
+    timeout_rx: '0.2'
+    timeout_tx: '0.2'
+    wait_rx: wait_to_start
+    wait_tx: wait_to_start
+    wire_rx: ''''''
+    wire_tx: ''''''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1948.0, 456]
+    rotation: 270
+    state: enabled
+
+connections:
+- [analog_random_source_x_0, '0', blocks_stream_to_tagged_stream_0, '0']
+- [blocks_complex_to_mag_squared_0, '0', blocks_integrate_xx_0, '0']
+- [blocks_integrate_xx_0, '0', blocks_nlog10_ff_0, '0']
+- [blocks_integrate_xx_0_cx, '0', blocks_selector_0, '0']
+- [blocks_multiply_const_vxx_0, '0', filter_fir_filter_ccc_sic_0, '0']
+- [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
+- [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0, '0']
+- [blocks_nlog10_ff_0, '0', qtgui_vector_sink_f_0, '0']
+- [blocks_repack_bits_bb_0, '0', digital_chunks_to_symbols_xx_0_0, '0']
+- [blocks_selector_0, '0', blocks_file_sink_0, '0']
+- [blocks_selector_0, '1', blocks_null_sink_rec_0, '0']
+- [blocks_selector_sic_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
+- [blocks_stream_to_tagged_stream_0, '0', blocks_repack_bits_bb_0, '0']
+- [blocks_sub_cc_sic_0, '0', blocks_selector_sic_0, '0']
+- [digital_chunks_to_symbols_xx_0_0, '0', digital_ofdm_carrier_allocator_cvc_0, '0']
+- [digital_ofdm_carrier_allocator_cvc_0, '0', fft_vxx_0, '0']
+- [digital_ofdm_carrier_allocator_cvc_0, '0', radar_ofdm_divide_vcvc_0, '0']
+- [digital_ofdm_cyclic_prefixer_0, '0', blocks_multiply_const_vxx_0, '0']
+- [fft_vxx_0, '0', digital_ofdm_cyclic_prefixer_0, '0']
+- [fft_vxx_0_0, '0', radar_ofdm_divide_vcvc_0, '1']
+- [fft_vxx_0_1, '0', blocks_complex_to_mag_squared_0, '0']
+- [fft_vxx_0_1, '0', blocks_integrate_xx_0_cx, '0']
+- [filter_fir_filter_ccc_sic_0, '0', blocks_sub_cc_sic_0, '1']
+- [radar_ofdm_cyclic_prefix_remover_cvc_0, '0', fft_vxx_0_0, '0']
+- [radar_ofdm_divide_vcvc_0, '0', fft_vxx_0_1, '0']
+- [radar_usrp_echotimer_cc_0, '0', blocks_selector_sic_0, '1']
+- [radar_usrp_echotimer_cc_0, '0', blocks_sub_cc_sic_0, '0']
+- [radar_usrp_echotimer_cc_0, '0', qtgui_freq_sink_x_0, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0
