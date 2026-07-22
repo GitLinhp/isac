@@ -54,14 +54,21 @@ class DelayDopplerRoi:
         return max(1, int(self.max_range_m / dr) + 1)
 
     def doppler_half_bins(self, sens_mode: SensMode = "monostatic") -> int:
-        """``max_velocity_mps`` 对应的多普勒半宽 bin 数。"""
+        """``max_velocity_mps`` 对应的多普勒半宽 bin 数。
+
+        使用 ``round`` 对齐速度分辨网格；有效上界见 :meth:`effective_physical_limits`，
+        可能略小于配置的 ``max_velocity_mps``。
+        """
         dv = getattr(self.sensing_performance, f"velocity_resolution_{sens_mode}")
         return max(1, int(round(self.max_velocity_mps / dv)))
 
     def effective_physical_limits(
         self, sens_mode: SensMode = "monostatic"
     ) -> tuple[float, float]:
-        """由 ROI bin 网格反推对齐后的有效 ``max_range_m`` / ``max_velocity_mps``。"""
+        """由 ROI bin 网格反推对齐后的有效 ``max_range_m`` / ``max_velocity_mps``。
+
+        ``max_velocity_mps`` 为半宽 × 速度分辨率，是配置值对齐 bin 后的近似上界。
+        """
         dr = getattr(self.sensing_performance, f"range_resolution_{sens_mode}")
         dv = getattr(self.sensing_performance, f"velocity_resolution_{sens_mode}")
         return (
@@ -74,7 +81,11 @@ class DelayDopplerRoi:
         h_dd: torch.Tensor,
         sens_mode: SensMode = "monostatic",
     ) -> RoiSlices:
-        """由 ROI 物理量与全尺寸谱形状计算裁切切片。"""
+        """由 ROI 物理量与全尺寸谱形状计算裁切切片。
+
+        多普勒维以零多普勒（``n_doppler // 2``）为中心对称裁切，长度为
+        ``2 * dop_half + 1``（Python 切片右端开区间，故 ``dop_end = center + half + 1``）。
+        """
         self.validate()
         n_doppler, n_delay = h_dd.shape[-2], h_dd.shape[-1]
         delay_bins = min(n_delay, self.delay_bin_count(sens_mode=sens_mode))
@@ -84,7 +95,7 @@ class DelayDopplerRoi:
         )
         dop_center = n_doppler // 2
         dop_start = max(0, dop_center - dop_half)
-        dop_end = min(n_doppler, dop_center + dop_half)
+        dop_end = min(n_doppler, dop_center + dop_half + 1)
         return dop_start, dop_end, 0, delay_bins
 
     def crop(

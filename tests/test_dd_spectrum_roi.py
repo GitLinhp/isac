@@ -53,6 +53,7 @@ def test_limits_on_full_grid():
     max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_monostatic
     assert max_range_m == pytest.approx(309.96, rel=1e-3)
     assert max_velocity_mps == pytest.approx(149.888, rel=1e-3)
+    assert (dop_end - dop_start) == 2 * dd.dd_spectrum_roi.doppler_half_bins() + 1
 
 
 def test_effective_physical_limits():

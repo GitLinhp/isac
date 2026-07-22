@@ -78,7 +78,7 @@ src/isac/data_structures/params/
 | `type` | `"binary"` | `"binary"` \| `"zc"` |
 | `root_index` | `1` | ZC 根索引（`type=zc`） |
 | `normalize` | `True` | ZC 是否归一化 |
-| `num_bits_per_symbol` | `None` | QAM 每符号比特数（**`type=binary` 时必填**） |
+| `num_bits_per_symbol` | `None`（`type=zc` 时缺省为 `2`） | 每符号比特数；**`type=binary` 时必填**（QAM）；**`type=zc` 时用于占位比特形状，未配置则默认 2（QPSK）** |
 
 ### StreamManagementParams — `[stream_management]`
 

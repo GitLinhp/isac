@@ -31,8 +31,12 @@ class SpectrumMetric:
 
     @staticmethod
     def doppler_center(num_doppler_bins: int) -> float:
-        """多普勒 fftshift 网格中心（bin 坐标，可为半整数）。"""
-        return num_doppler_bins / 2.0
+        """多普勒 fftshift 网格中心（bin 坐标）。
+
+        与 ``fftshift`` 约定一致：零多普勒位于 ``num_doppler_bins // 2``
+        （对称奇数 ROI 时为零多普勒 bin 的局部索引）。
+        """
+        return float(num_doppler_bins // 2)
 
     def local_bins_to_tau_fd(
         self,

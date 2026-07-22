@@ -65,10 +65,32 @@ def test_bin_slices_inverse_physical_limits():
     h_full = torch.zeros(512, 2048)
     slices = roi.bin_slices(h_full)
     dop_start, dop_end, _, delay_end = slices
+    # 对称 ROI：长度 2*half+1，半宽 = (dop_end - dop_start) // 2
     max_range_m = (delay_end - 1) * sp.range_resolution_monostatic
     max_velocity_mps = ((dop_end - dop_start) // 2) * sp.velocity_resolution_monostatic
     assert max_range_m == pytest.approx(309.96, rel=1e-3)
     assert max_velocity_mps == pytest.approx(149.888, rel=1e-3)
+    assert (dop_end - dop_start) % 2 == 1
+
+
+def test_small_roi_velocity_axis_symmetric():
+    """小 ROI（dop_half=2）速度轴须关于 0 对称，避免负速度侧少 1 bin。"""
+    sp = _sensing_performance()
+    roi = DelayDopplerRoi(
+        max_range_m=30.0,
+        max_velocity_mps=5.0,
+        sensing_performance=sp,
+    )
+    h_full = torch.zeros(sp.rg.num_ofdm_symbols, sp.rg.fft_size)
+    dop_start, dop_end, _, _ = roi.bin_slices(h_full)
+    dop_half = roi.doppler_half_bins()
+    assert dop_end - dop_start == 2 * dop_half + 1
+    assert dop_start == sp.rg.num_ofdm_symbols // 2 - dop_half
+    assert dop_end == sp.rg.num_ofdm_symbols // 2 + dop_half + 1
+
+    v = sp.velocity_bins_monostatic[dop_start:dop_end]
+    assert v.max() == pytest.approx(-v.min(), rel=1e-3)
+    assert abs(v[dop_half]) == pytest.approx(0.0, abs=1e-9)
 
 
 def test_local_bins_match_global_axes_after_symmetric_roi():

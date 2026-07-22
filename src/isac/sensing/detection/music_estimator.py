@@ -80,7 +80,7 @@ def _batch_steering_vectors(
     """批量 2D 导向向量，形状 ``(geometry.size, num_candidates)``。
 
     ``candidates`` 每行为裁切谱局部坐标 ``(doppler_idx, delay_idx)``。
-    多普勒归一化频率以 fftshift 网格中心为 0：``(idx - M/2) / M``；
+    多普勒归一化频率以 fftshift 网格中心为 0：``(idx - M//2) / M``；
     时延归一化为 ``idx / N``。返回 Kronecker 积 ``a_dop ⊗ a_delay``。
     """
     doppler_idx = candidates[:, 0].to(dtype=torch.float32)

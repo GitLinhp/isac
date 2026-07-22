@@ -18,6 +18,9 @@ class SourceParams:
     def __post_init__(self) -> None:
         if self.type not in ("binary", "zc"):
             raise ValueError("source.type must be 'binary' or 'zc'")
+        # ZC 占位比特形状对齐 QPSK：未配置时默认 2
+        if self.type == "zc" and self.num_bits_per_symbol is None:
+            self.num_bits_per_symbol = 2
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SourceParams":

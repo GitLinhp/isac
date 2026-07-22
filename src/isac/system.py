@@ -77,7 +77,7 @@ class System:
         按 ``params.source.type`` 分支：
 
         - ``binary``：随机比特 → QAM 映射
-        - ``zc``：Zadoff-Chu 序列（无比特 ``b``）
+        - ``zc``：Zadoff-Chu 序列；``b`` 为全 1 占位比特（形状由 ``num_bits_per_symbol`` 决定）
 
         若 ``params.source.cache_file`` 已配置为缓存目录：三文件齐全则直接加载，
         否则生成后写入 ``b.npy`` / ``x_rg.npy`` / ``x_time.npy``。
@@ -85,7 +85,7 @@ class System:
         返回:
         -------
         - b : torch.Tensor | None
-            发射比特；``zc`` 源时为 ``None``
+            发射比特；``zc`` 源时为全 1 占位比特
         - x_rg : torch.Tensor
             频域 OFDM 资源网格
         - x_time : torch.Tensor
@@ -98,14 +98,15 @@ class System:
         src_type = self.params.source.type
         comps = self.components
         rg = comps.rg
+        n_bps = int(self.params.source.num_bits_per_symbol)
 
         if src_type == "binary":
             b = comps.binary_source(
                 [
                     1,
                     1,
-                    1,
-                    rg.num_data_symbols * int(self.params.source.num_bits_per_symbol),
+                    rg.num_streams_per_tx,
+                    rg.num_data_symbols * n_bps,
                 ]
             )
             x = comps.mapper(b)
@@ -113,14 +114,15 @@ class System:
             b = torch.ones(
                 1,
                 1,
-                1,
-                rg.num_data_symbols * int(self.params.source.num_bits_per_symbol),
+                rg.num_streams_per_tx,
+                rg.num_data_symbols * n_bps,
+                device=self.device,
             )
             x = comps.zc_source([1, 1, 1, rg.num_data_symbols])
         else:
             raise ValueError(f"unsupported source.type: {src_type!r}")
 
-        # b: [batch, 1, 1, 1024]
+        # b: [batch, 1, streams, num_data_symbols * bits_per_symbol]
 
         x_rg = comps.rg_mapper(x)
         x_time = comps.modulator(x_rg)

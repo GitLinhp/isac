@@ -41,7 +41,9 @@ def test_sensing_attrs_use_roi_limits_when_configured(
     assert sensing["max_range_m"] < sp.max_range_monostatic
     assert sensing["max_velocity_mps"] < sp.max_velocity_monostatic
     assert sensing["max_range_m"] == pytest.approx(29.28, rel=0.02)
+    # round(5.0 / dv) * dv；dv≈1.171 → 有效约 4.684（配置 5.0 的 bin 对齐近似上界）
     assert sensing["max_velocity_mps"] == pytest.approx(4.684, rel=0.02)
+    assert sensing["num_doppler_bins"] == 2 * dd_roi.doppler_half_bins() + 1
 
 
 def test_sensing_attrs_roi_velocity_roundtrip(collection_system: System) -> None:
