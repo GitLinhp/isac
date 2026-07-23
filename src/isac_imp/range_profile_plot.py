@@ -31,20 +31,29 @@ def _register_display(display: _RangeProfileDisplay) -> None:
         _display_registry.remove(r)
 
 
-def publish_music_ranges(ranges_m: list[float]) -> None:
-    """向已注册的 ``RangeProfilePlotBlock`` 窗口推送 MUSIC 距离标注。"""
+def publish_range_estimates(
+    ranges_m: list[float],
+    *,
+    method_name: str = "MUSIC",
+) -> None:
+    """向已注册的 ``RangeProfilePlotBlock`` 窗口推送距离估计标注。"""
     for ref in list(_display_registry):
         display = ref()
         if display is None:
             continue
-        display.post_music_ranges(ranges_m)
+        display.post_range_estimates(ranges_m, method_name)
+
+
+def publish_music_ranges(ranges_m: list[float]) -> None:
+    """兼容包装：默认方法名为 MUSIC。"""
+    publish_range_estimates(ranges_m, method_name="MUSIC")
 
 
 class _RangeProfileDisplay(QObject):
     """Qt 主线程上的 PyQtGraph 距离谱折线图窗口。"""
 
     profile_ready = pyqtSignal(object, object)  # x_m, y_db
-    music_ranges_ready = pyqtSignal(object)  # list[float]
+    range_estimates_ready = pyqtSignal(object, object)  # ranges_m, method_name
     show_requested = pyqtSignal()
 
     def __init__(
@@ -58,6 +67,7 @@ class _RangeProfileDisplay(QObject):
         self._axis_x = axis_x
         self._frame_count = 0
         self._title = str(title)
+        self._method_name: str | None = None
 
         self._win = pg.GraphicsLayoutWidget(show=False, title=self._title)
         self._plot = self._win.addPlot(title=title)
@@ -65,12 +75,14 @@ class _RangeProfileDisplay(QObject):
         self._plot.setLabel("left", ylabel)
         self._plot.showGrid(x=True, y=True, alpha=0.25)
         self._curve = self._plot.plot(pen=pg.mkPen(_LINE, width=1))
-        self._music_lines: list[pg.InfiniteLine] = []
+        self._estimate_lines: list[pg.InfiniteLine] = []
         self._apply_light_theme()
         self._apply_x_axis()
 
         self.profile_ready.connect(self._on_profile, Qt.QueuedConnection)
-        self.music_ranges_ready.connect(self._on_music_ranges, Qt.QueuedConnection)
+        self.range_estimates_ready.connect(
+            self._on_range_estimates, Qt.QueuedConnection
+        )
         self.show_requested.connect(self._do_show, Qt.QueuedConnection)
         _register_display(self)
 
@@ -86,6 +98,11 @@ class _RangeProfileDisplay(QObject):
 
     def _set_plot_title(self, text: str) -> None:
         self._plot.setTitle(text, color=_FG)
+
+    def _format_plot_title(self) -> str:
+        if self._method_name:
+            return f"{self._title} — {self._method_name}  [#{self._frame_count}]"
+        return f"{self._title}  [#{self._frame_count}]"
 
     def request_show(self) -> None:
         self.show_requested.emit()
@@ -114,24 +131,36 @@ class _RangeProfileDisplay(QObject):
     def post_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
         self.profile_ready.emit(x_m, y_db)
 
-    def post_music_ranges(self, ranges_m: list[float]) -> None:
-        self.music_ranges_ready.emit(list(ranges_m))
+    def post_range_estimates(
+        self, ranges_m: list[float], method_name: str
+    ) -> None:
+        self.range_estimates_ready.emit(list(ranges_m), str(method_name))
 
-    @pyqtSlot(object)
-    def _on_music_ranges(self, ranges_m: list[float]) -> None:
-        for line in self._music_lines:
+    def post_music_ranges(self, ranges_m: list[float]) -> None:
+        self.post_range_estimates(ranges_m, "MUSIC")
+
+    @pyqtSlot(object, object)
+    def _on_range_estimates(self, ranges_m: list[float], method_name: str) -> None:
+        for line in self._estimate_lines:
             self._plot.removeItem(line)
-        self._music_lines.clear()
-        for r in ranges_m:
-            line = pg.InfiniteLine(
-                pos=float(r),
-                angle=90,
-                pen=pg.mkPen(_MUSIC_LINE, width=1.5, style=Qt.DashLine),
-                label=f"{float(r):.2f} m",
-                labelOpts={"position": 0.9, "color": _MUSIC_LINE},
-            )
-            self._plot.addItem(line)
-            self._music_lines.append(line)
+        self._estimate_lines.clear()
+
+        if ranges_m:
+            self._method_name = str(method_name)
+            for r in ranges_m:
+                line = pg.InfiniteLine(
+                    pos=float(r),
+                    angle=90,
+                    pen=pg.mkPen(_MUSIC_LINE, width=1.5, style=Qt.DashLine),
+                    label=f"{method_name} {float(r):.2f} m",
+                    labelOpts={"position": 0.9, "color": _MUSIC_LINE},
+                )
+                self._plot.addItem(line)
+                self._estimate_lines.append(line)
+        else:
+            self._method_name = None
+
+        self._set_plot_title(self._format_plot_title())
 
     @pyqtSlot(object, object)
     def _on_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
@@ -149,7 +178,7 @@ class _RangeProfileDisplay(QObject):
                 self._plot.setYRange(lo - pad, hi + pad, padding=0)
 
         self._frame_count += 1
-        self._set_plot_title(f"{self._title}  [#{self._frame_count}]")
+        self._set_plot_title(self._format_plot_title())
 
 
 class RangeProfilePlotBlock(gr.sync_block):

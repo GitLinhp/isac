@@ -1,4 +1,4 @@
-"""GNU Radio 块：CPI 复数距离谱 1D MUSIC 超分辨估距。
+"""GNU Radio 块：CPI 复数距离谱 1D ESPRIT 闭式估距。
 
 接在 ``blocks_integrate_xx`` (complex) 之后，与录制 selector 并行；
 结果推送至 :mod:`isac_imp.range_profile_plot` 的 PyQtGraph 竖线标注，并打印日志。
@@ -22,14 +22,14 @@ for _p in [Path.cwd(), *Path.cwd().parents]:
         sys.path.insert(0, str(_src))
         break
 
-from isac.sensing.detection.range_music_estimator import RangeMusicEstimator
+from isac.sensing.detection.range_esprit_estimator import RangeEspritEstimator
 from isac_imp.range_profile_plot import publish_range_estimates
 
-_LOG_PREFIX = "[RangeMusic]"
+_LOG_PREFIX = "[RangeESPRIT]"
 
 
-class RangeMusicBlock(gr.sync_block):
-    """复数 CPI 距离谱 → 1D MUSIC 距离估计（无流输出）。"""
+class RangeEspritBlock(gr.sync_block):
+    """复数 CPI 距离谱 → 1D ESPRIT 距离估计（无流输出）。"""
 
     def __init__(
         self,
@@ -37,44 +37,42 @@ class RangeMusicBlock(gr.sync_block):
         range_bin_step: float = 0.305,
         range_roi: tuple[float, float] = (0.0, 30.0),
         num_sources: int = 1,
-        music_enable: bool = True,
+        esprit_enable: bool = True,
         subarray_size: int = 16,
-        threshold: float = 0.1,
     ) -> None:
         self._vlen_in = int(vlen_in)
         self._range_bin_step = float(range_bin_step)
         self._range_roi = (float(range_roi[0]), float(range_roi[1]))
         self._num_sources = int(num_sources)
-        self._music_enable = bool(music_enable)
+        self._esprit_enable = bool(esprit_enable)
         self._subarray_size = int(subarray_size)
-        self._threshold = float(threshold)
 
         gr.sync_block.__init__(
             self,
-            name="Range MUSIC",
+            name="Range ESPRIT",
             in_sig=[(np.complex64, self._vlen_in)],
             out_sig=None,
         )
 
-        self._estimator = RangeMusicEstimator()
+        self._estimator = RangeEspritEstimator()
         self._executor: Optional[ThreadPoolExecutor] = None
         self._worker_busy = False
         self._result_queue: queue.Queue[list[float]] = queue.Queue()
         self._frame_count = 0
 
     @property
-    def music_enable(self) -> bool:
-        return self._music_enable
+    def esprit_enable(self) -> bool:
+        return self._esprit_enable
 
-    @music_enable.setter
-    def music_enable(self, value: bool) -> None:
-        self._music_enable = bool(value)
-        if not self._music_enable:
-            publish_range_estimates([], method_name="MUSIC")
+    @esprit_enable.setter
+    def esprit_enable(self, value: bool) -> None:
+        self._esprit_enable = bool(value)
+        if not self._esprit_enable:
+            publish_range_estimates([], method_name="ESPRIT")
 
     def start(self) -> bool:
         self._shutdown_worker()
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="range_music")
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="range_esprit")
         self._worker_busy = False
         self._frame_count = 0
         while not self._result_queue.empty():
@@ -86,7 +84,7 @@ class RangeMusicBlock(gr.sync_block):
 
     def stop(self) -> bool:
         self._shutdown_worker()
-        publish_range_estimates([], method_name="MUSIC")
+        publish_range_estimates([], method_name="ESPRIT")
         return True
 
     def _shutdown_worker(self) -> None:
@@ -101,9 +99,9 @@ class RangeMusicBlock(gr.sync_block):
                 ranges = self._result_queue.get_nowait()
             except queue.Empty:
                 break
-            publish_range_estimates(ranges, method_name="MUSIC")
+            publish_range_estimates(ranges, method_name="ESPRIT")
 
-    def _run_music(self, profile: np.ndarray, frame_idx: int) -> None:
+    def _run_esprit(self, profile: np.ndarray, frame_idx: int) -> None:
         try:
             peaks = self._estimator(
                 profile,
@@ -111,17 +109,13 @@ class RangeMusicBlock(gr.sync_block):
                 range_roi=self._range_roi,
                 num_sources=self._num_sources,
                 subarray_size=self._subarray_size,
-                threshold=self._threshold,
             )
             ranges = peaks.peak_ranges_m.tolist()
             self._result_queue.put(ranges)
             if ranges:
-                rows = [
-                    [i + 1, f"{r:.3f}"] for i, r in enumerate(ranges)
-                ]
-                print(f"{_LOG_PREFIX} frame #{frame_idx} — 1D MUSIC 距离估计 (m):")
-                for row in rows:
-                    print(f"  峰 {row[0]}: {row[1]} m")
+                print(f"{_LOG_PREFIX} frame #{frame_idx} — 1D ESPRIT 距离估计 (m):")
+                for i, r in enumerate(ranges):
+                    print(f"  峰 {i + 1}: {r:.3f} m")
             else:
                 print(f"{_LOG_PREFIX} frame #{frame_idx} — 未检测到谱峰")
         except Exception:
@@ -130,9 +124,10 @@ class RangeMusicBlock(gr.sync_block):
             self._worker_busy = False
 
     def work(self, input_items, output_items) -> int:
+        del output_items
         self._drain_results()
 
-        if not self._music_enable:
+        if not self._esprit_enable:
             return len(input_items[0])
 
         if self._worker_busy or self._executor is None:
@@ -142,5 +137,5 @@ class RangeMusicBlock(gr.sync_block):
         self._frame_count += 1
         frame_idx = self._frame_count
         self._worker_busy = True
-        self._executor.submit(self._run_music, profile, frame_idx)
+        self._executor.submit(self._run_esprit, profile, frame_idx)
         return 1

@@ -15,6 +15,7 @@ from .spectrum import (
 )
 from .detection import CFARDetector
 from .detection.music_estimator import MUSICEstimator
+from .detection.range_esprit_estimator import RangeEspritEstimator, RangeEspritPeaks
 from .detection.range_music_estimator import RangeMusicEstimator, RangeMusicPeaks
 from .evaluation import (
     SensingEstimator,
@@ -47,6 +48,8 @@ __all__ = [
     "MUSICEstimator",
     "RangeMusicEstimator",
     "RangeMusicPeaks",
+    "RangeEspritEstimator",
+    "RangeEspritPeaks",
     "SensingEstimator",
     "match_peaks_and_compute_radial_rmse",
     "MusicPeaks",

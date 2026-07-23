@@ -6,14 +6,14 @@ options:
     cmake_opt: ''
     comment: ''
     copyright: ''
-    description: USRP OFDM radar zero-Doppler range profile (full 0~R_max). RX packet_len
-      tags via echotimer; range spectrum via range_profile_plot (PyQtGraph). Stop
-      via GUI (not kill -9) so file_meta segments flush completely.
+    description: USRP OFDM radar zero-Doppler range profile with 1D ESPRIT range estimation.
+      RX packet_len tags via echotimer; range spectrum via range_profile_plot (PyQtGraph).
+      Stop via GUI (not kill -9) so file_meta segments flush completely.
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: .:..
-    id: usrp_ofdm_echotimer_dd
+    id: usrp_ofdm_echotimer_dd_esprit
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -88,6 +88,44 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [2480, 492.0]
+    rotation: 0
+    state: enabled
+- name: esprit_enable
+  id: variable_qtgui_check_box
+  parameters:
+    comment: Enable 1D range ESPRIT on CPI complex range profile
+    'false': 'False'
+    gui_hint: 2,4,1,1
+    label: ESPRIT Enable
+    'true': 'True'
+    type: bool
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1320, 200.0]
+    rotation: 0
+    state: enabled
+- name: esprit_num_sources
+  id: variable_qtgui_range
+  parameters:
+    comment: Number of range targets for 1D ESPRIT
+    gui_hint: ''
+    label: ESPRIT Num Sources
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '1'
+    step: '1'
+    stop: '5'
+    value: '1'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1480, 200.0]
     rotation: 0
     state: enabled
 - name: factor
@@ -170,44 +208,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1304, 16.0]
-    rotation: 0
-    state: enabled
-- name: music_enable
-  id: variable_qtgui_check_box
-  parameters:
-    comment: Enable 1D range MUSIC super-resolution on CPI complex range profile
-    'false': 'False'
-    gui_hint: 2,4,1,1
-    label: MUSIC Enable
-    'true': 'True'
-    type: bool
-    value: 'True'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1320, 200.0]
-    rotation: 0
-    state: enabled
-- name: music_num_sources
-  id: variable_qtgui_range
-  parameters:
-    comment: Number of range targets for 1D MUSIC
-    gui_hint: ''
-    label: MUSIC Num Sources
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '1'
-    step: '1'
-    stop: '5'
-    value: '1'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1480, 200.0]
     rotation: 0
     state: enabled
 - name: n_carriers
@@ -329,14 +329,14 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1320, 140.0]
+    coordinate: [1176, 92.0]
     rotation: 0
     state: enabled
 - name: record_file_path
   id: variable
   parameters:
     comment: Fixed absolute path shared with range_profile_playback.grc
-    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"'
+    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_esprit/dataset/run_001/range_profiles"'
   states:
     bus_sink: false
     bus_source: false
@@ -1014,31 +1014,30 @@ blocks:
     coordinate: [1948.0, 456]
     rotation: 270
     state: enabled
-- name: range_music_block_0
+- name: range_esprit_block_0
   id: epy_block
   parameters:
     _source_code: "import sys\nfrom pathlib import Path\nfor _p in [Path.cwd(), *Path.cwd().parents]:\n\
       \    _src = _p / \"src\"\n    if (_src / \"isac_imp\").is_dir():\n        sys.path.insert(0,\
-      \ str(_src))\n        break\nfrom isac_imp.range_music_block import RangeMusicBlock\n\
-      \nblk = RangeMusicBlock\n"
+      \ str(_src))\n        break\nfrom isac_imp.range_esprit_block import RangeEspritBlock\n\
+      \nblk = RangeEspritBlock\n"
     affinity: ''
     alias: ''
-    comment: 1D range MUSIC on CPI complex range profile; parallel to recording chain
+    comment: 1D range ESPRIT on CPI complex range profile; parallel to recording chain
+    esprit_enable: esprit_enable
     maxoutbuf: '0'
     minoutbuf: '0'
-    music_enable: music_enable
-    num_sources: int(music_num_sources)
+    num_sources: int(esprit_num_sources)
     range_bin_step: range_bin_step
     range_roi: range_roi
     subarray_size: '16'
-    threshold: '0.1'
     vlen_in: fft_len*zeropadding_fac
   states:
-    _io_cache: "('Range MUSIC', 'RangeMusicBlock', [('vlen_in', '4096'), ('range_bin_step',\
-      \ '0.305'), ('range_roi', '(0.0, 30.0)'), ('num_sources', '1'), ('music_enable',\
-      \ 'True'), ('subarray_size', '16'), ('threshold', '0.1')], [('0', 'complex',\
-      \ 4096)], [], '\u590D\u6570 CPI \u8DDD\u79BB\u8C31 \u2192 1D MUSIC \u8DDD\u79BB\
-      \u4F30\u8BA1\uFF08\u65E0\u6D41\u8F93\u51FA\uFF09\u3002', ['music_enable'])"
+    _io_cache: "('Range ESPRIT', 'RangeEspritBlock', [('vlen_in', '4096'), ('range_bin_step',\
+      \ '0.305'), ('range_roi', '(0.0, 30.0)'), ('num_sources', '1'), ('esprit_enable',\
+      \ 'True'), ('subarray_size', '16')], [('0', 'complex', 4096)], [], '\u590D\u6570\
+      \ CPI \u8DDD\u79BB\u8C31 \u2192 1D ESPRIT \u8DDD\u79BB\u4F30\u8BA1\uFF08\u65E0\
+      \u6D41\u8F93\u51FA\uFF09\u3002', ['esprit_enable'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
@@ -1079,7 +1078,7 @@ connections:
 - [blocks_complex_to_mag_squared_0, '0', blocks_integrate_xx_0, '0']
 - [blocks_integrate_xx_0, '0', blocks_nlog10_ff_0, '0']
 - [blocks_integrate_xx_0_cx, '0', blocks_selector_0, '0']
-- [blocks_integrate_xx_0_cx, '0', range_music_block_0, '0']
+- [blocks_integrate_xx_0_cx, '0', range_esprit_block_0, '0']
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
 - [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0, '0']
 - [blocks_nlog10_ff_0, '0', range_profile_plot_0, '0']
