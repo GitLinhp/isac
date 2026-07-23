@@ -34,6 +34,79 @@ options:
     state: enabled
 
 blocks:
+- name: fft_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [176, 8.0]
+    rotation: 0
+    state: enabled
+- name: subcarrier_spacing
+  id: variable
+  parameters:
+    comment: ''
+    value: 60e3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [344, 120.0]
+    rotation: 0
+    state: enabled
+- name: zeropadding_fac
+  id: variable
+  parameters:
+    comment: ''
+    value: '2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [696, 128.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: int(fft_len * subcarrier_spacing)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [280, 8.0]
+    rotation: 0
+    state: enabled
+- name: R_max
+  id: variable
+  parameters:
+    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)\uFF0CR = c/(2\xB7BW)\xB7\
+      N_fft"
+    value: 3e8/2/samp_rate*fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1248, 16.0]
+    rotation: 0
+    state: enabled
+- name: range_bin_step
+  id: variable
+  parameters:
+    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)\uff1bGRC \u663e\u793a 305.176m = 0.305 m"
+    value: 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1112, 16.0]
+    rotation: 0
+    state: enabled
 - name: RX_gain0
   id: variable_qtgui_range
   parameters:
@@ -76,19 +149,6 @@ blocks:
     coordinate: [2656, 332.0]
     rotation: 0
     state: enabled
-- name: R_max
-  id: variable
-  parameters:
-    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)\uFF0CR = c/(2\xB7BW)\xB7\
-      N_fft"
-    value: 3e8/2/samp_rate*fft_len
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1248, 16.0]
-    rotation: 0
-    state: enabled
 - name: TX_gain0
   id: variable_qtgui_range
   parameters:
@@ -129,18 +189,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [2536, 332.0]
-    rotation: 0
-    state: enabled
-- name: fft_len
-  id: variable
-  parameters:
-    comment: ''
-    value: '2048'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [176, 8.0]
     rotation: 0
     state: enabled
 - name: freq0
@@ -335,18 +383,6 @@ blocks:
     coordinate: [864, 128.0]
     rotation: 0
     state: enabled
-- name: range_bin_step
-  id: variable
-  parameters:
-    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)"
-    value: R_max/(fft_len*zeropadding_fac)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1112, 16.0]
-    rotation: 0
-    state: enabled
 - name: record_enable
   id: variable_qtgui_check_box
   parameters:
@@ -400,30 +436,6 @@ blocks:
     coordinate: [1960, 96.0]
     rotation: 0
     state: enabled
-- name: samp_rate
-  id: variable
-  parameters:
-    comment: ''
-    value: int(fft_len * subcarrier_spacing)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [280, 8.0]
-    rotation: 0
-    state: enabled
-- name: subcarrier_spacing
-  id: variable
-  parameters:
-    comment: ''
-    value: 60e3
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [344, 120.0]
-    rotation: 0
-    state: enabled
 - name: transpose_len
   id: variable
   parameters:
@@ -446,18 +458,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [2264, 136.0]
-    rotation: 0
-    state: enabled
-- name: zeropadding_fac
-  id: variable
-  parameters:
-    comment: ''
-    value: '2'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [696, 128.0]
     rotation: 0
     state: enabled
 - name: address0

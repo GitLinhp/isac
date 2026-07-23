@@ -85,7 +85,7 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self.sic_input_index = sic_input_index = 0 if sic_enable else 1
         self.record_output_index = record_output_index = 0 if record_enable else 1
         self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/range_profile_collection/dataset/run_001/range_profiles"
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.packet_len = packet_len = transpose_len * n_carriers // 4
@@ -373,7 +373,7 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
         self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
         self.set_n_carriers(self.fft_len - 2)
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
@@ -392,7 +392,7 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_transpose_len(self):
@@ -442,7 +442,7 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
 
     def set_R_max(self, R_max):
         self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start

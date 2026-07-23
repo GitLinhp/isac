@@ -63,6 +63,22 @@ class RangeMusicBlock(gr.sync_block):
         self._frame_count = 0
 
     @property
+    def range_bin_step(self) -> float:
+        return self._range_bin_step
+
+    @range_bin_step.setter
+    def range_bin_step(self, value: float) -> None:
+        self._range_bin_step = float(value)
+
+    @property
+    def range_roi(self) -> tuple[float, float]:
+        return self._range_roi
+
+    @range_roi.setter
+    def range_roi(self, value: tuple[float, float]) -> None:
+        self._range_roi = (float(value[0]), float(value[1]))
+
+    @property
     def music_enable(self) -> bool:
         return self._music_enable
 

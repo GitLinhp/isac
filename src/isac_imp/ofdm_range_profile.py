@@ -6,6 +6,7 @@
     in0 ← SionnaResourceGridTx（TX 频域参考）
     in1 ← fft_vxx_0_0（RX 经 CP remover + FFT）
     out0 → qtgui_vector_sink_f（dB 距离谱，vlen=fft_len*zeropadding_fac）
+    out1 → RangeMusicBlock（CPI 复数距离谱，可选，供 1D MUSIC）
 
 双输入按样点序号配对（非 tag），依赖上游 CPI 符号流已对齐。
 """
@@ -39,6 +40,52 @@ def _build_discarded_mask(
     return mask
 
 
+def _symbol_divide_pad_window(
+    tx: np.ndarray,
+    rx: np.ndarray,
+    *,
+    bh_window: np.ndarray,
+    fft_len: int,
+    vlen_out: int,
+    discarded_mask: np.ndarray | None = None,
+    apply_discarded: bool = True,
+) -> np.ndarray:
+    """频域除法 → 零填充 → BH 窗，返回窗后序列（range FFT 输入）。"""
+    if apply_discarded and discarded_mask is not None:
+        h = np.zeros(fft_len, dtype=np.complex64)
+        active = ~discarded_mask
+        h[active] = (tx[active] / rx[active]).astype(np.complex64, copy=False)
+    else:
+        h = (tx / rx).astype(np.complex64, copy=False)
+
+    h_pad = np.zeros(vlen_out, dtype=np.complex64)
+    h_pad[:fft_len] = h
+    return (h_pad * bh_window).astype(np.complex64, copy=False)
+
+
+def compute_symbol_range_spectrum(
+    tx: np.ndarray,
+    rx: np.ndarray,
+    *,
+    bh_window: np.ndarray,
+    fft_len: int,
+    vlen_out: int,
+    discarded_mask: np.ndarray | None = None,
+    apply_discarded: bool = True,
+) -> np.ndarray:
+    """单符号复数距离谱：等价于 GR divide + range FFT（不做 |·|²）。"""
+    h_win = _symbol_divide_pad_window(
+        tx,
+        rx,
+        bh_window=bh_window,
+        fft_len=fft_len,
+        vlen_out=vlen_out,
+        discarded_mask=discarded_mask,
+        apply_discarded=apply_discarded,
+    )
+    return np.fft.fft(h_win).astype(np.complex64, copy=False)
+
+
 def compute_symbol_range_power(
     tx: np.ndarray,
     rx: np.ndarray,
@@ -54,17 +101,15 @@ def compute_symbol_range_power(
     等价于 GR ``ofdm_divide_vcvc`` 单符号输出后再做 range FFT 与取模平方；
     零填充仅占用 ``h_pad[0:fft_len]``，高索引为距离分辨率扩展。
     """
-    if apply_discarded and discarded_mask is not None:
-        h = np.zeros(fft_len, dtype=np.complex64)
-        active = ~discarded_mask
-        h[active] = (tx[active] / rx[active]).astype(np.complex64, copy=False)
-    else:
-        h = (tx / rx).astype(np.complex64, copy=False)
-
-    h_pad = np.zeros(vlen_out, dtype=np.complex64)
-    h_pad[:fft_len] = h
-    h_win = h_pad * bh_window
-    rd = np.fft.fft(h_win)
+    rd = compute_symbol_range_spectrum(
+        tx,
+        rx,
+        bh_window=bh_window,
+        fft_len=fft_len,
+        vlen_out=vlen_out,
+        discarded_mask=discarded_mask,
+        apply_discarded=apply_discarded,
+    )
     return (np.abs(rd) ** 2).astype(np.float32, copy=False)
 
 
@@ -101,7 +146,7 @@ def compute_cpi_range_profile_db(
 
 
 class OfdmRangeProfileBlock(gr.basic_block):
-    """双输入 TX/RX 频域符号 → 单输出 CPI 距离谱（dB）。"""
+    """双输入 TX/RX 频域符号 → CPI dB 距离谱 + 可选 CPI 复数距离谱（MUSIC）。"""
 
     def __init__(
         self,
@@ -130,7 +175,10 @@ class OfdmRangeProfileBlock(gr.basic_block):
                 (np.complex64, self._fft_len),
                 (np.complex64, self._fft_len),
             ],
-            out_sig=[(np.float32, self._vlen_out)],
+            out_sig=[
+                (np.float32, self._vlen_out),
+                (np.complex64, self._vlen_out),
+            ],
         )
         # 每 transpose_len 个输入符号产出 1 条距离谱。
         self.set_relative_rate(1, self._transpose_len)
@@ -142,11 +190,13 @@ class OfdmRangeProfileBlock(gr.basic_block):
         self._sym_idx = 0
         self._cpi_symbol_idx = 0
         self._power_acc = np.zeros(self._vlen_out, dtype=np.float64)
+        self._complex_acc = np.zeros(self._vlen_out, dtype=np.complex128)
 
     def start(self) -> bool:
         self._sym_idx = 0
         self._cpi_symbol_idx = 0
         self._power_acc.fill(0.0)
+        self._complex_acc.fill(0.0)
         return True
 
     def forecast(self, noutput_items: int, ninputs) -> list:
@@ -158,7 +208,8 @@ class OfdmRangeProfileBlock(gr.basic_block):
     def general_work(self, input_items, output_items) -> int:
         in_tx = input_items[0]
         in_rx = input_items[1]
-        out = output_items[0]
+        out_db = output_items[0]
+        out_cx = output_items[1]
 
         n_avail = min(len(in_tx), len(in_rx))
         if n_avail <= 0:
@@ -169,11 +220,11 @@ class OfdmRangeProfileBlock(gr.basic_block):
         n_produced = 0
         n_consumed = 0
 
-        while n_consumed < n_avail and n_produced < len(out):
+        while n_consumed < n_avail and n_produced < len(out_db):
             tx = in_tx[n_consumed]
             rx = in_rx[n_consumed]
             apply_discarded = self._cpi_symbol_idx >= self._num_sync_words
-            self._power_acc += compute_symbol_range_power(
+            spec = compute_symbol_range_spectrum(
                 tx,
                 rx,
                 bh_window=self._bh_window,
@@ -182,19 +233,24 @@ class OfdmRangeProfileBlock(gr.basic_block):
                 discarded_mask=self._discarded_mask,
                 apply_discarded=apply_discarded,
             )
+            self._complex_acc += spec.astype(np.complex128, copy=False)
+            self._power_acc += (np.abs(spec) ** 2).astype(np.float64, copy=False)
             self._sym_idx += 1
             self._cpi_symbol_idx += 1
             n_consumed += 1
 
             if self._sym_idx >= self._transpose_len:
-                # CPI 结束：非相干积累转 dB，重置状态机。
-                out[n_produced][:] = (
+                out_db[n_produced][:] = (
                     self._n_db * np.log10(self._power_acc)
                 ).astype(np.float32, copy=False)
+                out_cx[n_produced][:] = self._complex_acc.astype(
+                    np.complex64, copy=False
+                )
                 n_produced += 1
                 self._sym_idx = 0
                 self._cpi_symbol_idx = 0
                 self._power_acc.fill(0.0)
+                self._complex_acc.fill(0.0)
 
         self.consume(0, n_consumed)
         self.consume(1, n_consumed)

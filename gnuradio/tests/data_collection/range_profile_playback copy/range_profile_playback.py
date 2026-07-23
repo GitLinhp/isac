@@ -70,7 +70,7 @@ class range_profile_playback(gr.top_block, Qt.QWidget):
         self.transpose_len = transpose_len = 4
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
         self.frame_rate_hz = frame_rate_hz = samp_rate / (transpose_len * (fft_len + fft_len // 4))
 
         ##################################################
@@ -154,7 +154,7 @@ class range_profile_playback(gr.top_block, Qt.QWidget):
         self.fft_len = fft_len
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
 
     def get_samp_rate(self):
@@ -170,7 +170,7 @@ class range_profile_playback(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_transpose_len(self):
         return self.transpose_len
@@ -184,7 +184,7 @@ class range_profile_playback(gr.top_block, Qt.QWidget):
 
     def set_R_max(self, R_max):
         self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_record_file_path(self):
         return self.record_file_path

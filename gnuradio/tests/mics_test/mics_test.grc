@@ -2,18 +2,17 @@ options:
   parameters:
     author: ''
     catch_exceptions: 'True'
-    category: Custom
+    category: '[GRC Hier Blocks]'
     cmake_opt: ''
     comment: ''
     copyright: ''
-    description: USRP OFDM radar zero-Doppler range profile (full 0~R_max). RX packet_len
-      tags via echotimer; range spectrum via range_profile_plot (PyQtGraph). Stop
-      via GUI (not kill -9) so file_meta segments flush completely.
+    description: OFDM range profile with 1D MUSIC via OfdmRangeProfileBlock out1 +
+      RangeMusicBlock
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
-    hier_block_src_path: .:..
-    id: usrp_ofdm_echotimer_dd
+    hier_block_src_path: '.:'
+    id: mics_test
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -24,13 +23,13 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: ''
-    window_size: 2000,2000
+    title: Not titled yet
+    window_size: (1000,1000)
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [10, 10]
+    coordinate: [8, 8]
     rotation: 0
     state: enabled
 
@@ -44,7 +43,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [176, 8.0]
+    coordinate: [112, 112.0]
     rotation: 0
     state: enabled
 - name: subcarrier_spacing
@@ -56,7 +55,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [344, 120.0]
+    coordinate: [280, 224.0]
     rotation: 0
     state: enabled
 - name: zeropadding_fac
@@ -68,7 +67,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [696, 128.0]
+    coordinate: [632, 232.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -80,7 +79,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [280, 8.0]
+    coordinate: [328, 24.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate_0
+  id: variable
+  parameters:
+    comment: ''
+    value: int(fft_len * subcarrier_spacing)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [216, 112.0]
     rotation: 0
     state: enabled
 - name: R_max
@@ -93,19 +104,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1200, 16.0]
+    coordinate: [1136, 120.0]
     rotation: 0
     state: enabled
 - name: range_bin_step
   id: variable
   parameters:
-    comment: "\u8DDD\u79BB\u8C31\u6A21\u8F74\u6B65\u8FDB (m/bin)\uff1bGRC \u663e\u793a 305.176m = 0.305 m"
+    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)\uff1bGRC \u663e\u793a 305.176m = 0.305 m"
     value: 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1064, 16.0]
+    coordinate: [968, 232.0]
     rotation: 0
     state: enabled
 - name: RX_gain
@@ -126,7 +137,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2600, 492.0]
+    coordinate: [2536, 588.0]
     rotation: 0
     state: enabled
 - name: TX_gain
@@ -147,7 +158,31 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2480, 492.0]
+    coordinate: [2416, 588.0]
+    rotation: 0
+    state: enabled
+- name: burst_len_samples
+  id: variable
+  parameters:
+    comment: CPI time-domain samples; transpose_len * (fft_len + fft_len//4)
+    value: transpose_len * (fft_len + fft_len//4)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [856, 112.0]
+    rotation: 0
+    state: enabled
+- name: device
+  id: variable
+  parameters:
+    comment: ''
+    value: '"cpu"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [840, 272.0]
     rotation: 0
     state: enabled
 - name: factor
@@ -162,25 +197,13 @@ blocks:
     start: '0'
     step: '0.001'
     stop: '1'
-    value: '0.004'
+    value: '0.008'
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2280, 220.0]
-    rotation: 0
-    state: enabled
-- name: frame_rate_hz
-  id: variable
-  parameters:
-    comment: CPI range-profile frame rate written into file_meta header
-    value: samp_rate / (transpose_len * (fft_len + fft_len // 4))
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [880, 16.0]
+    coordinate: [1680, 148.0]
     rotation: 0
     state: enabled
 - name: freq
@@ -193,7 +216,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1472, 16.0]
+    coordinate: [1408, 120.0]
     rotation: 0
     state: enabled
 - name: length_tag_key
@@ -205,7 +228,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 8.0]
+    coordinate: [344, 112.0]
     rotation: 0
     state: enabled
 - name: min_out_buf_val
@@ -217,7 +240,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1304, 16.0]
+    coordinate: [1240, 120.0]
     rotation: 0
     state: enabled
 - name: music_enable
@@ -225,7 +248,7 @@ blocks:
   parameters:
     comment: Enable 1D range MUSIC super-resolution on CPI complex range profile
     'false': 'False'
-    gui_hint: 2,4,1,1
+    gui_hint: 0,4,1,1
     label: MUSIC Enable
     'true': 'True'
     type: bool
@@ -267,7 +290,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [200, 128.0]
+    coordinate: [136, 232.0]
     rotation: 0
     state: enabled
 - name: num_delay_samp
@@ -282,25 +305,13 @@ blocks:
     start: '0'
     step: '1'
     stop: packet_len
-    value: '278'
+    value: '277'
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2288, 492.0]
-    rotation: 0
-    state: enabled
-- name: occupied_carriers
-  id: variable
-  parameters:
-    comment: ''
-    value: list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [520, 120.0]
+    coordinate: [2224, 588.0]
     rotation: 0
     state: enabled
 - name: packet_len
@@ -312,31 +323,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [560, 16.0]
-    rotation: 0
-    state: enabled
-- name: payload_mod
-  id: variable
-  parameters:
-    comment: ''
-    value: digital.constellation_qpsk()
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [16, 128.0]
-    rotation: 0
-    state: enabled
-- name: qpsk_symbols_per_packet
-  id: variable
-  parameters:
-    comment: QPSK complex symbols per burst after repack_bits
-    value: transpose_len * n_carriers
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [872, 128.0]
+    coordinate: [496, 120.0]
     rotation: 0
     state: enabled
 - name: range_roi
@@ -348,73 +335,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1680, 136.0]
-    rotation: 0
-    state: enabled
-- name: record_enable
-  id: variable_qtgui_check_box
-  parameters:
-    comment: Set True to record linear-power range profiles to disk
-    'false': 'False'
-    gui_hint: 1,4,1,1
-    label: Record Enable
-    'true': 'True'
-    type: bool
-    value: 'False'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1136, 132.0]
-    rotation: 0
-    state: enabled
-- name: record_file_path
-  id: variable
-  parameters:
-    comment: Fixed absolute path shared with range_profile_playback.grc
-    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1960, 96.0]
-    rotation: 0
-    state: enabled
-- name: record_output_index
-  id: variable
-  parameters:
-    comment: Selector output; 0=file_sink, 1=null_sink
-    value: 0 if record_enable else 1
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1480, 136.0]
+    coordinate: [1112, 216.0]
     rotation: 0
     state: enabled
 - name: transpose_len
   id: variable
   parameters:
     comment: CPI OFDM symbols per burst; 4 avoids qpsk>8192 sched limit at fft_len=2048
-    value: '4'
+    value: '2'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [736, 8.0]
-    rotation: 0
-    state: enabled
-- name: uhd_dev_args
-  id: variable
-  parameters:
-    comment: 'X410 349B642; QSFP 10.2; external 10MHz+PPS: clock/time=external in
-      args and Echotimer'
-    value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2304, 704.0]
+    coordinate: [672, 112.0]
     rotation: 0
     state: enabled
 - name: wait_to_start
@@ -426,98 +359,25 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2144, 488.0]
+    coordinate: [2080, 592.0]
     rotation: 0
     state: enabled
-- name: analog_random_source_x_0
-  id: analog_random_source_x
+- name: address
+  id: parameter
   parameters:
-    affinity: ''
     alias: ''
-    comment: ''
-    max: '255'
-    maxoutbuf: '0'
-    min: '0'
-    minoutbuf: '0'
-    num_samps: packet_len*8
-    repeat: 'True'
-    type: byte
+    comment: USRP 349B642; QSFP 10.2; external 10MHz+PPS
+    hide: none
+    label: address (349B642)
+    short_id: ''
+    type: str
+    value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [40, 324.0]
+    coordinate: [2328, 444.0]
     rotation: 0
-    state: enabled
-- name: blocks_complex_to_mag_squared_0
-  id: blocks_complex_to_mag_squared
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [704, 656.0]
-    rotation: 180
-    state: enabled
-- name: blocks_file_sink_0
-  id: blocks_file_sink
-  parameters:
-    affinity: ''
-    alias: ''
-    append: 'False'
-    comment: Record CPI coherently-integrated complex range profiles
-    file: record_file_path
-    type: complex
-    unbuffered: 'False'
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [864, 900.0]
-    rotation: 0
-    state: enabled
-- name: blocks_integrate_xx_0
-  id: blocks_integrate_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: Non-coherent sum over CPI symbols (decim=transpose_len)
-    decim: transpose_len
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    type: float
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [504, 648.0]
-    rotation: 180
-    state: enabled
-- name: blocks_integrate_xx_0_cx
-  id: blocks_integrate_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: Coherent sum over CPI symbols for complex range-profile recording
-    decim: transpose_len
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    type: complex
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [704, 740.0]
-    rotation: 180
     state: enabled
 - name: blocks_multiply_const_vxx_0
   id: blocks_multiply_const_vxx
@@ -534,147 +394,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1656, 368.0]
-    rotation: 0
-    state: enabled
-- name: blocks_nlog10_ff_0
-  id: blocks_nlog10_ff
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    k: '0'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    n: '10'
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [296, 636.0]
-    rotation: 180
-    state: enabled
-- name: blocks_null_sink_rec_0
-  id: blocks_null_sink
-  parameters:
-    affinity: ''
-    alias: ''
-    bus_structure_sink: '[[0,],]'
-    comment: Discard complex integrate stream when recording disabled
-    num_inputs: '1'
-    type: complex
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [848, 1040.0]
-    rotation: 0
-    state: enabled
-- name: blocks_repack_bits_bb_0
-  id: blocks_repack_bits_bb
-  parameters:
-    affinity: ''
-    alias: ''
-    align_output: 'False'
-    comment: ''
-    endianness: gr.GR_LSB_FIRST
-    k: '8'
-    l: payload_mod.bits_per_symbol()
-    len_tag_key: length_tag_key
-    maxoutbuf: '0'
-    minoutbuf: 2*qpsk_symbols_per_packet
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [456, 344.0]
-    rotation: 0
-    state: enabled
-- name: blocks_selector_0
-  id: blocks_selector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: Route coherently-integrated complex range profile to file sink or null
-      sink
-    enabled: 'True'
-    input_index: '0'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_inputs: '1'
-    num_outputs: '2'
-    output_index: record_output_index
-    showports: 'False'
-    type: complex
-    vlen: fft_len*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [640, 980.0]
-    rotation: 0
-    state: enabled
-- name: blocks_stream_to_tagged_stream_0
-  id: blocks_stream_to_tagged_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    len_tag_key: length_tag_key
-    maxoutbuf: '0'
-    minoutbuf: 2*qpsk_symbols_per_packet
-    packet_len: packet_len
-    type: byte
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [240, 344.0]
-    rotation: 0
-    state: enabled
-- name: digital_chunks_to_symbols_xx_0_0
-  id: digital_chunks_to_symbols_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    dimension: '1'
-    in_type: byte
-    maxoutbuf: '0'
-    minoutbuf: 2*qpsk_symbols_per_packet
-    num_ports: '1'
-    out_type: complex
-    symbol_table: payload_mod.points()
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [720, 360.0]
-    rotation: 0
-    state: enabled
-- name: digital_ofdm_carrier_allocator_cvc_0
-  id: digital_ofdm_carrier_allocator_cvc
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    fft_len: fft_len
-    len_tag_key: length_tag_key
-    maxoutbuf: '0'
-    minoutbuf: 4*transpose_len
-    occupied_carriers: occupied_carriers
-    output_is_shifted: 'True'
-    pilot_carriers: ((),)
-    pilot_symbols: ((),)
-    sync_words: ()
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [968, 312.0]
+    coordinate: [1592, 472.0]
     rotation: 0
     state: enabled
 - name: digital_ofdm_cyclic_prefixer_0
@@ -693,7 +413,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1440, 348.0]
+    coordinate: [1376, 452.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0
@@ -714,7 +434,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1224, 332.0]
+    coordinate: [1160, 436.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_0
@@ -735,28 +455,43 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1408, 636.0]
+    coordinate: [1216, 748.0]
     rotation: 180
     state: enabled
-- name: fft_vxx_0_1
-  id: fft_vxx
+- name: ofdm_range_profile_0
+  id: epy_block
   parameters:
+    _source_code: 'from isac_imp.ofdm_range_profile import OfdmRangeProfileBlock
+
+
+      blk = OfdmRangeProfileBlock
+
+      '
     affinity: ''
     alias: ''
-    comment: ''
-    fft_size: fft_len*zeropadding_fac
-    forward: 'True'
+    comment: Replaces divide + range FFT + mag + integrate + nlog10; out1 complex
+      CPI for MUSIC
+    discarded_carriers: ()
+    fft_len: fft_len
+    length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: '0'
-    nthreads: '1'
-    shift: 'False'
-    type: complex
-    window: window.blackmanharris(fft_len*zeropadding_fac)
+    n_db: '10'
+    num_sync_words: '0'
+    transpose_len: transpose_len
+    zeropadding_fac: zeropadding_fac
   states:
+    _io_cache: "('OFDM Range Profile', 'OfdmRangeProfileBlock', [('fft_len', '2048'),\
+      \ ('zeropadding_fac', '2'), ('transpose_len', '4'), ('discarded_carriers', '()'),\
+      \ ('num_sync_words', '0'), ('length_tag_key', \"'packet_len'\"), ('n_db', '10.0')],\
+      \ [('0', 'complex', 2048), ('1', 'complex', 2048)], [('0', 'float', 4096), ('1',\
+      \ 'complex', 4096)], '\u53CC\u8F93\u5165 TX/RX \u9891\u57DF\u7B26\u53F7 \u2192\
+      \ CPI dB \u8DDD\u79BB\u8C31 + \u53EF\u9009 CPI \u590D\u6570\u8DDD\u79BB\u8C31\
+      \uFF08MUSIC\uFF09\u3002', [])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [904, 620.0]
+    coordinate: [728, 712.0]
     rotation: 180
     state: enabled
 - name: qtgui_freq_sink_x_0
@@ -837,7 +572,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2040, 692.0]
+    coordinate: [1912, 804.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
@@ -934,7 +669,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1864, 276.0]
+    coordinate: [1800, 372.0]
     rotation: 0
     state: enabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0
@@ -952,27 +687,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1624, 652.0]
-    rotation: 180
-    state: enabled
-- name: radar_ofdm_divide_vcvc_0
-  id: radar_ofdm_divide_vcvc
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    discarded_carriers: ()
-    len_key: '"packet_len"'
-    maxoutbuf: '0'
-    minoutbuf: 2*transpose_len
-    num_sync_words: '0'
-    vlen_in: fft_len
-    vlen_out: (fft_len)*zeropadding_fac
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1160, 620.0]
+    coordinate: [1584, 764.0]
     rotation: 180
     state: enabled
 - name: radar_usrp_echotimer_cc_0
@@ -982,8 +697,8 @@ blocks:
     alias: ''
     antenna_rx: '''RX1'''
     antenna_tx: '''TX/RX'''
-    args_rx: uhd_dev_args
-    args_tx: uhd_dev_args
+    args_rx: address
+    args_tx: address
     center_freq: freq
     channel_rx: '0'
     channel_tx: '0'
@@ -1011,19 +726,21 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1948.0, 456]
+    coordinate: [1804.0, 560]
     rotation: 270
     state: enabled
 - name: range_music_block_0
   id: epy_block
   parameters:
-    _source_code: "import sys\nfrom pathlib import Path\nfor _p in [Path.cwd(), *Path.cwd().parents]:\n\
-      \    _src = _p / \"src\"\n    if (_src / \"isac_imp\").is_dir():\n        sys.path.insert(0,\
-      \ str(_src))\n        break\nfrom isac_imp.range_music_block import RangeMusicBlock\n\
-      \nblk = RangeMusicBlock\n"
+    _source_code: 'from isac_imp.range_music_block import RangeMusicBlock
+
+
+      blk = RangeMusicBlock
+
+      '
     affinity: ''
     alias: ''
-    comment: 1D range MUSIC on CPI complex range profile; parallel to recording chain
+    comment: 1D range MUSIC on CPI complex range profile; annotates RangeProfilePlotBlock
     maxoutbuf: '0'
     minoutbuf: '0'
     music_enable: music_enable
@@ -1042,16 +759,18 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [368, 760.0]
+    coordinate: [488, 784.0]
     rotation: 180
     state: enabled
 - name: range_profile_plot_0
   id: epy_block
   parameters:
-    _source_code: "import sys\nfrom pathlib import Path\nfor _p in [Path.cwd(), *Path.cwd().parents]:\n\
-      \    _src = _p / \"src\"\n    if (_src / \"isac_imp\").is_dir():\n        sys.path.insert(0,\
-      \ str(_src))\n        break\nfrom isac_imp.range_profile_plot import RangeProfilePlotBlock\n\
-      \nblk = RangeProfilePlotBlock\n"
+    _source_code: 'from isac_imp.range_profile_plot import RangeProfilePlotBlock
+
+
+      blk = RangeProfilePlotBlock
+
+      '
     affinity: ''
     alias: ''
     comment: PyQtGraph range profile display (ROI slice + autoscale Y); standalone
@@ -1070,35 +789,58 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [80, 636.0]
+    coordinate: [488, 636.0]
     rotation: 180
+    state: enabled
+- name: sionna_resource_grid_tx_0
+  id: epy_block
+  parameters:
+    _source_code: 'from isac_imp.sionna_resource_grid_tx import SionnaResourceGridTxBlock
+
+
+      blk = SionnaResourceGridTxBlock
+
+      '
+    affinity: ''
+    alias: ''
+    comment: Sionna ResourceGridMapper; replaces carrier_allocator
+    cp_len: fft_len//4
+    device: device
+    fft_len: fft_len
+    length_tag_key: length_tag_key
+    maxoutbuf: '0'
+    minoutbuf: 4*transpose_len
+    num_bits_per_symbol: '2'
+    seed: '42'
+    subcarrier_spacing: subcarrier_spacing
+    transpose_len: transpose_len
+  states:
+    _io_cache: "('Sionna ResourceGrid TX', 'SionnaResourceGridTxBlock', [('fft_len',\
+      \ '2048'), ('transpose_len', '4'), ('subcarrier_spacing', '60000.0'), ('cp_len',\
+      \ '512'), ('length_tag_key', \"'packet_len'\"), ('num_bits_per_symbol', '2'),\
+      \ ('device', \"'cpu'\"), ('seed', '42')], [], [('0', 'complex', 2048)], '\u65E0\
+      \u8F93\u5165\uFF1B\u8F93\u51FA fftshift \u9891\u57DF OFDM \u7B26\u53F7\u5411\
+      \u91CF\u6D41\uFF08vlen=fft_len\uFF09\u3002', [])"
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [728, 408.0]
+    rotation: 0
     state: enabled
 
 connections:
-- [analog_random_source_x_0, '0', blocks_stream_to_tagged_stream_0, '0']
-- [blocks_complex_to_mag_squared_0, '0', blocks_integrate_xx_0, '0']
-- [blocks_integrate_xx_0, '0', blocks_nlog10_ff_0, '0']
-- [blocks_integrate_xx_0_cx, '0', blocks_selector_0, '0']
-- [blocks_integrate_xx_0_cx, '0', range_music_block_0, '0']
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
 - [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0, '0']
-- [blocks_nlog10_ff_0, '0', range_profile_plot_0, '0']
-- [blocks_repack_bits_bb_0, '0', digital_chunks_to_symbols_xx_0_0, '0']
-- [blocks_selector_0, '0', blocks_file_sink_0, '0']
-- [blocks_selector_0, '1', blocks_null_sink_rec_0, '0']
-- [blocks_stream_to_tagged_stream_0, '0', blocks_repack_bits_bb_0, '0']
-- [digital_chunks_to_symbols_xx_0_0, '0', digital_ofdm_carrier_allocator_cvc_0, '0']
-- [digital_ofdm_carrier_allocator_cvc_0, '0', fft_vxx_0, '0']
-- [digital_ofdm_carrier_allocator_cvc_0, '0', radar_ofdm_divide_vcvc_0, '0']
 - [digital_ofdm_cyclic_prefixer_0, '0', blocks_multiply_const_vxx_0, '0']
 - [fft_vxx_0, '0', digital_ofdm_cyclic_prefixer_0, '0']
-- [fft_vxx_0_0, '0', radar_ofdm_divide_vcvc_0, '1']
-- [fft_vxx_0_1, '0', blocks_complex_to_mag_squared_0, '0']
-- [fft_vxx_0_1, '0', blocks_integrate_xx_0_cx, '0']
+- [fft_vxx_0_0, '0', ofdm_range_profile_0, '1']
+- [ofdm_range_profile_0, '0', range_profile_plot_0, '0']
+- [ofdm_range_profile_0, '1', range_music_block_0, '0']
 - [radar_ofdm_cyclic_prefix_remover_cvc_0, '0', fft_vxx_0_0, '0']
-- [radar_ofdm_divide_vcvc_0, '0', fft_vxx_0_1, '0']
 - [radar_usrp_echotimer_cc_0, '0', qtgui_freq_sink_x_0, '0']
 - [radar_usrp_echotimer_cc_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
+- [sionna_resource_grid_tx_0, '0', fft_vxx_0, '0']
+- [sionna_resource_grid_tx_0, '0', ofdm_range_profile_0, '0']
 
 metadata:
   file_format: 1

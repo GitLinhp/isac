@@ -86,7 +86,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.record_output_index = record_output_index = 0 if record_enable else 1
         self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"
         self.range_roi = range_roi = (0.0, 30.0)
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.packet_len = packet_len = transpose_len * n_carriers // 4
@@ -347,7 +347,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
         self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
         self.set_n_carriers(self.fft_len - 2)
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_sic_template_vlen(int(self.fft_len * self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
@@ -367,7 +367,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_sic_template_vlen(int(self.fft_len * self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
@@ -403,7 +403,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_R_max(self, R_max):
         self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start
@@ -458,6 +458,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_range_roi(self, range_roi):
         self.range_roi = range_roi
         self.range_profile_plot_0.range_roi = self.range_roi
+        self.range_music_block_0.range_roi = self.range_roi
 
     def get_range_bin_step(self):
         return self.range_bin_step
@@ -465,6 +466,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_range_bin_step(self, range_bin_step):
         self.range_bin_step = range_bin_step
         self.range_profile_plot_0.range_bin_step = self.range_bin_step
+        self.range_music_block_0.range_bin_step = self.range_bin_step
 
     def get_qpsk_symbols_per_packet(self):
         return self.qpsk_symbols_per_packet

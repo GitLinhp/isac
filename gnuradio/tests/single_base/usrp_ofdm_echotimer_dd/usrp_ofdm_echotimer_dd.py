@@ -82,7 +82,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
         self.num_delay_samp = num_delay_samp = 161
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
@@ -306,7 +306,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
         self.set_n_carriers(self.fft_len - 2)
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
 
     def get_transpose_len(self):
@@ -338,7 +338,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_packet_len(self):
         return self.packet_len
@@ -352,7 +352,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_R_max(self, R_max):
         self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start

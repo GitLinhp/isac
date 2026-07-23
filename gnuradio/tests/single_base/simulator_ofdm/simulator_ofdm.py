@@ -79,7 +79,7 @@ class simulator_ofdm(gr.top_block, Qt.QWidget):
         self.velocity = velocity = 0
         self.value_range = value_range = 100
         self.v_max = v_max = 3e8/(4*freq*(fft_len+fft_len/4)/samp_rate)
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.packet_len = packet_len = transpose_len * n_carriers // 4
@@ -241,7 +241,7 @@ class simulator_ofdm(gr.top_block, Qt.QWidget):
         self.fft_len = fft_len
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.set_n_carriers(self.fft_len - 2)
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
@@ -261,7 +261,7 @@ class simulator_ofdm(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_transpose_len(self):
@@ -294,7 +294,7 @@ class simulator_ofdm(gr.top_block, Qt.QWidget):
 
     def set_R_max(self, R_max):
         self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_velocity(self):
         return self.velocity

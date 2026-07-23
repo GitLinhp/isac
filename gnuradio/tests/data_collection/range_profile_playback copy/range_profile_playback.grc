@@ -34,18 +34,6 @@ options:
     state: enabled
 
 blocks:
-- name: R_max
-  id: variable
-  parameters:
-    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)"
-    value: 3e8/2/samp_rate*fft_len
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [400, 16.0]
-    rotation: 0
-    state: enabled
 - name: fft_len
   id: variable
   parameters:
@@ -56,54 +44,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [176, 8.0]
-    rotation: 0
-    state: enabled
-- name: frame_rate_hz
-  id: variable
-  parameters:
-    comment: CPI frame rate for replay throttle (must match collection GRC)
-    value: samp_rate / (transpose_len * (fft_len + fft_len // 4))
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [880, 16.0]
-    rotation: 0
-    state: enabled
-- name: range_bin_step
-  id: variable
-  parameters:
-    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)"
-    value: R_max/(fft_len*zeropadding_fac)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1064, 16.0]
-    rotation: 0
-    state: enabled
-- name: record_file_path
-  id: variable
-  parameters:
-    comment: Fixed absolute path shared with usrp_ofdm_echotimer_dd_data_collection_test.grc
-    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1088, 248.0]
-    rotation: 0
-    state: enabled
-- name: samp_rate
-  id: variable
-  parameters:
-    comment: ''
-    value: int(fft_len * subcarrier_spacing)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [280, 8.0]
     rotation: 0
     state: enabled
 - name: subcarrier_spacing
@@ -118,18 +58,6 @@ blocks:
     coordinate: [344, 120.0]
     rotation: 0
     state: enabled
-- name: transpose_len
-  id: variable
-  parameters:
-    comment: ''
-    value: '4'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [736, 8.0]
-    rotation: 0
-    state: enabled
 - name: zeropadding_fac
   id: variable
   parameters:
@@ -140,6 +68,78 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [696, 128.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: int(fft_len * subcarrier_spacing)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [280, 8.0]
+    rotation: 0
+    state: enabled
+- name: R_max
+  id: variable
+  parameters:
+    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)"
+    value: 3e8/2/samp_rate*fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [400, 16.0]
+    rotation: 0
+    state: enabled
+- name: range_bin_step
+  id: variable
+  parameters:
+    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)\uff1bGRC \u663e\u793a 305.176m = 0.305 m"
+    value: 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1064, 16.0]
+    rotation: 0
+    state: enabled
+- name: frame_rate_hz
+  id: variable
+  parameters:
+    comment: CPI frame rate for replay throttle (must match collection GRC)
+    value: samp_rate / (transpose_len * (fft_len + fft_len // 4))
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [880, 16.0]
+    rotation: 0
+    state: enabled
+- name: record_file_path
+  id: variable
+  parameters:
+    comment: Fixed absolute path shared with usrp_ofdm_echotimer_dd_data_collection_test.grc
+    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1088, 248.0]
+    rotation: 0
+    state: enabled
+- name: transpose_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '4'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [736, 8.0]
     rotation: 0
     state: enabled
 - name: blocks_complex_to_mag_squared_0

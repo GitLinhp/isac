@@ -85,7 +85,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.wait_to_start = wait_to_start = 0.03
         self.value_range = value_range = 100
         self.v_max = v_max = 3e8/(4*freq*(fft_len+fft_len/4)/samp_rate)
-        self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.occupied_carriers_all = occupied_carriers_all = (list(range(-(fft_len//2-1), 0)) + list(range(1, fft_len//2)),)
         self.num_delay_samp = num_delay_samp = 161
@@ -218,7 +218,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
         self.set_n_carriers(self.fft_len - 2)
         self.set_occupied_carriers_all((list(range(-(self.fft_len//2-1), 0)) + list(range(1, self.fft_len//2)),))
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_v_max(3e8/(4*self.freq*(self.fft_len+self.fft_len/4)/self.samp_rate))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
@@ -252,7 +252,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_packet_len(self):
@@ -276,7 +276,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_R_max(self, R_max):
         self.R_max = R_max
-        self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start
