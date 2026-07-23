@@ -234,7 +234,7 @@ blocks:
     start: '0'
     step: '1'
     stop: packet_len
-    value: '281'
+    value: '278'
     widget: counter_slider
   states:
     bus_sink: false

@@ -234,7 +234,7 @@ blocks:
     start: '0'
     step: '1'
     stop: packet_len
-    value: '281'
+    value: '278'
     widget: counter_slider
   states:
     bus_sink: false
@@ -329,7 +329,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1320, 140.0]
+    coordinate: [1136, 132.0]
     rotation: 0
     state: enabled
 - name: record_file_path
