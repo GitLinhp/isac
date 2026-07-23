@@ -15,6 +15,7 @@ from .spectrum import (
 )
 from .detection import CFARDetector
 from .detection.music_estimator import MUSICEstimator
+from .detection.range_music_estimator import RangeMusicEstimator, RangeMusicPeaks
 from .evaluation import (
     SensingEstimator,
     match_peaks_and_compute_radial_rmse,
@@ -44,6 +45,8 @@ __all__ = [
     "DelayDopplerSpectrum",
     "DelayDopplerRoi",
     "MUSICEstimator",
+    "RangeMusicEstimator",
+    "RangeMusicPeaks",
     "SensingEstimator",
     "match_peaks_and_compute_radial_rmse",
     "MusicPeaks",

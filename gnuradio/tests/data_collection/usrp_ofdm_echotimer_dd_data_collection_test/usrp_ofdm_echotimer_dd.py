@@ -28,6 +28,7 @@ from gnuradio import eng_notation
 from gnuradio import radar
 import sip
 import threading
+import usrp_ofdm_echotimer_dd_range_music_block_0 as range_music_block_0  # embedded python block
 import usrp_ofdm_echotimer_dd_range_profile_plot_0 as range_profile_plot_0  # embedded python block
 
 
@@ -87,11 +88,13 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
         self.num_delay_samp = num_delay_samp = 282
+        self.music_num_sources = music_num_sources = 1
+        self.music_enable = music_enable = True
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
         self.frame_rate_hz = frame_rate_hz = samp_rate / (transpose_len * (fft_len + fft_len // 4))
-        self.factor = factor = 0.002
+        self.factor = factor = 0.004
         self.TX_gain = TX_gain = 30
         self.RX_gain = RX_gain = 30
 
@@ -102,7 +105,21 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 282, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
-        self._factor_range = qtgui.Range(0, 1, 0.001, 0.002, 200)
+        self._music_num_sources_range = qtgui.Range(1, 5, 1, 1, 200)
+        self._music_num_sources_win = qtgui.RangeWidget(self._music_num_sources_range, self.set_music_num_sources, "MUSIC Num Sources", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._music_num_sources_win)
+        _music_enable_check_box = Qt.QCheckBox("MUSIC Enable")
+        self._music_enable_choices = {True: True, False: False}
+        self._music_enable_choices_inv = dict((v,k) for k,v in self._music_enable_choices.items())
+        self._music_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_music_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._music_enable_choices_inv[i]))
+        self._music_enable_callback(self.music_enable)
+        _music_enable_check_box.stateChanged.connect(lambda i: self.set_music_enable(self._music_enable_choices[bool(i)]))
+        self.top_grid_layout.addWidget(_music_enable_check_box, 2, 4, 1, 1)
+        for r in range(2, 3):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(4, 5):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
         self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._factor_win)
         self._TX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
@@ -123,6 +140,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         for c in range(4, 5):
             self.top_grid_layout.setColumnStretch(c, 1)
         self.range_profile_plot_0 = range_profile_plot_0.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
+        self.range_music_block_0 = range_music_block_0.RangeMusicBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=int(music_num_sources), music_enable=music_enable, subarray_size=16, threshold=0.1)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), uhd_dev_args, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, uhd_dev_args, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
@@ -262,6 +280,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_integrate_xx_0_cx, 0), (self.blocks_selector_0, 0))
+        self.connect((self.blocks_integrate_xx_0_cx, 0), (self.range_music_block_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.range_profile_plot_0, 0))
@@ -434,6 +453,20 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_num_delay_samp(self, num_delay_samp):
         self.num_delay_samp = num_delay_samp
         self.radar_usrp_echotimer_cc_0.set_num_delay_samps(int(self.num_delay_samp))
+
+    def get_music_num_sources(self):
+        return self.music_num_sources
+
+    def set_music_num_sources(self, music_num_sources):
+        self.music_num_sources = music_num_sources
+
+    def get_music_enable(self):
+        return self.music_enable
+
+    def set_music_enable(self, music_enable):
+        self.music_enable = music_enable
+        self._music_enable_callback(self.music_enable)
+        self.range_music_block_0.music_enable = self.music_enable
 
     def get_min_out_buf_val(self):
         return self.min_out_buf_val

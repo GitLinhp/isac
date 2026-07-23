@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import time
+import weakref
 
 import numpy as np
 import pyqtgraph as pg
@@ -18,12 +19,32 @@ from isac_imp.range_profile_roi_slice import compute_range_roi
 _BG = "w"
 _FG = "#333333"
 _LINE = "#0066cc"
+_MUSIC_LINE = "#cc0000"
+
+_display_registry: list[weakref.ReferenceType[_RangeProfileDisplay]] = []
+
+
+def _register_display(display: _RangeProfileDisplay) -> None:
+    _display_registry.append(weakref.ref(display))
+    dead = [r for r in _display_registry if r() is None]
+    for r in dead:
+        _display_registry.remove(r)
+
+
+def publish_music_ranges(ranges_m: list[float]) -> None:
+    """向已注册的 ``RangeProfilePlotBlock`` 窗口推送 MUSIC 距离标注。"""
+    for ref in list(_display_registry):
+        display = ref()
+        if display is None:
+            continue
+        display.post_music_ranges(ranges_m)
 
 
 class _RangeProfileDisplay(QObject):
     """Qt 主线程上的 PyQtGraph 距离谱折线图窗口。"""
 
     profile_ready = pyqtSignal(object, object)  # x_m, y_db
+    music_ranges_ready = pyqtSignal(object)  # list[float]
     show_requested = pyqtSignal()
 
     def __init__(
@@ -44,11 +65,14 @@ class _RangeProfileDisplay(QObject):
         self._plot.setLabel("left", ylabel)
         self._plot.showGrid(x=True, y=True, alpha=0.25)
         self._curve = self._plot.plot(pen=pg.mkPen(_LINE, width=1))
+        self._music_lines: list[pg.InfiniteLine] = []
         self._apply_light_theme()
         self._apply_x_axis()
 
         self.profile_ready.connect(self._on_profile, Qt.QueuedConnection)
+        self.music_ranges_ready.connect(self._on_music_ranges, Qt.QueuedConnection)
         self.show_requested.connect(self._do_show, Qt.QueuedConnection)
+        _register_display(self)
 
     def _apply_light_theme(self) -> None:
         self._win.setBackground(_BG)
@@ -90,6 +114,25 @@ class _RangeProfileDisplay(QObject):
     def post_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
         self.profile_ready.emit(x_m, y_db)
 
+    def post_music_ranges(self, ranges_m: list[float]) -> None:
+        self.music_ranges_ready.emit(list(ranges_m))
+
+    @pyqtSlot(object)
+    def _on_music_ranges(self, ranges_m: list[float]) -> None:
+        for line in self._music_lines:
+            self._plot.removeItem(line)
+        self._music_lines.clear()
+        for r in ranges_m:
+            line = pg.InfiniteLine(
+                pos=float(r),
+                angle=90,
+                pen=pg.mkPen(_MUSIC_LINE, width=1.5, style=Qt.DashLine),
+                label=f"{float(r):.2f} m",
+                labelOpts={"position": 0.9, "color": _MUSIC_LINE},
+            )
+            self._plot.addItem(line)
+            self._music_lines.append(line)
+
     @pyqtSlot(object, object)
     def _on_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
         x = np.ascontiguousarray(x_m, dtype=np.float64)
@@ -98,7 +141,7 @@ class _RangeProfileDisplay(QObject):
 
         finite = y[np.isfinite(y)]
         if finite.size:
-            lo, hi = float(np.percentile(finite, 2)), float(np.percentile(finite, 98))
+            lo, hi = float(finite.min()), float(finite.max())
             if hi <= lo:
                 lo, hi = float(finite.min()), float(finite.max())
             if hi > lo:
