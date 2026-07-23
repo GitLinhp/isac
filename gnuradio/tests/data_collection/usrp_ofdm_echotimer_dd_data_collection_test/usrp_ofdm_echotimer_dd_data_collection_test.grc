@@ -163,8 +163,8 @@ blocks:
 - name: min_out_buf_val
   id: variable
   parameters:
-    comment: ''
-    value: packet_len*2
+    comment: Must cover one CPI in time samples for SIC chain + CP remover
+    value: int(2*transpose_len*(fft_len+fft_len/4))
   states:
     bus_sink: false
     bus_source: false
@@ -312,7 +312,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1680, 136.0]
+    coordinate: [1848, 104.0]
     rotation: 0
     state: enabled
 - name: record_enable
@@ -368,6 +368,47 @@ blocks:
     coordinate: [280, 8.0]
     rotation: 0
     state: enabled
+- name: sic_enable
+  id: variable_qtgui_check_box
+  parameters:
+    comment: Enable fixed-FIR self-interference cancellation on RX path
+    'false': 'False'
+    gui_hint: 1,6,1,1
+    label: SIC Enable
+    'true': 'True'
+    type: bool
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1656, 140.0]
+    rotation: 0
+    state: enabled
+- name: sic_template_path
+  id: variable
+  parameters:
+    comment: Divide-domain template from estimate_sic_template.py
+    value: '"/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/sic_template.npy"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 16.0]
+    rotation: 0
+    state: enabled
+- name: sic_template_vlen
+  id: variable
+  parameters:
+    comment: Template length (fft_len * zeropadding_fac)
+    value: int(fft_len * zeropadding_fac)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1360, 16.0]
+    rotation: 0
+    state: enabled
 - name: subcarrier_spacing
   id: variable
   parameters:
@@ -384,7 +425,7 @@ blocks:
   id: variable
   parameters:
     comment: CPI OFDM symbols per burst; 4 avoids qpsk>8192 sched limit at fft_len=2048
-    value: '4'
+    value: '2'
   states:
     bus_sink: false
     bus_source: false
@@ -634,6 +675,24 @@ blocks:
     bus_structure: null
     coordinate: [240, 344.0]
     rotation: 0
+    state: enabled
+- name: blocks_tagged_stream_align_0
+  id: blocks_tagged_stream_align
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Buffer full CPI packets for CP remover (>8192 samples at fft_len=2048)
+    lengthtagname: length_tag_key
+    maxoutbuf: '0'
+    minoutbuf: min_out_buf_val
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 688.0]
+    rotation: 180
     state: enabled
 - name: digital_chunks_to_symbols_xx_0_0
   id: digital_chunks_to_symbols_xx
@@ -1073,6 +1132,32 @@ blocks:
     coordinate: [80, 636.0]
     rotation: 180
     state: enabled
+- name: sic_divide_subtract_0
+  id: epy_block
+  parameters:
+    _source_code: "import sys\nfrom pathlib import Path\nfor _p in [Path.cwd(), *Path.cwd().parents]:\n\
+      \    _src = _p / \"src\"\n    if (_src / \"isac_imp\").is_dir():\n        sys.path.insert(0,\
+      \ str(_src))\n        break\nfrom isac_imp.sic_divide_subtract import SicDivideSubtract\n\
+      \nblk = SicDivideSubtract\n"
+    affinity: ''
+    alias: ''
+    comment: Subtract offline Divide template; out = in - template
+    maxoutbuf: '0'
+    minoutbuf: 2*transpose_len
+    sic_enable: sic_enable
+    template_path: sic_template_path
+    vlen: sic_template_vlen
+  states:
+    _io_cache: ('SicDivideSubtract', 'SicDivideSubtract', [('vlen', '4096'), ('sic_enable',
+      'True'), ('template_path', "''")], [('0', 'complex', 4096)], [('0', 'complex',
+      4096)], '``out = in - template`` when enabled; 1:1 vector passthrough with tag
+      propagation.', ['sic_enable', 'template_path'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [904, 480.0]
+    rotation: 0
+    state: enabled
 
 connections:
 - [analog_random_source_x_0, '0', blocks_stream_to_tagged_stream_0, '0']
@@ -1087,6 +1172,7 @@ connections:
 - [blocks_selector_0, '0', blocks_file_sink_0, '0']
 - [blocks_selector_0, '1', blocks_null_sink_rec_0, '0']
 - [blocks_stream_to_tagged_stream_0, '0', blocks_repack_bits_bb_0, '0']
+- [blocks_tagged_stream_align_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
 - [digital_chunks_to_symbols_xx_0_0, '0', digital_ofdm_carrier_allocator_cvc_0, '0']
 - [digital_ofdm_carrier_allocator_cvc_0, '0', fft_vxx_0, '0']
 - [digital_ofdm_carrier_allocator_cvc_0, '0', radar_ofdm_divide_vcvc_0, '0']
@@ -1096,9 +1182,10 @@ connections:
 - [fft_vxx_0_1, '0', blocks_complex_to_mag_squared_0, '0']
 - [fft_vxx_0_1, '0', blocks_integrate_xx_0_cx, '0']
 - [radar_ofdm_cyclic_prefix_remover_cvc_0, '0', fft_vxx_0_0, '0']
-- [radar_ofdm_divide_vcvc_0, '0', fft_vxx_0_1, '0']
+- [radar_ofdm_divide_vcvc_0, '0', sic_divide_subtract_0, '0']
+- [radar_usrp_echotimer_cc_0, '0', blocks_tagged_stream_align_0, '0']
 - [radar_usrp_echotimer_cc_0, '0', qtgui_freq_sink_x_0, '0']
-- [radar_usrp_echotimer_cc_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
+- [sic_divide_subtract_0, '0', fft_vxx_0_1, '0']
 
 metadata:
   file_format: 1

@@ -584,6 +584,16 @@ def main(top_block_cls=range_profile_collection, options=None):
 
     tb = top_block_cls()
 
+    from pathlib import Path
+    for _p in [Path(__file__).resolve().parent, *Path(__file__).resolve().parents]:
+        _src = _p / "src"
+        if (_src / "isac_imp").is_dir():
+            sys.path.insert(0, str(_src))
+            break
+    from isac_imp.sic_taps import load_sic_taps
+
+    load_sic_taps(tb)
+
     tb.start()
     tb.flowgraph_started.set()
 

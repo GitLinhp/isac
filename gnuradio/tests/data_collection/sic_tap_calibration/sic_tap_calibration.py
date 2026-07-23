@@ -6,7 +6,7 @@
 #
 # GNU Radio Python Flow Graph
 # Title: SIC Tap Calibration
-# Description: Record TX/RX IQ in a no-target scene for offline SIC FIR tap estimation.
+# Description: Record OFDM Divide H(f) in a no-target scene for offline SIC template estimation.
 # GNU Radio version: 3.10.12.0
 
 from PyQt5 import Qt
@@ -26,6 +26,7 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import radar
+import sic_tap_calibration_sic_divide_recorder_0 as sic_divide_recorder_0  # embedded python block
 import sip
 import threading
 
@@ -71,15 +72,15 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.fft_len = fft_len = 2048
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
         self.zeropadding_fac = zeropadding_fac = 2
-        self.transpose_len = transpose_len = 1
-        self.sic_cal_record = sic_cal_record = False
+        self.transpose_len = transpose_len = 2
         self.n_carriers = n_carriers = fft_len - 2
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
         self.uhd_dev_args = uhd_dev_args = "type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"
-        self.sic_cal_tx_path = sic_cal_tx_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/calibration/sic_cal_tx.dat"
-        self.sic_cal_rx_path = sic_cal_rx_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/calibration/sic_cal_rx.dat"
-        self.sic_cal_record_output_index = sic_cal_record_output_index = 0 if sic_cal_record else 1
+        self.sic_template_path = sic_template_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/sic_template.npy"
+        self.sic_divide_vlen = sic_divide_vlen = int(fft_len * zeropadding_fac)
+        self.sic_cal_record = sic_cal_record = False
+        self.sic_cal_divide_path = sic_cal_divide_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/calibration/sic_cal_divide.dat"
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
@@ -91,25 +92,13 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.freq = freq = 6.0e9
         self.frame_rate_hz = frame_rate_hz = samp_rate / (transpose_len * (fft_len + fft_len // 4))
         self.factor = factor = 0.004
-        self.TX_gain = TX_gain = 10
-        self.RX_gain = RX_gain = 10
+        self.TX_gain = TX_gain = 30
+        self.RX_gain = RX_gain = 30
 
         ##################################################
         # Blocks
         ##################################################
 
-        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 278, 200)
-        self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._num_delay_samp_win)
-        self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
-        self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._factor_win)
-        self._TX_gain_range = qtgui.Range(0, 50, 1, 10, 200)
-        self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._TX_gain_win)
-        self._RX_gain_range = qtgui.Range(0, 50, 1, 10, 200)
-        self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._RX_gain_win)
         _sic_cal_record_check_box = Qt.QCheckBox("Cal Record Enable")
         self._sic_cal_record_choices = {True: True, False: False}
         self._sic_cal_record_choices_inv = dict((v,k) for k,v in self._sic_cal_record_choices.items())
@@ -121,6 +110,19 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(5, 6):
             self.top_grid_layout.setColumnStretch(c, 1)
+        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 278, 200)
+        self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._num_delay_samp_win)
+        self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
+        self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._factor_win)
+        self._TX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
+        self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._TX_gain_win)
+        self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
+        self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._RX_gain_win)
+        self.sic_divide_recorder_0 = sic_divide_recorder_0.SicDivideRecorder(path=sic_cal_divide_path, vlen=sic_divide_vlen, length_tag_key=length_tag_key, record_enable=sic_cal_record)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), uhd_dev_args, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, uhd_dev_args, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
@@ -276,22 +278,12 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.digital_chunks_to_symbols_xx_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
         self.blocks_stream_to_tagged_stream_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_selector_sic_cal_tx_0 = blocks.selector(gr.sizeof_gr_complex*1,0,sic_cal_record_output_index)
-        self.blocks_selector_sic_cal_tx_0.set_enabled(True)
-        self.blocks_selector_sic_cal_rx_0 = blocks.selector(gr.sizeof_gr_complex*1,0,sic_cal_record_output_index)
-        self.blocks_selector_sic_cal_rx_0.set_enabled(True)
         self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(8, payload_mod.bits_per_symbol(), length_tag_key, False, gr.GR_LSB_FIRST)
         self.blocks_repack_bits_bb_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
-        self.blocks_null_sink_sic_cal_tx_0 = blocks.null_sink(gr.sizeof_gr_complex*1)
-        self.blocks_null_sink_sic_cal_rx_0 = blocks.null_sink(gr.sizeof_gr_complex*1)
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
         self.blocks_integrate_xx_0 = blocks.integrate_ff(transpose_len, (fft_len*zeropadding_fac))
-        self.blocks_file_sink_sic_cal_tx_0 = blocks.file_sink(gr.sizeof_gr_complex*1, sic_cal_tx_path, False)
-        self.blocks_file_sink_sic_cal_tx_0.set_unbuffered(False)
-        self.blocks_file_sink_sic_cal_rx_0 = blocks.file_sink(gr.sizeof_gr_complex*1, sic_cal_rx_path, False)
-        self.blocks_file_sink_sic_cal_rx_0.set_unbuffered(False)
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared((fft_len*zeropadding_fac))
         self.analog_random_source_x_0 = blocks.vector_source_b(list(map(int, numpy.random.randint(0, 255, (packet_len*8)))), True)
 
@@ -302,15 +294,10 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.connect((self.analog_random_source_x_0, 0), (self.blocks_stream_to_tagged_stream_0, 0))
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
-        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.blocks_selector_sic_cal_tx_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.qtgui_vector_sink_f_0, 0))
         self.connect((self.blocks_repack_bits_bb_0, 0), (self.digital_chunks_to_symbols_xx_0_0, 0))
-        self.connect((self.blocks_selector_sic_cal_rx_0, 0), (self.blocks_file_sink_sic_cal_rx_0, 0))
-        self.connect((self.blocks_selector_sic_cal_rx_0, 1), (self.blocks_null_sink_sic_cal_rx_0, 0))
-        self.connect((self.blocks_selector_sic_cal_tx_0, 0), (self.blocks_file_sink_sic_cal_tx_0, 0))
-        self.connect((self.blocks_selector_sic_cal_tx_0, 1), (self.blocks_null_sink_sic_cal_tx_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
         self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.fft_vxx_0, 0))
@@ -321,7 +308,7 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
         self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
-        self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.blocks_selector_sic_cal_rx_0, 0))
+        self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.sic_divide_recorder_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
 
@@ -352,6 +339,7 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.set_n_carriers(self.fft_len - 2)
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
+        self.set_sic_divide_vlen(int(self.fft_len * self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_samp_rate(self):
@@ -370,6 +358,7 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_sic_divide_vlen(int(self.fft_len * self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_transpose_len(self):
@@ -381,14 +370,6 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
         self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
         self.set_packet_len(self.transpose_len * self.n_carriers // 4)
         self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
-
-    def get_sic_cal_record(self):
-        return self.sic_cal_record
-
-    def set_sic_cal_record(self, sic_cal_record):
-        self.sic_cal_record = sic_cal_record
-        self._sic_cal_record_callback(self.sic_cal_record)
-        self.set_sic_cal_record_output_index(0 if self.sic_cal_record else 1)
 
     def get_n_carriers(self):
         return self.n_carriers
@@ -418,27 +399,32 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
     def set_uhd_dev_args(self, uhd_dev_args):
         self.uhd_dev_args = uhd_dev_args
 
-    def get_sic_cal_tx_path(self):
-        return self.sic_cal_tx_path
+    def get_sic_template_path(self):
+        return self.sic_template_path
 
-    def set_sic_cal_tx_path(self, sic_cal_tx_path):
-        self.sic_cal_tx_path = sic_cal_tx_path
-        self.blocks_file_sink_sic_cal_tx_0.open(self.sic_cal_tx_path)
+    def set_sic_template_path(self, sic_template_path):
+        self.sic_template_path = sic_template_path
 
-    def get_sic_cal_rx_path(self):
-        return self.sic_cal_rx_path
+    def get_sic_divide_vlen(self):
+        return self.sic_divide_vlen
 
-    def set_sic_cal_rx_path(self, sic_cal_rx_path):
-        self.sic_cal_rx_path = sic_cal_rx_path
-        self.blocks_file_sink_sic_cal_rx_0.open(self.sic_cal_rx_path)
+    def set_sic_divide_vlen(self, sic_divide_vlen):
+        self.sic_divide_vlen = sic_divide_vlen
 
-    def get_sic_cal_record_output_index(self):
-        return self.sic_cal_record_output_index
+    def get_sic_cal_record(self):
+        return self.sic_cal_record
 
-    def set_sic_cal_record_output_index(self, sic_cal_record_output_index):
-        self.sic_cal_record_output_index = sic_cal_record_output_index
-        self.blocks_selector_sic_cal_rx_0.set_output_index(self.sic_cal_record_output_index)
-        self.blocks_selector_sic_cal_tx_0.set_output_index(self.sic_cal_record_output_index)
+    def set_sic_cal_record(self, sic_cal_record):
+        self.sic_cal_record = sic_cal_record
+        self._sic_cal_record_callback(self.sic_cal_record)
+        self.sic_divide_recorder_0.record_enable = self.sic_cal_record
+
+    def get_sic_cal_divide_path(self):
+        return self.sic_cal_divide_path
+
+    def set_sic_cal_divide_path(self, sic_cal_divide_path):
+        self.sic_cal_divide_path = sic_cal_divide_path
+        self.sic_divide_recorder_0.path = self.sic_cal_divide_path
 
     def get_range_bin_step(self):
         return self.range_bin_step
@@ -491,6 +477,7 @@ class sic_tap_calibration(gr.top_block, Qt.QWidget):
 
     def set_length_tag_key(self, length_tag_key):
         self.length_tag_key = length_tag_key
+        self.sic_divide_recorder_0.length_tag_key = self.length_tag_key
 
     def get_freq(self):
         return self.freq

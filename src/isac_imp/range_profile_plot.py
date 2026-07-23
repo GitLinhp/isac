@@ -97,7 +97,10 @@ class _RangeProfileDisplay(QObject):
         self._set_plot_title(self._title)
 
     def _set_plot_title(self, text: str) -> None:
-        self._plot.setTitle(text, color=_FG)
+        try:
+            self._plot.setTitle(text, color=_FG)
+        except RuntimeError:
+            return
 
     def _format_plot_title(self) -> str:
         if self._method_name:

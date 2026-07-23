@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: Usrp Ofdm Echotimer Dd
-# Description: USRP OFDM radar zero-Doppler range profile (full 0~R_max). RX packet_len tags via echotimer; range spectrum via range_profile_plot (PyQtGraph). Stop via GUI (not kill -9) so file_meta segments flush completely.
+# Title: Usrp Ofdm Echotimer Dd Esprit
+# Description: USRP OFDM radar zero-Doppler range profile with 1D ESPRIT range estimation. RX packet_len tags via echotimer; range spectrum via range_profile_plot (PyQtGraph). Stop via GUI (not kill -9) so file_meta segments flush completely.
 # GNU Radio version: 3.10.12.0
 
 from PyQt5 import Qt
@@ -28,17 +28,17 @@ from gnuradio import eng_notation
 from gnuradio import radar
 import sip
 import threading
-import usrp_ofdm_echotimer_dd_range_music_block_0 as range_music_block_0  # embedded python block
-import usrp_ofdm_echotimer_dd_range_profile_plot_0 as range_profile_plot_0  # embedded python block
+import usrp_ofdm_echotimer_dd_esprit_range_esprit_block_0 as range_esprit_block_0  # embedded python block
+import usrp_ofdm_echotimer_dd_esprit_range_profile_plot_0 as range_profile_plot_0  # embedded python block
 
 
 
-class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
+class usrp_ofdm_echotimer_dd_esprit(gr.top_block, Qt.QWidget):
 
     def __init__(self):
-        gr.top_block.__init__(self, "Usrp Ofdm Echotimer Dd", catch_exceptions=True)
+        gr.top_block.__init__(self, "Usrp Ofdm Echotimer Dd Esprit", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("Usrp Ofdm Echotimer Dd")
+        self.setWindowTitle("Usrp Ofdm Echotimer Dd Esprit")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -56,7 +56,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)
 
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_echotimer_dd")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_echotimer_dd_esprit")
 
         try:
             geometry = self.settings.value("geometry")
@@ -81,20 +81,20 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.wait_to_start = wait_to_start = 0.03
         self.uhd_dev_args = uhd_dev_args = "type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"
         self.record_output_index = record_output_index = 0 if record_enable else 1
-        self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"
+        self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_esprit/dataset/run_001/range_profiles"
         self.range_roi = range_roi = (0.0, 30.0)
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
         self.num_delay_samp = num_delay_samp = 281
-        self.music_num_sources = music_num_sources = 1
-        self.music_enable = music_enable = True
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
         self.frame_rate_hz = frame_rate_hz = samp_rate / (transpose_len * (fft_len + fft_len // 4))
         self.factor = factor = 0.004
+        self.esprit_num_sources = esprit_num_sources = 1
+        self.esprit_enable = esprit_enable = True
         self.TX_gain = TX_gain = 30
         self.RX_gain = RX_gain = 30
 
@@ -105,23 +105,23 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 281, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
-        self._music_num_sources_range = qtgui.Range(1, 5, 1, 1, 200)
-        self._music_num_sources_win = qtgui.RangeWidget(self._music_num_sources_range, self.set_music_num_sources, "MUSIC Num Sources", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._music_num_sources_win)
-        _music_enable_check_box = Qt.QCheckBox("MUSIC Enable")
-        self._music_enable_choices = {True: True, False: False}
-        self._music_enable_choices_inv = dict((v,k) for k,v in self._music_enable_choices.items())
-        self._music_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_music_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._music_enable_choices_inv[i]))
-        self._music_enable_callback(self.music_enable)
-        _music_enable_check_box.stateChanged.connect(lambda i: self.set_music_enable(self._music_enable_choices[bool(i)]))
-        self.top_grid_layout.addWidget(_music_enable_check_box, 2, 4, 1, 1)
+        self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
+        self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._factor_win)
+        self._esprit_num_sources_range = qtgui.Range(1, 5, 1, 1, 200)
+        self._esprit_num_sources_win = qtgui.RangeWidget(self._esprit_num_sources_range, self.set_esprit_num_sources, "ESPRIT Num Sources", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._esprit_num_sources_win)
+        _esprit_enable_check_box = Qt.QCheckBox("ESPRIT Enable")
+        self._esprit_enable_choices = {True: True, False: False}
+        self._esprit_enable_choices_inv = dict((v,k) for k,v in self._esprit_enable_choices.items())
+        self._esprit_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_esprit_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._esprit_enable_choices_inv[i]))
+        self._esprit_enable_callback(self.esprit_enable)
+        _esprit_enable_check_box.stateChanged.connect(lambda i: self.set_esprit_enable(self._esprit_enable_choices[bool(i)]))
+        self.top_grid_layout.addWidget(_esprit_enable_check_box, 2, 4, 1, 1)
         for r in range(2, 3):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(4, 5):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._factor_range = qtgui.Range(0, 1, 0.001, 0.004, 200)
-        self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._factor_win)
         self._TX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._TX_gain_win)
@@ -140,7 +140,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         for c in range(4, 5):
             self.top_grid_layout.setColumnStretch(c, 1)
         self.range_profile_plot_0 = range_profile_plot_0.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
-        self.range_music_block_0 = range_music_block_0.RangeMusicBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=int(music_num_sources), music_enable=music_enable, subarray_size=16, threshold=0.1)
+        self.range_esprit_block_0 = range_esprit_block_0.RangeEspritBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=int(esprit_num_sources), esprit_enable=esprit_enable, subarray_size=16)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), uhd_dev_args, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, uhd_dev_args, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_divide_vcvc_0 = radar.ofdm_divide_vcvc(fft_len, ((fft_len)*zeropadding_fac), (), 0, "packet_len")
@@ -280,7 +280,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_complex_to_mag_squared_0, 0), (self.blocks_integrate_xx_0, 0))
         self.connect((self.blocks_integrate_xx_0, 0), (self.blocks_nlog10_ff_0, 0))
         self.connect((self.blocks_integrate_xx_0_cx, 0), (self.blocks_selector_0, 0))
-        self.connect((self.blocks_integrate_xx_0_cx, 0), (self.range_music_block_0, 0))
+        self.connect((self.blocks_integrate_xx_0_cx, 0), (self.range_esprit_block_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_nlog10_ff_0, 0), (self.range_profile_plot_0, 0))
@@ -303,7 +303,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
 
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_echotimer_dd")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "usrp_ofdm_echotimer_dd_esprit")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
         self.wait()
@@ -454,20 +454,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.num_delay_samp = num_delay_samp
         self.radar_usrp_echotimer_cc_0.set_num_delay_samps(int(self.num_delay_samp))
 
-    def get_music_num_sources(self):
-        return self.music_num_sources
-
-    def set_music_num_sources(self, music_num_sources):
-        self.music_num_sources = music_num_sources
-
-    def get_music_enable(self):
-        return self.music_enable
-
-    def set_music_enable(self, music_enable):
-        self.music_enable = music_enable
-        self._music_enable_callback(self.music_enable)
-        self.range_music_block_0.music_enable = self.music_enable
-
     def get_min_out_buf_val(self):
         return self.min_out_buf_val
 
@@ -499,6 +485,20 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.factor = factor
         self.blocks_multiply_const_vxx_0.set_k(self.factor)
 
+    def get_esprit_num_sources(self):
+        return self.esprit_num_sources
+
+    def set_esprit_num_sources(self, esprit_num_sources):
+        self.esprit_num_sources = esprit_num_sources
+
+    def get_esprit_enable(self):
+        return self.esprit_enable
+
+    def set_esprit_enable(self, esprit_enable):
+        self.esprit_enable = esprit_enable
+        self._esprit_enable_callback(self.esprit_enable)
+        self.range_esprit_block_0.esprit_enable = self.esprit_enable
+
     def get_TX_gain(self):
         return self.TX_gain
 
@@ -516,7 +516,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
 
 
-def main(top_block_cls=usrp_ofdm_echotimer_dd, options=None):
+def main(top_block_cls=usrp_ofdm_echotimer_dd_esprit, options=None):
 
     qapp = Qt.QApplication(sys.argv)
 

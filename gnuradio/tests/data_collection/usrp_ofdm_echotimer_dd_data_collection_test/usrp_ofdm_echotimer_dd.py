@@ -30,6 +30,7 @@ import sip
 import threading
 import usrp_ofdm_echotimer_dd_range_music_block_0 as range_music_block_0  # embedded python block
 import usrp_ofdm_echotimer_dd_range_profile_plot_0 as range_profile_plot_0  # embedded python block
+import usrp_ofdm_echotimer_dd_sic_divide_subtract_0 as sic_divide_subtract_0  # embedded python block
 
 
 
@@ -71,26 +72,29 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         self.subcarrier_spacing = subcarrier_spacing = 120e3
         self.fft_len = fft_len = 2048
-        self.transpose_len = transpose_len = 4
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
-        self.n_carriers = n_carriers = fft_len - 2
         self.zeropadding_fac = zeropadding_fac = 2
+        self.transpose_len = transpose_len = 2
         self.record_enable = record_enable = False
-        self.packet_len = packet_len = transpose_len * n_carriers // 4
+        self.n_carriers = n_carriers = fft_len - 2
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
         self.uhd_dev_args = uhd_dev_args = "type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"
+        self.sic_template_vlen = sic_template_vlen = int(fft_len * zeropadding_fac)
+        self.sic_template_path = sic_template_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/sic_template.npy"
+        self.sic_enable = sic_enable = True
         self.record_output_index = record_output_index = 0 if record_enable else 1
         self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/usrp_ofdm_echotimer_dd_data_collection_test/dataset/run_001/range_profiles"
         self.range_roi = range_roi = (0.0, 30.0)
         self.range_bin_step = range_bin_step = R_max/(fft_len*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
+        self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
-        self.num_delay_samp = num_delay_samp = 281
+        self.num_delay_samp = num_delay_samp = 278
         self.music_num_sources = music_num_sources = 1
         self.music_enable = music_enable = True
-        self.min_out_buf_val = min_out_buf_val = packet_len*2
+        self.min_out_buf_val = min_out_buf_val = int(2*transpose_len*(fft_len+fft_len/4))
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
         self.frame_rate_hz = frame_rate_hz = samp_rate / (transpose_len * (fft_len + fft_len // 4))
@@ -102,7 +106,18 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 281, 200)
+        _sic_enable_check_box = Qt.QCheckBox("SIC Enable")
+        self._sic_enable_choices = {True: True, False: False}
+        self._sic_enable_choices_inv = dict((v,k) for k,v in self._sic_enable_choices.items())
+        self._sic_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_sic_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._sic_enable_choices_inv[i]))
+        self._sic_enable_callback(self.sic_enable)
+        _sic_enable_check_box.stateChanged.connect(lambda i: self.set_sic_enable(self._sic_enable_choices[bool(i)]))
+        self.top_grid_layout.addWidget(_sic_enable_check_box, 1, 6, 1, 1)
+        for r in range(1, 2):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(6, 7):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 278, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
         self._music_num_sources_range = qtgui.Range(1, 5, 1, 1, 200)
@@ -128,6 +143,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
+        self.sic_divide_subtract_0 = sic_divide_subtract_0.SicDivideSubtract(vlen=sic_template_vlen, sic_enable=sic_enable, template_path=sic_template_path)
+        self.sic_divide_subtract_0.set_min_output_buffer((2*transpose_len))
         _record_enable_check_box = Qt.QCheckBox("Record Enable")
         self._record_enable_choices = {True: True, False: False}
         self._record_enable_choices_inv = dict((v,k) for k,v in self._record_enable_choices.items())
@@ -255,6 +272,8 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.digital_ofdm_carrier_allocator_cvc_0.set_min_output_buffer((4*transpose_len))
         self.digital_chunks_to_symbols_xx_0_0 = digital.chunks_to_symbols_bc(payload_mod.points(), 1)
         self.digital_chunks_to_symbols_xx_0_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
+        self.blocks_tagged_stream_align_0 = blocks.tagged_stream_align(gr.sizeof_gr_complex*1, length_tag_key)
+        self.blocks_tagged_stream_align_0.set_min_output_buffer(min_out_buf_val)
         self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
         self.blocks_stream_to_tagged_stream_0.set_min_output_buffer((2*qpsk_symbols_per_packet))
         self.blocks_selector_0 = blocks.selector(gr.sizeof_gr_complex*(fft_len*zeropadding_fac),0,record_output_index)
@@ -288,6 +307,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_selector_0, 0), (self.blocks_file_sink_0, 0))
         self.connect((self.blocks_selector_0, 1), (self.blocks_null_sink_rec_0, 0))
         self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.blocks_repack_bits_bb_0, 0))
+        self.connect((self.blocks_tagged_stream_align_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
         self.connect((self.digital_chunks_to_symbols_xx_0_0, 0), (self.digital_ofdm_carrier_allocator_cvc_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.fft_vxx_0, 0))
         self.connect((self.digital_ofdm_carrier_allocator_cvc_0, 0), (self.radar_ofdm_divide_vcvc_0, 0))
@@ -297,9 +317,10 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.connect((self.fft_vxx_0_1, 0), (self.blocks_complex_to_mag_squared_0, 0))
         self.connect((self.fft_vxx_0_1, 0), (self.blocks_integrate_xx_0_cx, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
-        self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.fft_vxx_0_1, 0))
+        self.connect((self.radar_ofdm_divide_vcvc_0, 0), (self.sic_divide_subtract_0, 0))
+        self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.blocks_tagged_stream_align_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
-        self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
+        self.connect((self.sic_divide_subtract_0, 0), (self.fft_vxx_0_1, 0))
 
 
     def closeEvent(self, event):
@@ -324,19 +345,12 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.fft_len = fft_len
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
+        self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
         self.set_n_carriers(self.fft_len - 2)
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
+        self.set_sic_template_vlen(int(self.fft_len * self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
-
-    def get_transpose_len(self):
-        return self.transpose_len
-
-    def set_transpose_len(self, transpose_len):
-        self.transpose_len = transpose_len
-        self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
-        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
-        self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
 
     def get_samp_rate(self):
         return self.samp_rate
@@ -348,22 +362,24 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
-    def get_n_carriers(self):
-        return self.n_carriers
-
-    def set_n_carriers(self, n_carriers):
-        self.n_carriers = n_carriers
-        self.set_occupied_carriers(list((list(range(-self.n_carriers//2, 0)) + list(range(1, self.n_carriers//2 + 1)),)))
-        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
-        self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
-
     def get_zeropadding_fac(self):
         return self.zeropadding_fac
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
         self.set_range_bin_step(self.R_max/(self.fft_len*self.zeropadding_fac))
+        self.set_sic_template_vlen(int(self.fft_len * self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
+
+    def get_transpose_len(self):
+        return self.transpose_len
+
+    def set_transpose_len(self, transpose_len):
+        self.transpose_len = transpose_len
+        self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
+        self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
+        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
+        self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
 
     def get_record_enable(self):
         return self.record_enable
@@ -373,14 +389,14 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self._record_enable_callback(self.record_enable)
         self.set_record_output_index(0 if self.record_enable else 1)
 
-    def get_packet_len(self):
-        return self.packet_len
+    def get_n_carriers(self):
+        return self.n_carriers
 
-    def set_packet_len(self, packet_len):
-        self.packet_len = packet_len
-        self.set_min_out_buf_val(self.packet_len*2)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
+    def set_n_carriers(self, n_carriers):
+        self.n_carriers = n_carriers
+        self.set_occupied_carriers(list((list(range(-self.n_carriers//2, 0)) + list(range(1, self.n_carriers//2 + 1)),)))
+        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
+        self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
 
     def get_R_max(self):
         return self.R_max
@@ -400,6 +416,27 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_uhd_dev_args(self, uhd_dev_args):
         self.uhd_dev_args = uhd_dev_args
+
+    def get_sic_template_vlen(self):
+        return self.sic_template_vlen
+
+    def set_sic_template_vlen(self, sic_template_vlen):
+        self.sic_template_vlen = sic_template_vlen
+
+    def get_sic_template_path(self):
+        return self.sic_template_path
+
+    def set_sic_template_path(self, sic_template_path):
+        self.sic_template_path = sic_template_path
+        self.sic_divide_subtract_0.template_path = self.sic_template_path
+
+    def get_sic_enable(self):
+        return self.sic_enable
+
+    def set_sic_enable(self, sic_enable):
+        self.sic_enable = sic_enable
+        self._sic_enable_callback(self.sic_enable)
+        self.sic_divide_subtract_0.sic_enable = self.sic_enable
 
     def get_record_output_index(self):
         return self.record_output_index
@@ -440,6 +477,14 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_payload_mod(self, payload_mod):
         self.payload_mod = payload_mod
+
+    def get_packet_len(self):
+        return self.packet_len
+
+    def set_packet_len(self, packet_len):
+        self.packet_len = packet_len
+        self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
+        self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
 
     def get_occupied_carriers(self):
         return self.occupied_carriers
