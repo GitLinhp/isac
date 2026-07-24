@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: Not titled yet
+# Title: Monostatic sensing data collection
 # Description: OFDM range profile with 1D MUSIC via OfdmRangeProfileBlock out1 + RangeMusicBlock; optional CPI complex range-profile recording to disk
 # GNU Radio version: 3.10.12.0
 
@@ -26,11 +26,12 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import radar
 from isac_imp.mics_test_record_flow import install_mics_test_record_flow
-import mics_test_ofdm_range_profile_0 as ofdm_range_profile_0  # embedded python block
-import mics_test_range_music_block_0 as range_music_block_0  # embedded python block
-import mics_test_range_profile_plot_0 as range_profile_plot_0  # embedded python block
-import mics_test_range_profile_record_limiter_0 as range_profile_record_limiter_0  # embedded python block
-import mics_test_sionna_resource_grid_tx_0 as sionna_resource_grid_tx_0  # embedded python block
+from isac_imp.record_paths import repo_data_dir
+import data_collection_monostatic_ofdm_range_profile as ofdm_range_profile  # embedded python block
+import data_collection_monostatic_range_music_block as range_music_block  # embedded python block
+import data_collection_monostatic_range_profile_plot as range_profile_plot  # embedded python block
+import data_collection_monostatic_range_profile_record_limiter as range_profile_record_limiter  # embedded python block
+import data_collection_monostatic_sionna_resource_grid_tx as sionna_resource_grid_tx  # embedded python block
 import sip
 import threading
 
@@ -42,12 +43,12 @@ def snipfcn_snippet_install_record_flow_0(self):
 def snippets_main_after_init(tb):
     snipfcn_snippet_install_record_flow_0(tb)
 
-class mics_test(gr.top_block, Qt.QWidget):
+class data_collection_monostatic(gr.top_block, Qt.QWidget):
 
     def __init__(self, address="type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external"):
-        gr.top_block.__init__(self, "Not titled yet", catch_exceptions=True)
+        gr.top_block.__init__(self, "Monostatic sensing data collection", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("Not titled yet")
+        self.setWindowTitle("Monostatic sensing data collection")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -65,7 +66,7 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)
 
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "mics_test")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "data_collection_monostatic")
 
         try:
             geometry = self.settings.value("geometry")
@@ -89,18 +90,18 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.n_carriers = n_carriers = fft_len - 2
         self.zeropadding_fac = zeropadding_fac = 2
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
-        self.record_output_dir = record_output_dir = "/home/caict/Desktop/isac/gnuradio/tests/mics_test/dataset/run_001"
         self.record_enable = record_enable = False
         self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.wait_to_start = wait_to_start = 0.03
         self.samp_rate_0 = samp_rate_0 = int(fft_len * subcarrier_spacing)
         self.record_output_index = record_output_index = 0 if record_enable else 1
+        self.record_output_dir = record_output_dir = repo_data_dir("data", "experiment", "monostatic")
         self.record_max_frames = record_max_frames = 100
         self.record_file_path = record_file_path = "/dev/null"
         self.range_roi = range_roi = (0.0, 30.0)
         self.range_bin_step = range_bin_step = 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
         self.num_delay_samp = num_delay_samp = 282
-        self.music_enable = music_enable = True
+        self.music_enable = music_enable = False
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
         self.freq = freq = 6.0e9
@@ -149,66 +150,15 @@ class mics_test(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
-        self.sionna_resource_grid_tx_0 = sionna_resource_grid_tx_0.SionnaResourceGridTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
-        self.sionna_resource_grid_tx_0.set_min_output_buffer((4*transpose_len))
-        self.range_profile_record_limiter_0 = range_profile_record_limiter_0.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames))
-        self.range_profile_plot_0 = range_profile_plot_0.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
-        self.range_music_block_0 = range_music_block_0.RangeMusicBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=1, music_enable=music_enable, subarray_size=16, threshold=0.1)
+        self.sionna_resource_grid_tx = sionna_resource_grid_tx.SionnaResourceGridTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
+        self.sionna_resource_grid_tx.set_min_output_buffer((4*transpose_len))
+        self.range_profile_record_limiter = range_profile_record_limiter.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=None, file_sink_attr="blocks_file_sink_0", record_file_path_attr="record_file_path")
+        self.range_profile_plot = range_profile_plot.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
+        self.range_music_block = range_music_block.RangeMusicBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=1, music_enable=music_enable, subarray_size=16, threshold=0.1)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), address, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, address, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
         self.radar_usrp_echotimer_cc_0.set_min_output_buffer(min_out_buf_val)
         self.radar_ofdm_cyclic_prefix_remover_cvc_0 = radar.ofdm_cyclic_prefix_remover_cvc(fft_len, (fft_len//4), "packet_len")
         self.radar_ofdm_cyclic_prefix_remover_cvc_0.set_min_output_buffer((2*transpose_len))
-        self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
-            (fft_len + fft_len//4), #size
-            samp_rate, #samp_rate
-            "", #name
-            1, #number of inputs
-            None # parent
-        )
-        self.qtgui_time_sink_x_0.set_update_time(0.10)
-        self.qtgui_time_sink_x_0.set_y_axis(-1, 1)
-
-        self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
-
-        self.qtgui_time_sink_x_0.enable_tags(True)
-        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, 0, "")
-        self.qtgui_time_sink_x_0.enable_autoscale(False)
-        self.qtgui_time_sink_x_0.enable_grid(False)
-        self.qtgui_time_sink_x_0.enable_axis_labels(True)
-        self.qtgui_time_sink_x_0.enable_control_panel(False)
-        self.qtgui_time_sink_x_0.enable_stem_plot(False)
-
-
-        labels = ['Signal 1', 'Signal 2', 'Signal 3', 'Signal 4', 'Signal 5',
-            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ['blue', 'red', 'green', 'black', 'cyan',
-            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
-        styles = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        markers = [-1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1]
-
-
-        for i in range(2):
-            if len(labels[i]) == 0:
-                if (i % 2 == 0):
-                    self.qtgui_time_sink_x_0.set_line_label(i, "Re{{Data {0}}}".format(i/2))
-                else:
-                    self.qtgui_time_sink_x_0.set_line_label(i, "Im{{Data {0}}}".format(i/2))
-            else:
-                self.qtgui_time_sink_x_0.set_line_label(i, labels[i])
-            self.qtgui_time_sink_x_0.set_line_width(i, widths[i])
-            self.qtgui_time_sink_x_0.set_line_color(i, colors[i])
-            self.qtgui_time_sink_x_0.set_line_style(i, styles[i])
-            self.qtgui_time_sink_x_0.set_line_marker(i, markers[i])
-            self.qtgui_time_sink_x_0.set_line_alpha(i, alphas[i])
-
-        self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
-        self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
             fft_len, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
@@ -251,7 +201,7 @@ class mics_test(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
-        self.ofdm_range_profile_0 = ofdm_range_profile_0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
+        self.ofdm_range_profile = ofdm_range_profile.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
         self.fft_vxx_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
         self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)
@@ -274,26 +224,25 @@ class mics_test(gr.top_block, Qt.QWidget):
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.radar_usrp_echotimer_cc_0, 0))
         self.connect((self.blocks_selector_0, 0), (self.blocks_file_sink_0, 0))
         self.connect((self.blocks_selector_0, 1), (self.blocks_null_sink_rec_0, 0))
         self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
         self.connect((self.fft_vxx_0, 0), (self.digital_ofdm_cyclic_prefixer_0, 0))
-        self.connect((self.fft_vxx_0_0, 0), (self.ofdm_range_profile_0, 1))
-        self.connect((self.ofdm_range_profile_0, 1), (self.range_music_block_0, 0))
-        self.connect((self.ofdm_range_profile_0, 0), (self.range_profile_plot_0, 0))
-        self.connect((self.ofdm_range_profile_0, 1), (self.range_profile_record_limiter_0, 0))
+        self.connect((self.fft_vxx_0_0, 0), (self.ofdm_range_profile, 1))
+        self.connect((self.ofdm_range_profile, 1), (self.range_music_block, 0))
+        self.connect((self.ofdm_range_profile, 0), (self.range_profile_plot, 0))
+        self.connect((self.ofdm_range_profile, 1), (self.range_profile_record_limiter, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_vxx_0_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0))
-        self.connect((self.range_profile_record_limiter_0, 0), (self.blocks_selector_0, 0))
-        self.connect((self.sionna_resource_grid_tx_0, 0), (self.fft_vxx_0, 0))
-        self.connect((self.sionna_resource_grid_tx_0, 0), (self.ofdm_range_profile_0, 0))
+        self.connect((self.range_profile_record_limiter, 0), (self.blocks_selector_0, 0))
+        self.connect((self.sionna_resource_grid_tx, 0), (self.fft_vxx_0, 0))
+        self.connect((self.sionna_resource_grid_tx, 0), (self.ofdm_range_profile, 0))
 
 
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "mics_test")
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "data_collection_monostatic")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
         self.wait()
@@ -356,14 +305,6 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
-        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
-
-    def get_record_output_dir(self):
-        return self.record_output_dir
-
-    def set_record_output_dir(self, record_output_dir):
-        self.record_output_dir = record_output_dir
-        self.set_record_file_path("/dev/null")
 
     def get_record_enable(self):
         return self.record_enable
@@ -372,7 +313,7 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.record_enable = record_enable
         self._record_enable_callback(self.record_enable)
         self.set_record_output_index(0 if self.record_enable else 1)
-        self.range_profile_record_limiter_0.record_enable = self.record_enable
+        self.range_profile_record_limiter.record_enable = self.record_enable
 
     def get_packet_len(self):
         return self.packet_len
@@ -400,12 +341,18 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.record_output_index = record_output_index
         self.blocks_selector_0.set_output_index(self.record_output_index)
 
+    def get_record_output_dir(self):
+        return self.record_output_dir
+
+    def set_record_output_dir(self, record_output_dir):
+        self.record_output_dir = record_output_dir
+
     def get_record_max_frames(self):
         return self.record_max_frames
 
     def set_record_max_frames(self, record_max_frames):
         self.record_max_frames = record_max_frames
-        self.range_profile_record_limiter_0.record_max_frames = int(self.record_max_frames)
+        self.range_profile_record_limiter.record_max_frames = int(self.record_max_frames)
 
     def get_record_file_path(self):
         return self.record_file_path
@@ -419,16 +366,16 @@ class mics_test(gr.top_block, Qt.QWidget):
 
     def set_range_roi(self, range_roi):
         self.range_roi = range_roi
-        self.range_music_block_0.range_roi = self.range_roi
-        self.range_profile_plot_0.range_roi = self.range_roi
+        self.range_music_block.range_roi = self.range_roi
+        self.range_profile_plot.range_roi = self.range_roi
 
     def get_range_bin_step(self):
         return self.range_bin_step
 
     def set_range_bin_step(self, range_bin_step):
         self.range_bin_step = range_bin_step
-        self.range_music_block_0.range_bin_step = self.range_bin_step
-        self.range_profile_plot_0.range_bin_step = self.range_bin_step
+        self.range_music_block.range_bin_step = self.range_bin_step
+        self.range_profile_plot.range_bin_step = self.range_bin_step
 
     def get_num_delay_samp(self):
         return self.num_delay_samp
@@ -443,7 +390,7 @@ class mics_test(gr.top_block, Qt.QWidget):
     def set_music_enable(self, music_enable):
         self.music_enable = music_enable
         self._music_enable_callback(self.music_enable)
-        self.range_music_block_0.music_enable = self.music_enable
+        self.range_music_block.music_enable = self.music_enable
 
     def get_min_out_buf_val(self):
         return self.min_out_buf_val
@@ -513,7 +460,7 @@ def argument_parser():
     return parser
 
 
-def main(top_block_cls=mics_test, options=None):
+def main(top_block_cls=data_collection_monostatic, options=None):
     if options is None:
         options = argument_parser().parse_args()
 

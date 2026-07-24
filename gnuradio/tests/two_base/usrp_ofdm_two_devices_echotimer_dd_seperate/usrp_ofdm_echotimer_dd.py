@@ -75,20 +75,19 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.subcarrier_spacing = subcarrier_spacing = 60e3
         self.fft_len = fft_len = 2048
         self.transpose_len = transpose_len = 4
-        self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
+        self.subcarrier_spacing = subcarrier_spacing = 60e3
         self.n_carriers = n_carriers = fft_len - 2
         self.zeropadding_fac = zeropadding_fac = 2
+        self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
         self.packet_len = packet_len = transpose_len * n_carriers // 4
-        self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
         self.record_output_dir = record_output_dir = "dataset/run_001"
         self.record_label = record_label = ""
         self.record_flush_every = record_flush_every = 1200
         self.record_enable = record_enable = False
-        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.occupied_carriers = occupied_carriers = list((list(range(-n_carriers//2, 0)) + list(range(1, n_carriers//2 + 1)),))
@@ -102,6 +101,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.freq0 = freq0 = 6.03e9
         self.TX_gain1 = TX_gain1 = 20
         self.TX_gain0 = TX_gain0 = 20
+        self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.RX_gain1 = RX_gain1 = 20
         self.RX_gain0 = RX_gain0 = 20
 
@@ -530,22 +530,15 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_address1(self, address1):
         self.address1 = address1
 
-    def get_subcarrier_spacing(self):
-        return self.subcarrier_spacing
-
-    def set_subcarrier_spacing(self, subcarrier_spacing):
-        self.subcarrier_spacing = subcarrier_spacing
-        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
-
     def get_fft_len(self):
         return self.fft_len
 
     def set_fft_len(self, fft_len):
         self.fft_len = fft_len
-        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
-        self.set_n_carriers(self.fft_len - 2)
-        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
+        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
+        self.set_n_carriers(self.fft_len - 2)
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
         self.fft_vxx_0_1_0.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
@@ -557,16 +550,13 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_packet_len(self.transpose_len * self.n_carriers // 4)
         self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
 
-    def get_samp_rate(self):
-        return self.samp_rate
+    def get_subcarrier_spacing(self):
+        return self.subcarrier_spacing
 
-    def set_samp_rate(self, samp_rate):
-        self.samp_rate = samp_rate
-        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
-        self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
-        self.qtgui_freq_sink_x_0_0.set_frequency_range(0, self.samp_rate)
-        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
-        self.qtgui_time_sink_x_0_0.set_samp_rate(self.samp_rate)
+    def set_subcarrier_spacing(self, subcarrier_spacing):
+        self.subcarrier_spacing = subcarrier_spacing
+        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
 
     def get_n_carriers(self):
         return self.n_carriers
@@ -582,9 +572,20 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
         self.fft_vxx_0_1_0.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
+
+    def get_samp_rate(self):
+        return self.samp_rate
+
+    def set_samp_rate(self, samp_rate):
+        self.samp_rate = samp_rate
+        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
+        self.qtgui_freq_sink_x_0_0.set_frequency_range(0, self.samp_rate)
+        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
+        self.qtgui_time_sink_x_0_0.set_samp_rate(self.samp_rate)
 
     def get_packet_len(self):
         return self.packet_len
@@ -594,13 +595,6 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.set_min_out_buf_val(self.packet_len*2)
         self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
         self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
-
-    def get_R_max(self):
-        return self.R_max
-
-    def set_R_max(self, R_max):
-        self.R_max = R_max
-        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start
@@ -730,6 +724,12 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
     def set_TX_gain0(self, TX_gain0):
         self.TX_gain0 = TX_gain0
         self.radar_usrp_echotimer_cc_0_0.set_tx_gain(self.TX_gain0)
+
+    def get_R_max(self):
+        return self.R_max
+
+    def set_R_max(self, R_max):
+        self.R_max = R_max
 
     def get_RX_gain1(self):
         return self.RX_gain1

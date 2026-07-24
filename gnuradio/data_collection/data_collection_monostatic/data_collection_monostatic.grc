@@ -12,7 +12,7 @@ options:
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: mics_test
+    id: data_collection_monostatic
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -23,7 +23,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: Not titled yet
+    title: Monostatic sensing data collection
     window_size: (1000,1000)
   states:
     bus_sink: false
@@ -34,34 +34,6 @@ options:
     state: enabled
 
 blocks:
-- name: import_mics_test_record_flow_0
-  id: import
-  parameters:
-    alias: ''
-    comment: mics_test record limit + auto-stop hooks (installed via snippet)
-    imports: from isac_imp.mics_test_record_flow import install_mics_test_record_flow
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1968, 16.0]
-    rotation: 0
-    state: enabled
-- name: snippet_install_record_flow_0
-  id: snippet
-  parameters:
-    alias: ''
-    code: install_mics_test_record_flow(self)
-    comment: Bind record limit handler after top block init
-    priority: '10'
-    section: main_after_init
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1968, 96.0]
-    rotation: 0
-    state: enabled
 - name: RX_gain
   id: variable_qtgui_range
   parameters:
@@ -220,7 +192,7 @@ blocks:
     label: MUSIC Enable
     'true': 'True'
     type: bool
-    value: 'True'
+    value: 'False'
   states:
     bus_sink: false
     bus_source: false
@@ -316,28 +288,43 @@ blocks:
     coordinate: [1488, 172.0]
     rotation: 0
     state: enabled
-- name: record_output_dir
-  id: variable
-  parameters:
-    comment: Directory for numbered CPI range-profile recordings (range_profiles_NNN)
-    value: '"/home/caict/Desktop/isac/gnuradio/tests/mics_test/dataset/run_001"'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1608, 96.0]
-    rotation: 0
-    state: enabled
 - name: record_file_path
   id: variable
   parameters:
-    comment: Placeholder for file_sink init (/dev/null); real path allocated on Record Enable as range_profiles_001, _002, ...
+    comment: Placeholder for file_sink init (/dev/null); real path allocated on Record
+      Enable as range_profiles_001, _002, ...
     value: '"/dev/null"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [1728, 72.0]
+    rotation: 0
+    state: enabled
+- name: record_max_frames
+  id: variable
+  parameters:
+    comment: Max CPI range-profile frames per Record Enable session; auto-stop when
+      reached
+    value: '100'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1848, 172.0]
+    rotation: 0
+    state: enabled
+- name: record_output_dir
+  id: variable
+  parameters:
+    comment: Directory for numbered CPI range-profile recordings (auto-created under
+      repo data/)
+    value: repo_data_dir("data", "experiment", "monostatic")
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1608, 96.0]
     rotation: 0
     state: enabled
 - name: record_output_index
@@ -350,18 +337,6 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1728, 120.0]
-    rotation: 0
-    state: enabled
-- name: record_max_frames
-  id: variable
-  parameters:
-    comment: Max CPI range-profile frames per Record Enable session; auto-stop when reached
-    value: '100'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1848, 172.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -506,35 +481,6 @@ blocks:
     coordinate: [760, 1104.0]
     rotation: 0
     state: enabled
-- name: range_profile_record_limiter_0
-  id: epy_block
-  parameters:
-    _source_code: 'from isac_imp.range_profile_record_limiter import RangeProfileRecordLimiter
-
-
-      blk = RangeProfileRecordLimiter
-
-      '
-    affinity: ''
-    alias: ''
-    comment: Passthrough CPI vectors; stop recording after record_max_frames
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    record_enable: record_enable
-    record_max_frames: int(record_max_frames)
-    vlen_in: fft_len*zeropadding_fac
-  states:
-    _io_cache: "('Range Profile Record Limiter', 'RangeProfileRecordLimiter', [('vlen_in',\
-      \ '4096'), ('record_enable', 'False'), ('record_max_frames', '100')], [('0',\
-      \ 'complex', 4096)], [('0', 'complex', 4096)], 'CPI \u590D\u6570\u8DDD\u79BB\
-      \u8C31 1:1 \u900F\u4F20\uff1b\u8FBE\u5230\u5E27\u6570\u4E0A\u9650\u540E\u901A\
-      \u77E5\u6D41\u56FE\u505C\u6B62\u5F55\u5236\u3002', ['record_enable', 'record_max_frames'])"
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [536, 836.0]
-    rotation: 0
-    state: enabled
 - name: blocks_selector_0
   id: blocks_selector
   parameters:
@@ -619,7 +565,22 @@ blocks:
     coordinate: [1216, 748.0]
     rotation: 180
     state: enabled
-- name: ofdm_range_profile_0
+- name: import_mics_test_record_flow_0
+  id: import
+  parameters:
+    alias: ''
+    comment: mics_test record limit + auto-stop hooks (installed via snippet)
+    imports: 'from isac_imp.mics_test_record_flow import install_mics_test_record_flow
+
+      from isac_imp.record_paths import repo_data_dir'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1968, 16.0]
+    rotation: 0
+    state: enabled
+- name: ofdm_range_profile
   id: epy_block
   parameters:
     _source_code: 'from isac_imp.ofdm_range_profile import OfdmRangeProfileBlock
@@ -827,7 +788,7 @@ blocks:
     bus_structure: null
     coordinate: [1784, 348.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0
   id: radar_ofdm_cyclic_prefix_remover_cvc
   parameters:
@@ -885,7 +846,7 @@ blocks:
     coordinate: [1804.0, 560]
     rotation: 270
     state: enabled
-- name: range_music_block_0
+- name: range_music_block
   id: epy_block
   parameters:
     _source_code: 'from isac_imp.range_music_block import RangeMusicBlock
@@ -920,7 +881,7 @@ blocks:
     coordinate: [224, 744.0]
     rotation: 180
     state: enabled
-- name: range_profile_plot_0
+- name: range_profile_plot
   id: epy_block
   parameters:
     _source_code: 'from isac_imp.range_profile_plot import RangeProfilePlotBlock
@@ -950,7 +911,41 @@ blocks:
     coordinate: [488, 636.0]
     rotation: 180
     state: enabled
-- name: sionna_resource_grid_tx_0
+- name: range_profile_record_limiter
+  id: epy_block
+  parameters:
+    _source_code: 'from isac_imp.range_profile_record_limiter import RangeProfileRecordLimiter
+
+
+      blk = RangeProfileRecordLimiter
+
+      '
+    affinity: ''
+    alias: ''
+    comment: Passthrough CPI vectors; stop recording after record_max_frames
+    file_sink_attr: '"blocks_file_sink_0"'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    record_enable: record_enable
+    record_file_path_attr: '"record_file_path"'
+    record_max_frames: int(record_max_frames)
+    record_output_dir_override: None
+    vlen_in: fft_len*zeropadding_fac
+  states:
+    _io_cache: "('Range Profile Record Limiter', 'RangeProfileRecordLimiter', [('vlen_in',\
+      \ '4096'), ('record_enable', 'False'), ('record_max_frames', '100'), ('record_output_dir_override',\
+      \ 'None'), ('file_sink_attr', \"'blocks_file_sink_0'\"), ('record_file_path_attr',\
+      \ \"'record_file_path'\")], [('0', 'complex', 4096)], [('0', 'complex', 4096)],\
+      \ 'CPI \u590D\u6570\u8DDD\u79BB\u8C31 1:1 \u900F\u4F20\uFF1Brecord_enable \u65F6\
+      \u8BA1\u6570\uFF0C\u8FBE\u5230\u4E0A\u9650\u89E6\u53D1 disable\u3002', ['record_enable',\
+      \ 'record_max_frames'])"
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [536, 836.0]
+    rotation: 0
+    state: enabled
+- name: sionna_resource_grid_tx
   id: epy_block
   parameters:
     _source_code: 'from isac_imp.sionna_resource_grid_tx import SionnaResourceGridTxBlock
@@ -985,6 +980,21 @@ blocks:
     coordinate: [728, 408.0]
     rotation: 0
     state: enabled
+- name: snippet_install_record_flow_0
+  id: snippet
+  parameters:
+    alias: ''
+    code: install_mics_test_record_flow(self)
+    comment: Bind record limit handler after top block init
+    priority: '10'
+    section: main_after_init
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1968, 96.0]
+    rotation: 0
+    state: enabled
 
 connections:
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
@@ -993,16 +1003,16 @@ connections:
 - [blocks_selector_0, '1', blocks_null_sink_rec_0, '0']
 - [digital_ofdm_cyclic_prefixer_0, '0', blocks_multiply_const_vxx_0, '0']
 - [fft_vxx_0, '0', digital_ofdm_cyclic_prefixer_0, '0']
-- [fft_vxx_0_0, '0', ofdm_range_profile_0, '1']
-- [ofdm_range_profile_0, '0', range_profile_plot_0, '0']
-- [ofdm_range_profile_0, '1', range_profile_record_limiter_0, '0']
-- [range_profile_record_limiter_0, '0', blocks_selector_0, '0']
-- [ofdm_range_profile_0, '1', range_music_block_0, '0']
+- [fft_vxx_0_0, '0', ofdm_range_profile, '1']
+- [ofdm_range_profile, '0', range_profile_plot, '0']
+- [ofdm_range_profile, '1', range_music_block, '0']
+- [ofdm_range_profile, '1', range_profile_record_limiter, '0']
 - [radar_ofdm_cyclic_prefix_remover_cvc_0, '0', fft_vxx_0_0, '0']
 - [radar_usrp_echotimer_cc_0, '0', qtgui_freq_sink_x_0, '0']
 - [radar_usrp_echotimer_cc_0, '0', radar_ofdm_cyclic_prefix_remover_cvc_0, '0']
-- [sionna_resource_grid_tx_0, '0', fft_vxx_0, '0']
-- [sionna_resource_grid_tx_0, '0', ofdm_range_profile_0, '0']
+- [range_profile_record_limiter, '0', blocks_selector_0, '0']
+- [sionna_resource_grid_tx, '0', fft_vxx_0, '0']
+- [sionna_resource_grid_tx, '0', ofdm_range_profile, '0']
 
 metadata:
   file_format: 1
