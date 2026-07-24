@@ -7,7 +7,7 @@ options:
     comment: ''
     copyright: ''
     description: OFDM range profile with 1D MUSIC via OfdmRangeProfileBlock out1 +
-      RangeMusicBlock
+      RangeMusicBlock; optional CPI complex range-profile recording to disk
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
@@ -34,91 +34,6 @@ options:
     state: enabled
 
 blocks:
-- name: fft_len
-  id: variable
-  parameters:
-    comment: ''
-    value: '2048'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [112, 112.0]
-    rotation: 0
-    state: enabled
-- name: subcarrier_spacing
-  id: variable
-  parameters:
-    comment: ''
-    value: 120e3
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [280, 224.0]
-    rotation: 0
-    state: enabled
-- name: zeropadding_fac
-  id: variable
-  parameters:
-    comment: ''
-    value: '2'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [632, 232.0]
-    rotation: 0
-    state: enabled
-- name: samp_rate
-  id: variable
-  parameters:
-    comment: ''
-    value: int(fft_len * subcarrier_spacing)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [328, 24.0]
-    rotation: 0
-    state: enabled
-- name: samp_rate_0
-  id: variable
-  parameters:
-    comment: ''
-    value: int(fft_len * subcarrier_spacing)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [216, 112.0]
-    rotation: 0
-    state: enabled
-- name: R_max
-  id: variable
-  parameters:
-    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)\uFF0CR = c/(2\xB7BW)\xB7\
-      N_fft"
-    value: 3e8/2/samp_rate*fft_len
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1136, 120.0]
-    rotation: 0
-    state: enabled
-- name: range_bin_step
-  id: variable
-  parameters:
-    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)\uff1bGRC \u663e\u793a 305.176m = 0.305 m"
-    value: 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [968, 232.0]
-    rotation: 0
-    state: enabled
 - name: RX_gain
   id: variable_qtgui_range
   parameters:
@@ -138,6 +53,19 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [2536, 588.0]
+    rotation: 0
+    state: enabled
+- name: R_max
+  id: variable
+  parameters:
+    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)\uFF0CR = c/(2\xB7BW)\xB7\
+      N_fft"
+    value: 3e8/2/samp_rate*fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1144, 88.0]
     rotation: 0
     state: enabled
 - name: TX_gain
@@ -170,7 +98,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [856, 112.0]
+    coordinate: [792, 40.0]
     rotation: 0
     state: enabled
 - name: device
@@ -182,7 +110,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [840, 272.0]
+    coordinate: [824, 216.0]
     rotation: 0
     state: enabled
 - name: factor
@@ -203,7 +131,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1680, 148.0]
+    coordinate: [1688, 116.0]
+    rotation: 0
+    state: enabled
+- name: fft_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [112, 112.0]
     rotation: 0
     state: enabled
 - name: freq
@@ -216,7 +156,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1408, 120.0]
+    coordinate: [1416, 88.0]
     rotation: 0
     state: enabled
 - name: length_tag_key
@@ -240,7 +180,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1240, 120.0]
+    coordinate: [1248, 88.0]
     rotation: 0
     state: enabled
 - name: music_enable
@@ -257,28 +197,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1320, 200.0]
-    rotation: 0
-    state: enabled
-- name: music_num_sources
-  id: variable_qtgui_range
-  parameters:
-    comment: Number of range targets for 1D MUSIC
-    gui_hint: ''
-    label: MUSIC Num Sources
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '1'
-    step: '1'
-    stop: '5'
-    value: '1'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1480, 200.0]
+    coordinate: [1328, 172.0]
     rotation: 0
     state: enabled
 - name: n_carriers
@@ -305,7 +224,7 @@ blocks:
     start: '0'
     step: '1'
     stop: packet_len
-    value: '277'
+    value: '282'
     widget: counter_slider
   states:
     bus_sink: false
@@ -326,6 +245,19 @@ blocks:
     coordinate: [496, 120.0]
     rotation: 0
     state: enabled
+- name: range_bin_step
+  id: variable
+  parameters:
+    comment: "\u8DDD\u79BB\u8C31\u6A2A\u8F74\u6B65\u8FDB (m/bin)\uFF1BGRC \u663E\u793A\
+      \ 305.176m = 0.305 m"
+    value: 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [968, 232.0]
+    rotation: 0
+    state: enabled
 - name: range_roi
   id: variable
   parameters:
@@ -335,19 +267,97 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1112, 216.0]
+    coordinate: [1120, 184.0]
+    rotation: 0
+    state: enabled
+- name: record_enable
+  id: variable_qtgui_check_box
+  parameters:
+    comment: Set True to record CPI coherently-integrated complex range profiles to
+      disk
+    'false': 'False'
+    gui_hint: 1,4,1,1
+    label: Record Enable
+    'true': 'True'
+    type: bool
+    value: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1488, 172.0]
+    rotation: 0
+    state: enabled
+- name: record_file_path
+  id: variable
+  parameters:
+    comment: Raw complex64 CPI range profiles (vlen=fft_len*zeropadding_fac)
+    value: '"/home/caict/Desktop/isac/gnuradio/tests/mics_test/dataset/run_001/range_profiles"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1608, 96.0]
+    rotation: 0
+    state: enabled
+- name: record_output_index
+  id: variable
+  parameters:
+    comment: Selector output; 0=file_sink, 1=null_sink
+    value: 0 if record_enable else 1
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1728, 120.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: int(fft_len * subcarrier_spacing)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [328, 24.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate_0
+  id: variable
+  parameters:
+    comment: ''
+    value: int(fft_len * subcarrier_spacing)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [216, 112.0]
+    rotation: 0
+    state: enabled
+- name: subcarrier_spacing
+  id: variable
+  parameters:
+    comment: ''
+    value: 120e3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [280, 224.0]
     rotation: 0
     state: enabled
 - name: transpose_len
   id: variable
   parameters:
     comment: CPI OFDM symbols per burst; 4 avoids qpsk>8192 sched limit at fft_len=2048
-    value: '2'
+    value: '4'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [672, 112.0]
+    coordinate: [616, 48.0]
     rotation: 0
     state: enabled
 - name: wait_to_start
@@ -362,6 +372,18 @@ blocks:
     coordinate: [2080, 592.0]
     rotation: 0
     state: enabled
+- name: zeropadding_fac
+  id: variable
+  parameters:
+    comment: ''
+    value: '2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [632, 232.0]
+    rotation: 0
+    state: enabled
 - name: address
   id: parameter
   parameters:
@@ -371,12 +393,30 @@ blocks:
     label: address (349B642)
     short_id: ''
     type: str
-    value: '"type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"'
+    value: '"type=x4xx,serial=33ABFDE,mgmt_addr=192.168.1.101,addr=192.168.11.2,clock_source=external,time_source=external"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [2328, 444.0]
+    rotation: 0
+    state: enabled
+- name: blocks_file_sink_0
+  id: blocks_file_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    append: 'False'
+    comment: Record CPI coherently-integrated complex range profiles
+    file: record_file_path
+    type: complex
+    unbuffered: 'False'
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [760, 972.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
@@ -395,6 +435,46 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1592, 472.0]
+    rotation: 0
+    state: enabled
+- name: blocks_null_sink_rec_0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: Discard complex range profile stream when recording disabled
+    num_inputs: '1'
+    type: complex
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [760, 1104.0]
+    rotation: 0
+    state: enabled
+- name: blocks_selector_0
+  id: blocks_selector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Route CPI complex range profile to file sink or null sink
+    enabled: 'True'
+    input_index: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '1'
+    num_outputs: '2'
+    output_index: record_output_index
+    showports: 'False'
+    type: complex
+    vlen: fft_len*zeropadding_fac
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [536, 972.0]
     rotation: 0
     state: enabled
 - name: digital_ofdm_cyclic_prefixer_0
@@ -471,23 +551,18 @@ blocks:
     alias: ''
     comment: Replaces divide + range FFT + mag + integrate + nlog10; out1 complex
       CPI for MUSIC
-    discarded_carriers: ()
     fft_len: fft_len
-    length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: '0'
-    n_db: '10'
-    num_sync_words: '0'
     transpose_len: transpose_len
     zeropadding_fac: zeropadding_fac
   states:
     _io_cache: "('OFDM Range Profile', 'OfdmRangeProfileBlock', [('fft_len', '2048'),\
-      \ ('zeropadding_fac', '2'), ('transpose_len', '4'), ('discarded_carriers', '()'),\
-      \ ('num_sync_words', '0'), ('length_tag_key', \"'packet_len'\"), ('n_db', '10.0')],\
-      \ [('0', 'complex', 2048), ('1', 'complex', 2048)], [('0', 'float', 4096), ('1',\
-      \ 'complex', 4096)], '\u53CC\u8F93\u5165 TX/RX \u9891\u57DF\u7B26\u53F7 \u2192\
-      \ CPI dB \u8DDD\u79BB\u8C31 + \u53EF\u9009 CPI \u590D\u6570\u8DDD\u79BB\u8C31\
-      \uFF08MUSIC\uFF09\u3002', [])"
+      \ ('zeropadding_fac', '2'), ('transpose_len', '4')], [('0', 'complex', 2048),\
+      \ ('1', 'complex', 2048)], [('0', 'float', 4096), ('1', 'complex', 4096)], '\u53CC\
+      \u8F93\u5165 TX/RX \u9891\u57DF\u7B26\u53F7 \u2192 CPI dB \u8DDD\u79BB\u8C31\
+      \ + \u53EF\u9009 CPI \u590D\u6570\u8DDD\u79BB\u8C31\uFF08MUSIC\uFF09\u3002',\
+      \ [])"
     bus_sink: false
     bus_source: false
     bus_structure: null
@@ -669,7 +744,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1800, 372.0]
+    coordinate: [1784, 348.0]
     rotation: 0
     state: enabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0
@@ -740,11 +815,12 @@ blocks:
       '
     affinity: ''
     alias: ''
-    comment: 1D range MUSIC on CPI complex range profile; annotates RangeProfilePlotBlock
+    comment: 1D range MUSIC on CPI complex range profile (num_sources fixed at 1);
+      annotates RangeProfilePlotBlock
     maxoutbuf: '0'
     minoutbuf: '0'
     music_enable: music_enable
-    num_sources: int(music_num_sources)
+    num_sources: '1'
     range_bin_step: range_bin_step
     range_roi: range_roi
     subarray_size: '16'
@@ -755,11 +831,12 @@ blocks:
       \ '0.305'), ('range_roi', '(0.0, 30.0)'), ('num_sources', '1'), ('music_enable',\
       \ 'True'), ('subarray_size', '16'), ('threshold', '0.1')], [('0', 'complex',\
       \ 4096)], [], '\u590D\u6570 CPI \u8DDD\u79BB\u8C31 \u2192 1D MUSIC \u8DDD\u79BB\
-      \u4F30\u8BA1\uFF08\u65E0\u6D41\u8F93\u51FA\uFF09\u3002', ['music_enable'])"
+      \u4F30\u8BA1\uFF08\u65E0\u6D41\u8F93\u51FA\uFF09\u3002', ['music_enable', 'range_bin_step',\
+      \ 'range_roi'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [488, 784.0]
+    coordinate: [224, 744.0]
     rotation: 180
     state: enabled
 - name: range_profile_plot_0
@@ -831,10 +908,13 @@ blocks:
 connections:
 - [blocks_multiply_const_vxx_0, '0', qtgui_time_sink_x_0, '0']
 - [blocks_multiply_const_vxx_0, '0', radar_usrp_echotimer_cc_0, '0']
+- [blocks_selector_0, '0', blocks_file_sink_0, '0']
+- [blocks_selector_0, '1', blocks_null_sink_rec_0, '0']
 - [digital_ofdm_cyclic_prefixer_0, '0', blocks_multiply_const_vxx_0, '0']
 - [fft_vxx_0, '0', digital_ofdm_cyclic_prefixer_0, '0']
 - [fft_vxx_0_0, '0', ofdm_range_profile_0, '1']
 - [ofdm_range_profile_0, '0', range_profile_plot_0, '0']
+- [ofdm_range_profile_0, '1', blocks_selector_0, '0']
 - [ofdm_range_profile_0, '1', range_music_block_0, '0']
 - [radar_ofdm_cyclic_prefix_remover_cvc_0, '0', fft_vxx_0_0, '0']
 - [radar_usrp_echotimer_cc_0, '0', qtgui_freq_sink_x_0, '0']

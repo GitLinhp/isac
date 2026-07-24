@@ -396,19 +396,14 @@ blocks:
     affinity: ''
     alias: ''
     comment: Replaces divide + range FFT + mag + integrate + nlog10
-    discarded_carriers: ()
     fft_len: fft_len
-    length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: '0'
-    n_db: '10'
-    num_sync_words: '0'
     transpose_len: transpose_len
     zeropadding_fac: zeropadding_fac
   states:
     _io_cache: "('OFDM Range Profile', 'OfdmRangeProfileBlock', [('fft_len', '2048'),\
-      \ ('zeropadding_fac', '2'), ('transpose_len', '4'), ('discarded_carriers', '()'),\
-      \ ('num_sync_words', '0'), ('length_tag_key', \"'packet_len'\"), ('n_db', '10.0')],\
+      \ ('zeropadding_fac', '2'), ('transpose_len', '4')],\
       \ [('0', 'complex', 2048), ('1', 'complex', 2048)], [('0', 'float', 4096)],\
       \ '\u53CC\u8F93\u5165\uFF08TX \u53C2\u8003 / RX FFT\uFF09\u2192 \u5355\u8F93\
       \u51FA float32 \u8DDD\u79BB\u8C31\uFF08dB\uFF09\u3002', [])"

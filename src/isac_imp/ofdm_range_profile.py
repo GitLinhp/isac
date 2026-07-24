@@ -9,35 +9,18 @@
     out1 → RangeMusicBlock（CPI 复数距离谱，可选，供 1D MUSIC）
 
 双输入按样点序号配对（非 tag），依赖上游 CPI 符号流已对齐。
+全谱频域除法（无 discarded 掩码），out0 固定 10·log10(功率和)。
 """
 
 from __future__ import annotations
 
-import sys
-from typing import Sequence
-
 import numpy as np
-import pmt
 from gnuradio import gr
 from gnuradio.fft import window
 
 from isac_imp.burst_pack import TPP_DONT
 
-_LOG_PREFIX = "[OfdmRangeProfile]"
-
-
-def _build_discarded_mask(
-    discarded_carriers: Sequence[int],
-    fft_len: int,
-    vlen_in: int,
-) -> np.ndarray | None:
-    """将相对 DC 的子载波索引映射为 fftshift 后数组上的布尔掩码。"""
-    if not discarded_carriers:
-        return None
-    idx = np.asarray(discarded_carriers, dtype=np.int64) + (vlen_in // 2)
-    mask = np.zeros(vlen_in, dtype=bool)
-    mask[idx] = True
-    return mask
+_N_DB = 10.0
 
 
 def _symbol_divide_pad_window(
@@ -47,17 +30,9 @@ def _symbol_divide_pad_window(
     bh_window: np.ndarray,
     fft_len: int,
     vlen_out: int,
-    discarded_mask: np.ndarray | None = None,
-    apply_discarded: bool = True,
 ) -> np.ndarray:
     """频域除法 → 零填充 → BH 窗，返回窗后序列（range FFT 输入）。"""
-    if apply_discarded and discarded_mask is not None:
-        h = np.zeros(fft_len, dtype=np.complex64)
-        active = ~discarded_mask
-        h[active] = (tx[active] / rx[active]).astype(np.complex64, copy=False)
-    else:
-        h = (tx / rx).astype(np.complex64, copy=False)
-
+    h = (tx / rx).astype(np.complex64, copy=False)
     h_pad = np.zeros(vlen_out, dtype=np.complex64)
     h_pad[:fft_len] = h
     return (h_pad * bh_window).astype(np.complex64, copy=False)
@@ -70,8 +45,6 @@ def compute_symbol_range_spectrum(
     bh_window: np.ndarray,
     fft_len: int,
     vlen_out: int,
-    discarded_mask: np.ndarray | None = None,
-    apply_discarded: bool = True,
 ) -> np.ndarray:
     """单符号复数距离谱：等价于 GR divide + range FFT（不做 |·|²）。"""
     h_win = _symbol_divide_pad_window(
@@ -80,8 +53,6 @@ def compute_symbol_range_spectrum(
         bh_window=bh_window,
         fft_len=fft_len,
         vlen_out=vlen_out,
-        discarded_mask=discarded_mask,
-        apply_discarded=apply_discarded,
     )
     return np.fft.fft(h_win).astype(np.complex64, copy=False)
 
@@ -93,8 +64,6 @@ def compute_symbol_range_power(
     bh_window: np.ndarray,
     fft_len: int,
     vlen_out: int,
-    discarded_mask: np.ndarray | None = None,
-    apply_discarded: bool = True,
 ) -> np.ndarray:
     """单符号距离维功率谱：频域除法 → 零填充 → BH 窗 → FFT → |·|²。
 
@@ -107,8 +76,6 @@ def compute_symbol_range_power(
         bh_window=bh_window,
         fft_len=fft_len,
         vlen_out=vlen_out,
-        discarded_mask=discarded_mask,
-        apply_discarded=apply_discarded,
     )
     return (np.abs(rd) ** 2).astype(np.float32, copy=False)
 
@@ -120,29 +87,18 @@ def compute_cpi_range_profile_db(
     bh_window: np.ndarray,
     fft_len: int,
     vlen_out: int,
-    discarded_mask: np.ndarray | None = None,
-    num_sync_words: int = 0,
-    n_db: float = 10.0,
 ) -> np.ndarray:
-    """CPI 非相干积累后转 dB，形状 ``(vlen_out,)`` float32。
-
-    前 ``num_sync_words`` 个符号不做 discarded 掩码，与 ``radar_ofdm_divide``
-    的 ``num_sync_words`` 行为一致。
-    """
+    """CPI 非相干积累后转 dB，形状 ``(vlen_out,)`` float32。"""
     power_sum = np.zeros(vlen_out, dtype=np.float64)
-    n_sym = tx_batch.shape[0]
-    for k in range(n_sym):
-        p = compute_symbol_range_power(
+    for k in range(tx_batch.shape[0]):
+        power_sum += compute_symbol_range_power(
             tx_batch[k],
             rx_batch[k],
             bh_window=bh_window,
             fft_len=fft_len,
             vlen_out=vlen_out,
-            discarded_mask=discarded_mask,
-            apply_discarded=k >= num_sync_words,
         )
-        power_sum += p
-    return (n_db * np.log10(power_sum)).astype(np.float32, copy=False)
+    return (_N_DB * np.log10(power_sum)).astype(np.float32, copy=False)
 
 
 class OfdmRangeProfileBlock(gr.basic_block):
@@ -153,20 +109,10 @@ class OfdmRangeProfileBlock(gr.basic_block):
         fft_len: int = 2048,
         zeropadding_fac: int = 2,
         transpose_len: int = 4,
-        discarded_carriers: Sequence[int] = (),
-        num_sync_words: int = 0,
-        length_tag_key: str = "packet_len",
-        n_db: float = 10.0,
     ) -> None:
-        del length_tag_key  # 保留 GRC 参数；配对不依赖 tag
         self._fft_len = int(fft_len)
         self._vlen_out = self._fft_len * int(zeropadding_fac)
         self._transpose_len = int(transpose_len)
-        self._num_sync_words = int(num_sync_words)
-        self._n_db = float(n_db)
-        self._discarded_mask = _build_discarded_mask(
-            discarded_carriers, self._fft_len, self._fft_len
-        )
 
         gr.basic_block.__init__(
             self,
@@ -188,13 +134,11 @@ class OfdmRangeProfileBlock(gr.basic_block):
             window.blackmanharris(self._vlen_out), dtype=np.float32
         )
         self._sym_idx = 0
-        self._cpi_symbol_idx = 0
         self._power_acc = np.zeros(self._vlen_out, dtype=np.float64)
         self._complex_acc = np.zeros(self._vlen_out, dtype=np.complex128)
 
     def start(self) -> bool:
         self._sym_idx = 0
-        self._cpi_symbol_idx = 0
         self._power_acc.fill(0.0)
         self._complex_acc.fill(0.0)
         return True
@@ -223,32 +167,27 @@ class OfdmRangeProfileBlock(gr.basic_block):
         while n_consumed < n_avail and n_produced < len(out_db):
             tx = in_tx[n_consumed]
             rx = in_rx[n_consumed]
-            apply_discarded = self._cpi_symbol_idx >= self._num_sync_words
             spec = compute_symbol_range_spectrum(
                 tx,
                 rx,
                 bh_window=self._bh_window,
                 fft_len=self._fft_len,
                 vlen_out=self._vlen_out,
-                discarded_mask=self._discarded_mask,
-                apply_discarded=apply_discarded,
             )
             self._complex_acc += spec.astype(np.complex128, copy=False)
             self._power_acc += (np.abs(spec) ** 2).astype(np.float64, copy=False)
             self._sym_idx += 1
-            self._cpi_symbol_idx += 1
             n_consumed += 1
 
             if self._sym_idx >= self._transpose_len:
                 out_db[n_produced][:] = (
-                    self._n_db * np.log10(self._power_acc)
+                    _N_DB * np.log10(self._power_acc)
                 ).astype(np.float32, copy=False)
                 out_cx[n_produced][:] = self._complex_acc.astype(
                     np.complex64, copy=False
                 )
                 n_produced += 1
                 self._sym_idx = 0
-                self._cpi_symbol_idx = 0
                 self._power_acc.fill(0.0)
                 self._complex_acc.fill(0.0)
 

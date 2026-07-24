@@ -246,7 +246,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
-        self.ofdm_range_profile_0 = ofdm_range_profile_0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len, discarded_carriers=(), num_sync_words=0, length_tag_key=length_tag_key, n_db=10)
+        self.ofdm_range_profile_0 = ofdm_range_profile_0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
         self.fft_vxx_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
         self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)
