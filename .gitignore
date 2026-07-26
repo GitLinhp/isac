@@ -22,6 +22,7 @@ gnuradio/flowgraphs/*_sionna_*_0.py
 
 # Project dirs (excluded from repo)
 /backup/radarsimpy/
+/data/
 /models/
 /out/
 
