@@ -106,7 +106,7 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.record_output_index_dev0 = record_output_index_dev0 = 0 if record_enable else 1
         self.record_output_dir_dev1 = record_output_dir_dev1 = repo_data_dir("data", "experiment", "cooperative_monostatic", "dev1")
         self.record_output_dir_dev0 = record_output_dir_dev0 = repo_data_dir("data", "experiment", "cooperative_monostatic", "dev0")
-        self.record_max_frames = record_max_frames = 100
+        self.record_max_frames = record_max_frames = 50
         self.record_file_path_dev1 = record_file_path_dev1 = "/dev/null"
         self.record_file_path_dev0 = record_file_path_dev0 = "/dev/null"
         self.range_roi = range_roi = (0.0, 5)
