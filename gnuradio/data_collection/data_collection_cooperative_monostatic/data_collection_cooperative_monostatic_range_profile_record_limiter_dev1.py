@@ -1,3 +1,3 @@
-from isac_imp.range_profile_record_limiter import RangeProfileRecordLimiter
+from isac_imp.range_profile_record_limiter import DivideCpiRecordLimiter
 
-blk = RangeProfileRecordLimiter
+blk = DivideCpiRecordLimiter

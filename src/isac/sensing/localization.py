@@ -127,6 +127,31 @@ def select_xy_solution(
     return min(solutions, key=lambda p: abs(p[1]))
 
 
+def localize_xy_two_monostatic_ranges(
+    pos0_xy: Sequence[float],
+    r0_m: float,
+    pos1_xy: Sequence[float],
+    r1_m: float,
+    *,
+    y_hint: float | None = None,
+) -> tuple[float, float]:
+    """两单基地斜距在 z=0 平面圆交会，得到目标 ``(x, y)``。
+
+    各站与目标均假定在同一水平面（z=0），故 ``r`` 即水平距离。
+    """
+    r0 = float(r0_m)
+    r1 = float(r1_m)
+    if not np.isfinite(r0) or not np.isfinite(r1) or r0 <= 0.0 or r1 <= 0.0:
+        raise ValueError(f"invalid monostatic ranges: r0={r0_m}, r1={r1_m}")
+
+    c0 = (float(pos0_xy[0]), float(pos0_xy[1]))
+    c1 = (float(pos1_xy[0]), float(pos1_xy[1]))
+    solutions = intersect_circles_xy(c0, r0 * r0, c1, r1 * r1)
+    if solutions:
+        return select_xy_solution(solutions, y_hint=y_hint)
+    return _xy_from_linearized_circles(c0, r0 * r0, c1, r1 * r1, y_hint=y_hint)
+
+
 def localize_xy_z0_colocated_tx_mono_bistatic(
     mono_rx_pos: Sequence[float],
     bistatic_rx_pos: Sequence[float],

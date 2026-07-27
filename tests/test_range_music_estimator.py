@@ -5,7 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from isac.sensing.detection.range_music_estimator import RangeMusicEstimator
+from isac.sensing.detection.range_music_estimator import (
+    RangeMusicEstimator,
+    _local_maxima_candidates_1d,
+)
 
 
 def _synthetic_profile(
@@ -125,3 +128,32 @@ def test_boundary_bin_last_in_roi(estimator: RangeMusicEstimator) -> None:
     assert peaks.peak_ranges_m.size == 1
     expected_m = roi_last_bin * step
     assert abs(peaks.peak_ranges_m[0] - expected_m) < step
+
+
+def test_local_maxima_with_cfar_excludes_below_threshold() -> None:
+    magnitude = np.array([1.0, 3.0, 1.0, 5.0, 1.0], dtype=np.float64)
+    cfar = np.array([2.0, 2.0, 2.0, 10.0, 2.0], dtype=np.float64)
+    candidates = _local_maxima_candidates_1d(magnitude, cfar=cfar)
+    assert 3 not in candidates.astype(int)
+    assert 1 in candidates.astype(int)
+
+
+def test_local_maxima_with_cfar_no_fallback_when_all_blocked() -> None:
+    magnitude = np.array([1.0, 2.0, 1.0], dtype=np.float64)
+    cfar = np.array([5.0, 5.0, 5.0], dtype=np.float64)
+    candidates = _local_maxima_candidates_1d(magnitude, cfar=cfar)
+    assert candidates.size == 0
+
+
+def test_cfar_shape_mismatch_raises(estimator: RangeMusicEstimator) -> None:
+    vlen = 512
+    step = 0.1
+    profile = _synthetic_profile([60], vlen=vlen, amplitude=6.0, width=1.5)
+    with pytest.raises(ValueError, match="cfar shape"):
+        estimator(
+            profile,
+            range_bin_step=step,
+            range_roi=(0.0, 50.0),
+            num_sources=1,
+            cfar=np.ones(10, dtype=np.float64),
+        )

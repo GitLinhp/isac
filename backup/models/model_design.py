@@ -34,10 +34,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .preprocess import (
-    dual_range_profiles_to_features,
-    spectrum_tensor_to_features,
-)
+from .preprocess import spectrum_tensor_to_features
 
 # checkpoint 必填键（感知 ROI/分辨率不写入，由 TOML System 提供）
 _REQUIRED_CKPT_KEYS = (
@@ -205,131 +202,6 @@ def load_sensing_cnn_checkpoint(
         in_channels=int(ckpt["in_channels"]),
         base_channels=int(ckpt["base_channels"]),
         num_layers=int(ckpt.get("num_layers", 4)),
-        dropout=float(ckpt["dropout"]),
-    )
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.to(device)
-    model.eval()
-    return model
-
-
-class Conv1dResidualBlock(nn.Module):
-    """两层 3×1 一维卷积残差块。"""
-
-    def __init__(self, in_ch: int, out_ch: int, *, stride: int = 1) -> None:
-        super().__init__()
-        self.conv1 = nn.Conv1d(in_ch, out_ch, 3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm1d(out_ch)
-        self.conv2 = nn.Conv1d(out_ch, out_ch, 3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm1d(out_ch)
-        if stride != 1 or in_ch != out_ch:
-            self.shortcut = nn.Sequential(
-                nn.Conv1d(in_ch, out_ch, 1, stride=stride, bias=False),
-                nn.BatchNorm1d(out_ch),
-            )
-        else:
-            self.shortcut = nn.Identity()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out = F.relu(out + self.shortcut(x))
-        return out
-
-
-class CooperativeMonostaticCNN(nn.Module):
-    """双站 cooperative monostatic ROI 距离谱 → 目标 (x, y) 回归 CNN。"""
-
-    def __init__(
-        self,
-        *,
-        in_channels: int = 4,
-        base_channels: int = 32,
-        num_layers: int = 3,
-        dropout: float = 0.2,
-    ) -> None:
-        super().__init__()
-        if num_layers < 1:
-            raise ValueError(f"num_layers 须 >= 1，收到 {num_layers}")
-
-        self.in_channels = in_channels
-        self.base_channels = base_channels
-        self.num_layers = num_layers
-        self.dropout = dropout
-        c = base_channels
-
-        self.stem = nn.Sequential(
-            nn.Conv1d(in_channels, c, 7, stride=2, padding=3, bias=False),
-            nn.BatchNorm1d(c),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(3, stride=2, padding=1),
-        )
-
-        layers: list[Conv1dResidualBlock] = []
-        for i in range(num_layers):
-            if i == 0:
-                layers.append(Conv1dResidualBlock(c, c))
-            else:
-                in_ch = c * (2 ** (i - 1))
-                out_ch = c * (2**i)
-                layers.append(Conv1dResidualBlock(in_ch, out_ch, stride=2))
-        self.layers = nn.ModuleList(layers)
-
-        final_ch = c * (2 ** (num_layers - 1))
-        self.head = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
-            nn.Flatten(),
-            nn.Linear(final_ch, final_ch // 2),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout),
-            nn.Linear(final_ch // 2, 2),
-        )
-
-    def forward(self, dual_profiles: torch.Tensor) -> torch.Tensor:
-        """ROI 双设备距离谱 → 目标位置 ``(B, 2)`` = ``[x_m, y_m]``。
-
-        输入 ``(2, L)`` 或 ``(B, 2, L)`` complex，或已提取的 ``(B, 4, L)`` float 特征。
-        """
-        if dual_profiles.is_complex():
-            features = dual_range_profiles_to_features(dual_profiles)
-        else:
-            features = dual_profiles
-            if features.ndim == 2:
-                features = features.unsqueeze(0)
-            elif features.ndim != 3:
-                raise ValueError(
-                    "CooperativeMonostaticCNN float 输入须为 (C, L) 或 (B, C, L)，"
-                    f"收到 {tuple(features.shape)}"
-                )
-        if features.shape[1] != self.in_channels:
-            raise ValueError(
-                f"特征通道数 {features.shape[1]} 与 in_channels={self.in_channels} 不一致"
-            )
-
-        x = self.stem(features)
-        for layer in self.layers:
-            x = layer(x)
-        return self.head(x)
-
-
-def load_cooperative_monostatic_cnn_checkpoint(
-    path: str | Path,
-    device: torch.device | str,
-) -> CooperativeMonostaticCNN:
-    """从 checkpoint 加载 CooperativeMonostaticCNN。"""
-    ckpt_path = Path(path)
-    if not ckpt_path.is_file():
-        raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
-
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    missing = [key for key in _CORE_CKPT_KEYS if key not in ckpt]
-    if missing:
-        raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
-
-    model = CooperativeMonostaticCNN(
-        in_channels=int(ckpt["in_channels"]),
-        base_channels=int(ckpt["base_channels"]),
-        num_layers=int(ckpt.get("num_layers", 3)),
         dropout=float(ckpt["dropout"]),
     )
     model.load_state_dict(ckpt["model_state_dict"])

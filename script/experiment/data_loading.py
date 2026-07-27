@@ -8,9 +8,16 @@ import numpy as np
 
 _COMPLEX_DTYPE = np.complex64
 
+# Cooperative monostatic divide_profiles use vlen=32768; see
+# ``isac_imp.data_collection.DEFAULT_COOPERATIVE_VLEN``.
+
 
 def count_range_profile_frames(path: str | Path, *, vlen: int = 4096) -> int:
-    """Return the number of CPI frames in a raw complex64 range_profiles file."""
+    """Return the number of CPI frames in a raw complex64 range_profiles file.
+
+    Cooperative monostatic ``divide_profiles`` use ``vlen=DEFAULT_COOPERATIVE_VLEN``
+    (32768); legacy single-device recordings often use 4096.
+    """
     item_bytes = vlen * np.dtype(_COMPLEX_DTYPE).itemsize
     size = os.path.getsize(path)
     if size % item_bytes != 0:
@@ -26,7 +33,11 @@ def iter_range_profile_frames(
     *,
     vlen: int = 4096,
 ) -> Iterator[np.ndarray]:
-    """Yield one CPI coherently-integrated complex range-profile frame per CPI."""
+    """Yield one CPI coherently-integrated complex range-profile frame per CPI.
+
+    For cooperative monostatic ``divide_profiles`` binaries, pass
+    ``vlen=DEFAULT_COOPERATIVE_VLEN`` (32768).
+    """
     item_bytes = vlen * np.dtype(_COMPLEX_DTYPE).itemsize
     size = os.path.getsize(path)
     if size % item_bytes != 0:

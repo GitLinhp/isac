@@ -121,6 +121,37 @@ def range_var(
 """
 
 
+def target_pos_range_var(
+    name: str,
+    label: str,
+    gui_hint: str,
+    coord: str,
+    value: str = "0",
+) -> str:
+    return f"""- name: {name}
+  id: variable_qtgui_range
+  parameters:
+    comment: Target position for CSV metadata (cm)
+    gui_hint: {gui_hint}
+    label: {label}
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '-100'
+    step: '1'
+    stop: '100'
+    value: '{value}'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: {coord}
+    rotation: 0
+    state: enabled
+"""
+
+
 def check_box_var(
     name: str,
     label: str,
@@ -195,26 +226,36 @@ IO_SIONNA = (
 
 IO_OFDM_RP = (
     '"(\'OFDM Range Profile\', \'OfdmRangeProfileBlock\', '
-    "[('fft_len', '2048'), ('zeropadding_fac', '2'), ('transpose_len', '4')], "
+    "[('fft_len', '2048'), ('zeropadding_fac', '4'), ('transpose_len', '4')], "
     "[('0', 'complex', 2048), ('1', 'complex', 2048)], "
-    "[('0', 'float', 4096), ('1', 'complex', 4096)], "
+    "[('0', 'float', 8192), ('1', 'complex', 8192)], "
     "'\\u53CC\\u8F93\\u5165 TX/RX \\u9891\\u57DF\\u7B26\\u53F7 \\u2192 CPI dB "
     "\\u8DDD\\u79BB\\u8C31 + \\u53EF\\u9009 CPI \\u590D\\u6570\\u8DDD\\u79BB\\u8C31\\uFF08MUSIC\\uFF09\\u3002', [])\""
 )
 
+IO_OFDM_DIVIDE_CPI = (
+    '"(\'OFDM Divide CPI\', \'OfdmDivideCpiBlock\', '
+    "[('fft_len', '2048'), ('zeropadding_fac', '4'), ('transpose_len', '4')], "
+    "[('0', 'complex', 2048), ('1', 'complex', 2048)], "
+    "[('0', 'complex', 32768)], "
+    "'\\u53CC\\u8F93\\u5165 TX/RX \\u9891\\u57DF\\u7B26\\u53F7 \\u2192 \\u6BCF CPI flatten \\u7684 Divide H(f)\\uFF08transpose_len \\u00D7 vlen\\uFF09\\u3002', [])\""
+)
+
+VLEN_CPI = "fft_len*zeropadding_fac*transpose_len"
+
 IO_RANGE_PLOT = (
     '"(\'Range Profile Plot\', \'RangeProfilePlotBlock\', '
-    "[('vlen_in', '4096'), ('range_roi', '(0.0, 30.0)'), ('range_bin_step', '0.122')], "
-    "[('0', 'float', 4096)], [], "
+    "[('vlen_in', '8192'), ('range_roi', '(0.0, 30.0)'), ('range_bin_step', '0.153')], "
+    "[('0', 'float', 8192)], [], "
     "'\\u8DDD\\u79BB\\u8C31 dB \\u5411\\u91CF \\u2192 PyQtGraph \\u663E\\u793A\\uFF08ROI + autoscale Y\\uFF09\\u3002', "
     "['range_roi', 'range_bin_step'])\""
 )
 
 IO_RANGE_MUSIC = (
     '"(\'Range MUSIC\', \'RangeMusicBlock\', '
-    "[('vlen_in', '4096'), ('range_bin_step', '0.122'), ('range_roi', '(0.0, 30.0)'), "
+    "[('vlen_in', '8192'), ('range_bin_step', '0.153'), ('range_roi', '(0.0, 30.0)'), "
     "('num_sources', '1'), ('music_enable', 'False'), ('subarray_size', '16'), ('threshold', '0.1')], "
-    "[('0', 'complex', 4096)], [], "
+    "[('0', 'complex', 8192)], [], "
     "'\\u590D\\u6570 CPI \\u8DDD\\u79BB\\u8C31 \\u2192 1D MUSIC \\u8DDD\\u79BB\\u4F30\\u8BA1\\uFF08\\u65E0\\u6D41\\u8F93\\u51FA\\uFF09\\u3002', "
     "['music_enable', 'range_bin_step', 'range_roi'])\""
 )
@@ -222,14 +263,16 @@ IO_RANGE_MUSIC = (
 
 def io_limiter(dev: str) -> str:
     return (
-        '"(\'Range Profile Record Limiter\', \'RangeProfileRecordLimiter\', '
-        "[('vlen_in', '4096'), ('record_enable', 'False'), ('record_max_frames', '100'), "
+        '"(\'Divide CPI Record Limiter\', \'DivideCpiRecordLimiter\', '
+        f"[('vlen_in', '32768'), ('record_enable', 'False'), ('record_max_frames', '100'), "
         f"('record_output_dir_override', 'record_output_dir_{dev}'), "
-        f"('file_sink_attr', 'blocks_file_sink_{dev}'), "
-        f"('record_file_path_attr', 'record_file_path_{dev}')], "
-        "[('0', 'complex', 4096)], [('0', 'complex', 4096)], "
-        "'\\u590D\\u6570 CPI \\u8DDD\\u79BB\\u8C31 1:1 \\u900F\\u4F20\\uFF1Brecord_enable \\u65F6\\u8BA1\\u6570\\uFF0C\\u8FBE\\u5230\\u4E0A\\u9650\\u89E6\\u53D1 disable\\u3002', "
-        "['record_enable', 'record_max_frames', 'record_output_dir_override', 'file_sink_attr', 'record_file_path_attr'])\""
+        f"('file_sink_attr', \\\"'blocks_file_sink_{dev}'\\\"), "
+        f"('record_file_path_attr', \\\"'record_file_path_{dev}'\\\"), "
+        "('record_base_name', \\\"'divide_profiles'\\\")], "
+        "[('0', 'complex', 32768)], [('0', 'complex', 32768)], "
+        "'Divide CPI flatten 1:1 \\u900F\\u4F20\\uFF1Brecord_enable \\u65F6\\u8BA1\\u6570 CPI\\uFF0C\\u8FBE\\u5230\\u4E0A\\u9650\\u89E6\\u53D1 disable\\u3002', "
+        "['record_enable', 'record_max_frames', 'record_output_dir_override', "
+        "'file_sink_attr', 'record_file_path_attr', 'record_base_name', 'vlen_in'])\""
     )
 
 
@@ -261,7 +304,7 @@ def main() -> None:
     # --- variables ---
     parts.append(var("fft_len", "'2048'"))
     parts.append(var("subcarrier_spacing", "120e3"))
-    parts.append(var("zeropadding_fac", "'2'"))
+    parts.append(var("zeropadding_fac", "'4'"))
     parts.append(var("transpose_len", "'4'"))
     parts.append(
         var(
@@ -288,7 +331,18 @@ def main() -> None:
     parts.append(var("R_max", "3e8/2/samp_rate*fft_len"))
     parts.append(var("freq0", "6.03e9", coord="[2224, 1080.0]"))
     parts.append(var("freq1", "5.97e9", coord="[2224, 1120.0]"))
-    parts.append(var("record_enable", "False"))
+    parts.append(
+        check_box_var(
+            "record_enable",
+            "Record Enable",
+            "1,4,1,1",
+            "[1488, 172.0]",
+            value="False",
+            comment="Set True to record Divide CPI flatten H(f) to disk (dev0+dev1)",
+        )
+    )
+    parts.append(target_pos_range_var("target_pos_x_cm", "Target X (cm)", "1,0,1,1", "[1200, 172.0]"))
+    parts.append(target_pos_range_var("target_pos_y_cm", "Target Y (cm)", "1,1,1,1", "[1344, 172.0]"))
     parts.append(var("record_max_frames", "'100'"))
     parts.append(
         var(
@@ -347,7 +401,7 @@ def main() -> None:
     alias: ''
     comment: record limit + auto-stop hooks
     imports: |-
-      from isac_imp.mics_test_record_flow import install_mics_test_record_flow
+      from isac_imp.mics_test_record_flow import install_cooperative_record_flow
       from isac_imp.record_paths import repo_data_dir
   states:
     bus_sink: false
@@ -363,7 +417,7 @@ def main() -> None:
   id: snippet
   parameters:
     alias: ''
-    code: install_mics_test_record_flow(self)
+    code: install_cooperative_record_flow(self)
     comment: Bind record limit handler after top block init
     priority: '10'
     section: main_after_init
@@ -582,16 +636,31 @@ def main() -> None:
         )
         parts.append(
             epy(
+                f"ofdm_divide_cpi_{dev}",
+                "ofdm_range_profile",
+                "OfdmDivideCpiBlock",
+                {
+                    "fft_len": "fft_len",
+                    "zeropadding_fac": "zeropadding_fac",
+                    "transpose_len": "transpose_len",
+                },
+                f"[800, {y}]",
+                io_cache=IO_OFDM_DIVIDE_CPI,
+            )
+        )
+        parts.append(
+            epy(
                 f"range_profile_record_limiter_{dev}",
                 "range_profile_record_limiter",
-                "RangeProfileRecordLimiter",
+                "DivideCpiRecordLimiter",
                 {
-                    "vlen_in": "fft_len*zeropadding_fac",
+                    "vlen_in": VLEN_CPI,
                     "record_enable": "record_enable",
                     "record_max_frames": "int(record_max_frames)",
                     "record_output_dir_override": f"record_output_dir_{dev}",
                     "file_sink_attr": f"'\"blocks_file_sink_{dev}\"'",
                     "record_file_path_attr": f"'\"record_file_path_{dev}\"'",
+                    "record_base_name": "'\"divide_profiles\"'",
                 },
                 f"[300, {y}]",
                 io_cache=io_limiter(dev),
@@ -605,7 +674,7 @@ def main() -> None:
                     "type": "complex",
                     "num_inputs": "1",
                     "output_index": f"record_output_index_{dev}",
-                    "vlen": "fft_len*zeropadding_fac",
+                    "vlen": VLEN_CPI,
                 },
                 f"[100, {y}]",
             )
@@ -616,7 +685,7 @@ def main() -> None:
                 f"blocks_file_sink_{dev}",
                 {
                     "type": "complex",
-                    "vlen": "fft_len*zeropadding_fac",
+                    "vlen": VLEN_CPI,
                     "file": f"record_file_path_{dev}",
                     "append": "False",
                     "unbuffered": "False",
@@ -630,7 +699,7 @@ def main() -> None:
                 f"blocks_null_sink_rec_{dev}",
                 {
                     "type": "complex",
-                    "vlen": "fft_len*zeropadding_fac",
+                    "vlen": VLEN_CPI,
                 },
                 f"[0, {y + 40}]",
             )
@@ -675,10 +744,12 @@ def main() -> None:
             [echotimer, "0", freq_sink, "0"],
             [echotimer, "0", cp, "0"],
             [cp, "0", fft, "0"],
+            ["sionna_resource_grid_tx", "0", f"ofdm_divide_cpi_{dev}", "0"],
+            [fft, "0", f"ofdm_divide_cpi_{dev}", "1"],
             [fft, "0", f"ofdm_range_profile_{dev}", "1"],
             [f"ofdm_range_profile_{dev}", "0", f"range_profile_plot_{dev}", "0"],
             [f"ofdm_range_profile_{dev}", "1", f"range_music_block_{dev}", "0"],
-            [f"ofdm_range_profile_{dev}", "1", f"range_profile_record_limiter_{dev}", "0"],
+            [f"ofdm_divide_cpi_{dev}", "0", f"range_profile_record_limiter_{dev}", "0"],
             [f"range_profile_record_limiter_{dev}", "0", f"blocks_selector_{dev}", "0"],
             [f"blocks_selector_{dev}", "0", f"blocks_file_sink_{dev}", "0"],
             [f"blocks_selector_{dev}", "1", f"blocks_null_sink_rec_{dev}", "0"],

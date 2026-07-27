@@ -63,24 +63,39 @@ def _local_maxima_candidates_1d(
     *,
     max_candidates: int = MAX_CANDIDATES,
     min_peak_ratio: float = MIN_PEAK_THRESHOLD,
+    cfar: np.ndarray | None = None,
 ) -> np.ndarray:
     """1D 局部极大值候选 bin 索引。"""
     n = magnitude.size
+    if cfar is not None:
+        cfar_arr = np.asarray(cfar, dtype=np.float64).reshape(-1)
+        if cfar_arr.shape != magnitude.shape:
+            raise ValueError(
+                f"cfar shape {cfar_arr.shape} must match magnitude shape {magnitude.shape}"
+            )
+
     if n < 3:
         top = min(max_candidates, n)
         return np.argsort(magnitude)[-top:].astype(np.float64)
 
     peaks: list[int] = []
-    gate = magnitude.max() * min_peak_ratio
-    if magnitude[0] >= gate and magnitude[0] >= magnitude[1]:
+    if cfar is None:
+        gate = magnitude.max() * min_peak_ratio
+        amp_ok = lambda i: magnitude[i] >= gate  # noqa: E731
+    else:
+        amp_ok = lambda i: magnitude[i] > cfar[i]  # noqa: E731
+
+    if amp_ok(0) and magnitude[0] >= magnitude[1]:
         peaks.append(0)
     for i in range(1, n - 1):
-        if magnitude[i] >= gate and magnitude[i] >= magnitude[i - 1] and magnitude[i] >= magnitude[i + 1]:
+        if amp_ok(i) and magnitude[i] >= magnitude[i - 1] and magnitude[i] >= magnitude[i + 1]:
             peaks.append(i)
-    if magnitude[n - 1] >= gate and magnitude[n - 1] >= magnitude[n - 2]:
+    if amp_ok(n - 1) and magnitude[n - 1] >= magnitude[n - 2]:
         peaks.append(n - 1)
 
     if not peaks:
+        if cfar is not None:
+            return np.empty(0, dtype=np.float64)
         top = min(max_candidates, n)
         return np.argsort(magnitude)[-top:].astype(np.float64)
 
@@ -231,6 +246,7 @@ class RangeMusicEstimator:
         num_sources: Optional[int] = 1,
         subarray_size: int = DEFAULT_SUBARRAY_SIZE,
         threshold: float = 0.1,
+        cfar: np.ndarray | None = None,
     ) -> RangeMusicPeaks:
         """对 CPI 复数距离谱做 1D MUSIC 检峰。
 
@@ -248,6 +264,8 @@ class RangeMusicEstimator:
             空间平滑子阵长度。
         threshold :
             自动估计信号维数时的归一化特征值阈值。
+        cfar :
+            ROI 内 1D CFAR 阈值面；给定则候选门限为 ``|X| > cfar``。
         """
         profile = np.asarray(profile_complex, dtype=np.complex64).reshape(-1)
         vlen = profile.size
@@ -284,7 +302,7 @@ class RangeMusicEstimator:
             return RangeMusicPeaks.empty()
 
         magnitude = np.abs(spectrum)
-        candidates = _local_maxima_candidates_1d(magnitude)
+        candidates = _local_maxima_candidates_1d(magnitude, cfar=cfar)
         scores = _batch_music_scores(
             candidates,
             magnitude,

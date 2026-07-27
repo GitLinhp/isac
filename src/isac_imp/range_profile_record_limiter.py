@@ -125,15 +125,17 @@ def _open_record_file_if_available(
     file_sink_attr = "blocks_file_sink_0"
     output_dir = getattr(top_block, "record_output_dir", None)
     record_path_attr = "record_file_path"
+    record_base_name = "range_profiles"
     if limiter is not None:
         file_sink_attr = limiter._file_sink_attr
         record_path_attr = limiter._record_file_path_attr
+        record_base_name = limiter._record_base_name
         if limiter._record_output_dir_override:
             output_dir = limiter._record_output_dir_override
 
     file_sink = getattr(top_block, file_sink_attr, None)
     if file_sink is not None and output_dir:
-        path = allocate_next_record_path(output_dir)
+        path = allocate_next_record_path(output_dir, base_name=record_base_name)
         if hasattr(top_block, record_path_attr):
             setattr(top_block, record_path_attr, path)
         file_sink.open(path)
@@ -176,6 +178,7 @@ class RangeProfileRecordLimiter(gr.sync_block):
         record_output_dir_override: str | None = None,
         file_sink_attr: str = "blocks_file_sink_0",
         record_file_path_attr: str = "record_file_path",
+        record_base_name: str = "range_profiles",
     ) -> None:
         self._vlen_in = int(vlen_in)
         self._record_enable = bool(record_enable)
@@ -185,6 +188,7 @@ class RangeProfileRecordLimiter(gr.sync_block):
         )
         self._file_sink_attr = str(file_sink_attr)
         self._record_file_path_attr = str(record_file_path_attr)
+        self._record_base_name = str(record_base_name)
         self._frames_written = 0
         self._limit_notified = False
 
@@ -236,3 +240,27 @@ class RangeProfileRecordLimiter(gr.sync_block):
                         self._frames_written, self._record_max_frames
                     )
         return n
+
+
+class DivideCpiRecordLimiter(RangeProfileRecordLimiter):
+    """Divide CPI flatten 录制 limiter；默认 vlen 匹配 transpose_len=4, fft_len=2048, zeropadding_fac=4。"""
+
+    def __init__(
+        self,
+        vlen_in: int = 32768,
+        record_enable: bool = False,
+        record_max_frames: int = 100,
+        record_output_dir_override: str | None = None,
+        file_sink_attr: str = "blocks_file_sink_0",
+        record_file_path_attr: str = "record_file_path",
+        record_base_name: str = "divide_profiles",
+    ) -> None:
+        super().__init__(
+            vlen_in=vlen_in,
+            record_enable=record_enable,
+            record_max_frames=record_max_frames,
+            record_output_dir_override=record_output_dir_override,
+            file_sink_attr=file_sink_attr,
+            record_file_path_attr=record_file_path_attr,
+            record_base_name=record_base_name,
+        )

@@ -86,37 +86,3 @@ class MonostaticSensingLoss(nn.Module):
             self.cfg.range_weight * mse_delay
             + self.cfg.velocity_weight * mse_doppler
         )
-
-
-class TargetPositionRmseLoss(nn.Module):
-    """目标平面位置 batch RMSE 损失（可微）。"""
-
-    def __init__(self, *, eps: float = 1e-12) -> None:
-        super().__init__()
-        self.eps = eps
-
-    @staticmethod
-    def _validate_inputs(pred_xy: torch.Tensor, target_xy: torch.Tensor) -> None:
-        if pred_xy.shape != target_xy.shape:
-            raise ValueError(
-                "pred_xy 与 target_xy 形状须一致，"
-                f"收到 {tuple(pred_xy.shape)} 与 {tuple(target_xy.shape)}",
-            )
-        if pred_xy.ndim != 2 or pred_xy.shape[-1] != 2:
-            raise ValueError(
-                "pred_xy 与 target_xy 形状须为 (B, 2)，"
-                f"收到 {tuple(pred_xy.shape)}",
-            )
-
-    def forward(self, pred_xy: torch.Tensor, target_xy: torch.Tensor) -> torch.Tensor:
-        self._validate_inputs(pred_xy, target_xy)
-        sq_dist = ((pred_xy - target_xy) ** 2).sum(dim=-1)
-        return torch.sqrt(sq_dist.mean() + self.eps)
-
-    @staticmethod
-    def mean_euclidean_error_m(
-        pred_xy: torch.Tensor,
-        target_xy: torch.Tensor,
-    ) -> torch.Tensor:
-        """batch 内平均欧氏距离 (m)。"""
-        return torch.linalg.vector_norm(pred_xy - target_xy, dim=-1).mean()

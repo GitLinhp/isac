@@ -25,8 +25,10 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import radar
-from isac_imp.mics_test_record_flow import install_mics_test_record_flow
+from isac_imp.mics_test_record_flow import install_cooperative_record_flow
 from isac_imp.record_paths import repo_data_dir
+import data_collection_cooperative_monostatic_ofdm_divide_cpi_dev0 as ofdm_divide_cpi_dev0  # embedded python block
+import data_collection_cooperative_monostatic_ofdm_divide_cpi_dev1 as ofdm_divide_cpi_dev1  # embedded python block
 import data_collection_cooperative_monostatic_ofdm_range_profile_dev0 as ofdm_range_profile_dev0  # embedded python block
 import data_collection_cooperative_monostatic_ofdm_range_profile_dev1 as ofdm_range_profile_dev1  # embedded python block
 import data_collection_cooperative_monostatic_range_music_block_dev0 as range_music_block_dev0  # embedded python block
@@ -41,7 +43,7 @@ import threading
 
 
 def snipfcn_snippet_install_record_flow_0(self):
-    install_mics_test_record_flow(self)
+    install_cooperative_record_flow(self)
 
 
 def snippets_main_after_init(tb):
@@ -93,11 +95,13 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.transpose_len = transpose_len = 4
         self.subcarrier_spacing = subcarrier_spacing = 120e3
         self.n_carriers = n_carriers = fft_len - 2
-        self.zeropadding_fac = zeropadding_fac = 2
+        self.zeropadding_fac = zeropadding_fac = 4
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
         self.record_enable = record_enable = False
         self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.wait_to_start = wait_to_start = 0.03
+        self.target_pos_y_cm = target_pos_y_cm = 0
+        self.target_pos_x_cm = target_pos_x_cm = 0
         self.record_output_index_dev1 = record_output_index_dev1 = 0 if record_enable else 1
         self.record_output_index_dev0 = record_output_index_dev0 = 0 if record_enable else 1
         self.record_output_dir_dev1 = record_output_dir_dev1 = repo_data_dir("data", "experiment", "cooperative_monostatic", "dev1")
@@ -105,36 +109,47 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.record_max_frames = record_max_frames = 100
         self.record_file_path_dev1 = record_file_path_dev1 = "/dev/null"
         self.record_file_path_dev0 = record_file_path_dev0 = "/dev/null"
-        self.range_roi = range_roi = (0.0, 30.0)
+        self.range_roi = range_roi = (0.0, 5)
         self.range_bin_step = range_bin_step = 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
-        self.num_delay_samp1 = num_delay_samp1 = 282
-        self.num_delay_samp0 = num_delay_samp0 = 282
+        self.num_delay_samp1 = num_delay_samp1 = 278
+        self.num_delay_samp0 = num_delay_samp0 = 279
         self.music_enable = music_enable = False
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
-        self.freq1 = freq1 = 5.97e9
-        self.freq0 = freq0 = 6.03e9
+        self.freq1 = freq1 = 3.5e9
+        self.freq0 = freq0 = 6.0e9
         self.factor = factor = 0.008
         self.device = device = "cpu"
         self.burst_len_samples = burst_len_samples = transpose_len * (fft_len + fft_len//4)
-        self.TX_gain1 = TX_gain1 = 20
-        self.TX_gain0 = TX_gain0 = 20
+        self.TX_gain1 = TX_gain1 = 35
+        self.TX_gain0 = TX_gain0 = 40
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
-        self.RX_gain1 = RX_gain1 = 20
-        self.RX_gain0 = RX_gain0 = 20
+        self.RX_gain1 = RX_gain1 = 30
+        self.RX_gain0 = RX_gain0 = 35
 
         ##################################################
         # Blocks
         ##################################################
 
-        self._num_delay_samp1_range = qtgui.Range(0, packet_len, 1, 282, 200)
+        _record_enable_check_box = Qt.QCheckBox("Record Enable")
+        self._record_enable_choices = {True: True, False: False}
+        self._record_enable_choices_inv = dict((v,k) for k,v in self._record_enable_choices.items())
+        self._record_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_record_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._record_enable_choices_inv[i]))
+        self._record_enable_callback(self.record_enable)
+        _record_enable_check_box.stateChanged.connect(lambda i: self.set_record_enable(self._record_enable_choices[bool(i)]))
+        self.top_grid_layout.addWidget(_record_enable_check_box, 1, 4, 1, 1)
+        for r in range(1, 2):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(4, 5):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._num_delay_samp1_range = qtgui.Range(0, packet_len, 1, 278, 200)
         self._num_delay_samp1_win = qtgui.RangeWidget(self._num_delay_samp1_range, self.set_num_delay_samp1, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._num_delay_samp1_win, 0, 0, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._num_delay_samp0_range = qtgui.Range(0, packet_len, 1, 282, 200)
+        self._num_delay_samp0_range = qtgui.Range(0, packet_len, 1, 279, 200)
         self._num_delay_samp0_win = qtgui.RangeWidget(self._num_delay_samp0_range, self.set_num_delay_samp0, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._num_delay_samp0_win, 3, 0, 1, 1)
         for r in range(3, 4):
@@ -152,38 +167,52 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(4, 5):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain1_range = qtgui.Range(0, packet_len, 1, 20, 200)
+        self._TX_gain1_range = qtgui.Range(0, 50, 1, 35, 200)
         self._TX_gain1_win = qtgui.RangeWidget(self._TX_gain1_range, self.set_TX_gain1, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain1_win, 0, 2, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._TX_gain0_range = qtgui.Range(0, packet_len, 1, 20, 200)
+        self._TX_gain0_range = qtgui.Range(0, 50, 1, 40, 200)
         self._TX_gain0_win = qtgui.RangeWidget(self._TX_gain0_range, self.set_TX_gain0, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._TX_gain0_win, 3, 2, 1, 1)
         for r in range(3, 4):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(2, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain1_range = qtgui.Range(0, packet_len, 1, 20, 200)
+        self._RX_gain1_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain1_win = qtgui.RangeWidget(self._RX_gain1_range, self.set_RX_gain1, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain1_win, 0, 3, 1, 1)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(3, 4):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self._RX_gain0_range = qtgui.Range(0, packet_len, 1, 20, 200)
+        self._RX_gain0_range = qtgui.Range(0, 50, 1, 35, 200)
         self._RX_gain0_win = qtgui.RangeWidget(self._RX_gain0_range, self.set_RX_gain0, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_grid_layout.addWidget(self._RX_gain0_win, 3, 3, 1, 1)
         for r in range(3, 4):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(3, 4):
             self.top_grid_layout.setColumnStretch(c, 1)
+        self._target_pos_y_cm_range = qtgui.Range(-100, 100, 10, 0, 200)
+        self._target_pos_y_cm_win = qtgui.RangeWidget(self._target_pos_y_cm_range, self.set_target_pos_y_cm, "Target Y (cm)", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._target_pos_y_cm_win, 1, 1, 1, 1)
+        for r in range(1, 2):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(1, 2):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self._target_pos_x_cm_range = qtgui.Range(-100, 100, 10, 0, 200)
+        self._target_pos_x_cm_win = qtgui.RangeWidget(self._target_pos_x_cm_range, self.set_target_pos_x_cm, "Target X (cm)", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_grid_layout.addWidget(self._target_pos_x_cm_win, 1, 0, 1, 1)
+        for r in range(1, 2):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(0, 1):
+            self.top_grid_layout.setColumnStretch(c, 1)
         self.sionna_resource_grid_tx = sionna_resource_grid_tx.SionnaResourceGridTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
         self.sionna_resource_grid_tx.set_min_output_buffer((4*transpose_len))
-        self.range_profile_record_limiter_dev1 = range_profile_record_limiter_dev1.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=record_output_dir_dev1, file_sink_attr="blocks_file_sink_dev1", record_file_path_attr="record_file_path_dev1")
-        self.range_profile_record_limiter_dev0 = range_profile_record_limiter_dev0.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=record_output_dir_dev0, file_sink_attr="blocks_file_sink_dev0", record_file_path_attr="record_file_path_dev0")
+        self.range_profile_record_limiter_dev1 = range_profile_record_limiter_dev1.DivideCpiRecordLimiter(vlen_in=fft_len*zeropadding_fac*transpose_len, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=record_output_dir_dev1, file_sink_attr="blocks_file_sink_dev1", record_file_path_attr="record_file_path_dev1", record_base_name="divide_profiles")
+        self.range_profile_record_limiter_dev0 = range_profile_record_limiter_dev0.DivideCpiRecordLimiter(vlen_in=fft_len*zeropadding_fac*transpose_len, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=record_output_dir_dev0, file_sink_attr="blocks_file_sink_dev0", record_file_path_attr="record_file_path_dev0", record_base_name="divide_profiles")
         self.range_profile_plot_dev1 = range_profile_plot_dev1.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
         self.range_profile_plot_dev0 = range_profile_plot_dev0.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
         self.range_music_block_dev1 = range_music_block_dev1.RangeMusicBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=1, music_enable=music_enable, subarray_size=16, threshold=0.1)
@@ -333,6 +362,8 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._qtgui_freq_sink_x_dev0_win)
         self.ofdm_range_profile_dev1 = ofdm_range_profile_dev1.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
         self.ofdm_range_profile_dev0 = ofdm_range_profile_dev0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
+        self.ofdm_divide_cpi_dev1 = ofdm_divide_cpi_dev1.OfdmDivideCpiBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
+        self.ofdm_divide_cpi_dev0 = ofdm_divide_cpi_dev0.OfdmDivideCpiBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
         self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)
         self.fft_vxx_0.set_min_output_buffer((2*transpose_len))
         self.fft_rx_dev1 = fft.fft_vcc(fft_len, True, (), True, 1)
@@ -345,17 +376,17 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
             0,
             length_tag_key)
         self.digital_ofdm_cyclic_prefixer_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
-        self.blocks_selector_dev1 = blocks.selector(gr.sizeof_gr_complex*(fft_len*zeropadding_fac),0,record_output_index_dev1)
+        self.blocks_selector_dev1 = blocks.selector(gr.sizeof_gr_complex*(fft_len*zeropadding_fac*transpose_len),0,record_output_index_dev1)
         self.blocks_selector_dev1.set_enabled(True)
-        self.blocks_selector_dev0 = blocks.selector(gr.sizeof_gr_complex*(fft_len*zeropadding_fac),0,record_output_index_dev0)
+        self.blocks_selector_dev0 = blocks.selector(gr.sizeof_gr_complex*(fft_len*zeropadding_fac*transpose_len),0,record_output_index_dev0)
         self.blocks_selector_dev0.set_enabled(True)
-        self.blocks_null_sink_rec_dev1 = blocks.null_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac))
-        self.blocks_null_sink_rec_dev0 = blocks.null_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac))
+        self.blocks_null_sink_rec_dev1 = blocks.null_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac*transpose_len))
+        self.blocks_null_sink_rec_dev0 = blocks.null_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac*transpose_len))
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)
         self.blocks_multiply_const_vxx_0.set_min_output_buffer((int(2*transpose_len*(fft_len+fft_len/4))))
-        self.blocks_file_sink_dev1 = blocks.file_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac), record_file_path_dev1, False)
+        self.blocks_file_sink_dev1 = blocks.file_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac*transpose_len), record_file_path_dev1, False)
         self.blocks_file_sink_dev1.set_unbuffered(False)
-        self.blocks_file_sink_dev0 = blocks.file_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac), record_file_path_dev0, False)
+        self.blocks_file_sink_dev0 = blocks.file_sink(gr.sizeof_gr_complex*(fft_len*zeropadding_fac*transpose_len), record_file_path_dev0, False)
         self.blocks_file_sink_dev0.set_unbuffered(False)
 
 
@@ -370,15 +401,17 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_selector_dev1, 0), (self.blocks_file_sink_dev1, 0))
         self.connect((self.blocks_selector_dev1, 1), (self.blocks_null_sink_rec_dev1, 0))
         self.connect((self.digital_ofdm_cyclic_prefixer_0, 0), (self.blocks_multiply_const_vxx_0, 0))
+        self.connect((self.fft_rx_dev0, 0), (self.ofdm_divide_cpi_dev0, 1))
         self.connect((self.fft_rx_dev0, 0), (self.ofdm_range_profile_dev0, 1))
+        self.connect((self.fft_rx_dev1, 0), (self.ofdm_divide_cpi_dev1, 1))
         self.connect((self.fft_rx_dev1, 0), (self.ofdm_range_profile_dev1, 1))
         self.connect((self.fft_vxx_0, 0), (self.digital_ofdm_cyclic_prefixer_0, 0))
+        self.connect((self.ofdm_divide_cpi_dev0, 0), (self.range_profile_record_limiter_dev0, 0))
+        self.connect((self.ofdm_divide_cpi_dev1, 0), (self.range_profile_record_limiter_dev1, 0))
         self.connect((self.ofdm_range_profile_dev0, 1), (self.range_music_block_dev0, 0))
         self.connect((self.ofdm_range_profile_dev0, 0), (self.range_profile_plot_dev0, 0))
-        self.connect((self.ofdm_range_profile_dev0, 1), (self.range_profile_record_limiter_dev0, 0))
         self.connect((self.ofdm_range_profile_dev1, 1), (self.range_music_block_dev1, 0))
         self.connect((self.ofdm_range_profile_dev1, 0), (self.range_profile_plot_dev1, 0))
-        self.connect((self.ofdm_range_profile_dev1, 1), (self.range_profile_record_limiter_dev1, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0, 0), (self.fft_rx_dev1, 0))
         self.connect((self.radar_ofdm_cyclic_prefix_remover_cvc_0_0, 0), (self.fft_rx_dev0, 0))
         self.connect((self.radar_usrp_echotimer_cc_0, 0), (self.qtgui_freq_sink_x_dev1, 0))
@@ -388,6 +421,8 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.connect((self.range_profile_record_limiter_dev0, 0), (self.blocks_selector_dev0, 0))
         self.connect((self.range_profile_record_limiter_dev1, 0), (self.blocks_selector_dev1, 0))
         self.connect((self.sionna_resource_grid_tx, 0), (self.fft_vxx_0, 0))
+        self.connect((self.sionna_resource_grid_tx, 0), (self.ofdm_divide_cpi_dev0, 0))
+        self.connect((self.sionna_resource_grid_tx, 0), (self.ofdm_divide_cpi_dev1, 0))
         self.connect((self.sionna_resource_grid_tx, 0), (self.ofdm_range_profile_dev0, 0))
         self.connect((self.sionna_resource_grid_tx, 0), (self.ofdm_range_profile_dev1, 0))
 
@@ -417,27 +452,27 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
 
     def set_fft_len(self, fft_len):
         self.fft_len = fft_len
-        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
-        self.set_n_carriers(self.fft_len - 2)
-        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
-        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
+        self.set_n_carriers(self.fft_len - 2)
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
+        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
 
     def get_transpose_len(self):
         return self.transpose_len
 
     def set_transpose_len(self, transpose_len):
         self.transpose_len = transpose_len
-        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
         self.set_burst_len_samples(self.transpose_len * (self.fft_len + self.fft_len//4))
+        self.set_packet_len(self.transpose_len * self.n_carriers // 4)
 
     def get_subcarrier_spacing(self):
         return self.subcarrier_spacing
 
     def set_subcarrier_spacing(self, subcarrier_spacing):
         self.subcarrier_spacing = subcarrier_spacing
-        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
+        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
 
     def get_n_carriers(self):
         return self.n_carriers
@@ -468,6 +503,7 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
 
     def set_record_enable(self, record_enable):
         self.record_enable = record_enable
+        self._record_enable_callback(self.record_enable)
         self.set_record_output_index_dev0(0 if self.record_enable else 1)
         self.set_record_output_index_dev1(0 if self.record_enable else 1)
         self.range_profile_record_limiter_dev0.record_enable = self.record_enable
@@ -485,6 +521,18 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
 
     def set_wait_to_start(self, wait_to_start):
         self.wait_to_start = wait_to_start
+
+    def get_target_pos_y_cm(self):
+        return self.target_pos_y_cm
+
+    def set_target_pos_y_cm(self, target_pos_y_cm):
+        self.target_pos_y_cm = target_pos_y_cm
+
+    def get_target_pos_x_cm(self):
+        return self.target_pos_x_cm
+
+    def set_target_pos_x_cm(self, target_pos_x_cm):
+        self.target_pos_x_cm = target_pos_x_cm
 
     def get_record_output_index_dev1(self):
         return self.record_output_index_dev1
@@ -539,20 +587,20 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
 
     def set_range_roi(self, range_roi):
         self.range_roi = range_roi
-        self.range_profile_plot_dev0.range_roi = self.range_roi
         self.range_music_block_dev0.range_roi = self.range_roi
-        self.range_profile_plot_dev1.range_roi = self.range_roi
         self.range_music_block_dev1.range_roi = self.range_roi
+        self.range_profile_plot_dev0.range_roi = self.range_roi
+        self.range_profile_plot_dev1.range_roi = self.range_roi
 
     def get_range_bin_step(self):
         return self.range_bin_step
 
     def set_range_bin_step(self, range_bin_step):
         self.range_bin_step = range_bin_step
-        self.range_profile_plot_dev0.range_bin_step = self.range_bin_step
         self.range_music_block_dev0.range_bin_step = self.range_bin_step
-        self.range_profile_plot_dev1.range_bin_step = self.range_bin_step
         self.range_music_block_dev1.range_bin_step = self.range_bin_step
+        self.range_profile_plot_dev0.range_bin_step = self.range_bin_step
+        self.range_profile_plot_dev1.range_bin_step = self.range_bin_step
 
     def get_num_delay_samp1(self):
         return self.num_delay_samp1

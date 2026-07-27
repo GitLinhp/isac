@@ -25,6 +25,7 @@ from .clutter import MovingTargetIndication, MovingTargetDetection
 from .localization import (
     ground_circle_radius_sq,
     intersect_circles_xy,
+    localize_xy_two_monostatic_ranges,
     localize_xy_z0_colocated_tx_mono_bistatic,
     position_rmse_xy,
     select_xy_solution,
@@ -70,6 +71,7 @@ __all__ = [
     "stack_state_field",
     "ground_circle_radius_sq",
     "intersect_circles_xy",
+    "localize_xy_two_monostatic_ranges",
     "localize_xy_z0_colocated_tx_mono_bistatic",
     "position_rmse_xy",
     "select_xy_solution",

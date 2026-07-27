@@ -23,6 +23,20 @@ from isac_imp.burst_pack import TPP_DONT
 _N_DB = 10.0
 
 
+def compute_symbol_divide_padded(
+    tx: np.ndarray,
+    rx: np.ndarray,
+    *,
+    fft_len: int,
+    vlen_out: int,
+) -> np.ndarray:
+    """单符号 OFDM Divide H(f)：tx/rx 后零填充至 ``vlen_out``（等价 GR divide 输出）。"""
+    h = (tx / rx).astype(np.complex64, copy=False)
+    h_pad = np.zeros(vlen_out, dtype=np.complex64)
+    h_pad[:fft_len] = h
+    return h_pad
+
+
 def _symbol_divide_pad_window(
     tx: np.ndarray,
     rx: np.ndarray,
@@ -32,9 +46,9 @@ def _symbol_divide_pad_window(
     vlen_out: int,
 ) -> np.ndarray:
     """频域除法 → 零填充 → BH 窗，返回窗后序列（range FFT 输入）。"""
-    h = (tx / rx).astype(np.complex64, copy=False)
-    h_pad = np.zeros(vlen_out, dtype=np.complex64)
-    h_pad[:fft_len] = h
+    h_pad = compute_symbol_divide_padded(
+        tx, rx, fft_len=fft_len, vlen_out=vlen_out
+    )
     return (h_pad * bh_window).astype(np.complex64, copy=False)
 
 
@@ -190,6 +204,83 @@ class OfdmRangeProfileBlock(gr.basic_block):
                 self._sym_idx = 0
                 self._power_acc.fill(0.0)
                 self._complex_acc.fill(0.0)
+
+        self.consume(0, n_consumed)
+        self.consume(1, n_consumed)
+        return n_produced
+
+
+class OfdmDivideCpiBlock(gr.basic_block):
+    """双输入 TX/RX 频域符号 → 每 CPI 输出 flatten 的 Divide H(f) 向量。"""
+
+    def __init__(
+        self,
+        fft_len: int = 2048,
+        zeropadding_fac: int = 4,
+        transpose_len: int = 4,
+    ) -> None:
+        self._fft_len = int(fft_len)
+        self._vlen_out = self._fft_len * int(zeropadding_fac)
+        self._transpose_len = int(transpose_len)
+        self._vlen_cpi = self._vlen_out * self._transpose_len
+
+        gr.basic_block.__init__(
+            self,
+            name="OFDM Divide CPI",
+            in_sig=[
+                (np.complex64, self._fft_len),
+                (np.complex64, self._fft_len),
+            ],
+            out_sig=[(np.complex64, self._vlen_cpi)],
+        )
+        self.set_relative_rate(1, self._transpose_len)
+        self.set_tag_propagation_policy(TPP_DONT)
+
+        self._sym_idx = 0
+        self._divide_buf = np.zeros(
+            (self._transpose_len, self._vlen_out), dtype=np.complex64
+        )
+
+    def start(self) -> bool:
+        self._sym_idx = 0
+        self._divide_buf.fill(0)
+        return True
+
+    def forecast(self, noutput_items: int, ninputs) -> list:
+        del ninputs
+        need = noutput_items * self._transpose_len
+        return [need, need]
+
+    def general_work(self, input_items, output_items) -> int:
+        in_tx = input_items[0]
+        in_rx = input_items[1]
+        out = output_items[0]
+
+        n_avail = min(len(in_tx), len(in_rx))
+        if n_avail <= 0:
+            self.consume(0, 0)
+            self.consume(1, 0)
+            return 0
+
+        n_produced = 0
+        n_consumed = 0
+
+        while n_consumed < n_avail and n_produced < len(out):
+            tx = in_tx[n_consumed]
+            rx = in_rx[n_consumed]
+            self._divide_buf[self._sym_idx][:] = compute_symbol_divide_padded(
+                tx,
+                rx,
+                fft_len=self._fft_len,
+                vlen_out=self._vlen_out,
+            )
+            self._sym_idx += 1
+            n_consumed += 1
+
+            if self._sym_idx >= self._transpose_len:
+                out[n_produced][:] = self._divide_buf.ravel()
+                n_produced += 1
+                self._sym_idx = 0
 
         self.consume(0, n_consumed)
         self.consume(1, n_consumed)
