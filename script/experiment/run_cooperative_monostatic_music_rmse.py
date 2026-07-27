@@ -66,7 +66,8 @@ def _default_h5_path() -> Path:
         PROJECT_ROOT
         / "data"
         / "experiment"
-        / "cooperative_monostatic_measurement0"
+        # / "cooperative_monostatic_measurement0"
+        / "cooperative_monostatic"
         / "cooperative_monostatic_dataset.h5"
     )
 
