@@ -371,14 +371,14 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [848, 48.0]
+    coordinate: [1056, 56.0]
     rotation: 0
     state: enabled
 - name: record_max_frames
   id: variable
   parameters:
     comment: ''
-    value: '100'
+    value: '50'
   states:
     bus_sink: false
     bus_source: false
@@ -407,7 +407,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [464, 24.0]
+    coordinate: [464, 32.0]
     rotation: 0
     state: enabled
 - name: record_output_index_dev0
@@ -431,7 +431,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [696, 32.0]
+    coordinate: [784, 64.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -1175,7 +1175,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1784, 348.0]
+    coordinate: [1752, 284.0]
     rotation: 0
     state: enabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0
@@ -1250,7 +1250,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1800, 400]
+    coordinate: [1768, 452.0]
     rotation: 0
     state: enabled
 - name: radar_usrp_echotimer_cc_0_0

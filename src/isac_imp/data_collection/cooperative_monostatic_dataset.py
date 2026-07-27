@@ -516,6 +516,88 @@ def session_train_val_split(
     return train_indices, val_indices
 
 
+def _session_region_map(
+    session_indices: np.ndarray,
+    target_position: np.ndarray,
+) -> dict[int, int]:
+    """session_index → 九宫格 region_id。"""
+    session_indices = np.asarray(session_indices, dtype=np.int64)
+    target_position = np.asarray(target_position, dtype=np.float64)
+    if target_position.ndim != 2 or target_position.shape[1] < 2:
+        raise ValueError(
+            f"target_position 须为 (N, >=2)，收到 {target_position.shape}"
+        )
+    if session_indices.shape[0] != target_position.shape[0]:
+        raise ValueError(
+            "session_indices 与 target_position 帧数须一致，"
+            f"收到 {session_indices.shape[0]} vs {target_position.shape[0]}"
+        )
+
+    from isac_imp.record_target_metadata import target_region_index_xy_m
+
+    session_to_region: dict[int, int] = {}
+    for frame_idx, sess in enumerate(session_indices):
+        sess_int = int(sess)
+        if sess_int in session_to_region:
+            continue
+        x_m = float(target_position[frame_idx, 0])
+        y_m = float(target_position[frame_idx, 1])
+        session_to_region[sess_int] = target_region_index_xy_m(x_m, y_m)
+    return session_to_region
+
+
+def session_train_val_split_by_region(
+    session_indices: np.ndarray,
+    target_position: np.ndarray,
+    val_ratio: float,
+    *,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, dict[int, dict[str, int]]]:
+    """按九宫格区域独立划分 train/val 帧索引（区域内按 session）。"""
+    session_indices = np.asarray(session_indices, dtype=np.int64)
+    if session_indices.ndim != 1:
+        raise ValueError(
+            f"session_indices 须为一维，收到 shape {session_indices.shape}"
+        )
+    if not (0.0 < val_ratio < 1.0):
+        raise ValueError(f"val_ratio 须在 (0, 1)，收到 {val_ratio}")
+
+    session_to_region = _session_region_map(session_indices, target_position)
+    region_to_sessions: dict[int, list[int]] = {i: [] for i in range(9)}
+    for sess, region_id in session_to_region.items():
+        region_to_sessions[region_id].append(sess)
+
+    val_sessions: set[int] = set()
+    split_info: dict[int, dict[str, int]] = {}
+
+    for region_id in range(9):
+        sessions = sorted(region_to_sessions[region_id])
+        n = len(sessions)
+        if n == 0:
+            split_info[region_id] = {"train": 0, "val": 0}
+            continue
+        if n == 1:
+            split_info[region_id] = {"train": 1, "val": 0}
+            continue
+
+        n_val = min(n - 1, max(1, int(round(n * val_ratio))))
+        rng = np.random.default_rng(seed + region_id)
+        perm = np.array(sessions, dtype=np.int64)
+        rng.shuffle(perm)
+        region_val = set(int(s) for s in perm[:n_val])
+        val_sessions.update(region_val)
+        split_info[region_id] = {
+            "train": n - n_val,
+            "val": n_val,
+        }
+
+    all_indices = np.arange(session_indices.size, dtype=np.int64)
+    val_mask = np.isin(session_indices, list(val_sessions))
+    val_indices = all_indices[val_mask]
+    train_indices = all_indices[~val_mask]
+    return train_indices, val_indices, split_info
+
+
 class CooperativeMonostaticRangeProfileDataset(
     Dataset if torch is not None else object  # type: ignore[misc]
 ):

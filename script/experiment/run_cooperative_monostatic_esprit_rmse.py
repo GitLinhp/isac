@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Cooperative monostatic HDF5 数据集：MUSIC 双站定位 RMSE 评估。
+"""Cooperative monostatic HDF5 数据集：ESPRIT 双站定位 RMSE 评估。
 
-复现 GRC 接收链中 divide CPI → CPI 复数距离谱 → 1D MUSIC → 双圆交会。
+复现 GRC 接收链中 divide CPI → CPI 复数距离谱 → 1D ESPRIT → 双圆交会。
 
 示例::
 
-    python script/experiment/run_cooperative_monostatic_music_rmse.py \\
+    python script/experiment/run_cooperative_monostatic_esprit_rmse.py \\
         --h5-path data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5
 """
 
@@ -23,22 +23,17 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from isac import PROJECT_ROOT
-from isac.sensing.detection.cfar import CFARDetector
 from isac.sensing.localization import position_rmse_xy
 from isac_imp.cooperative_monostatic_pipeline import (
-    DEFAULT_CFAR_DETECTOR,
-    DEFAULT_CFAR_GUARD,
-    DEFAULT_CFAR_PFA,
-    DEFAULT_CFAR_TRAILING,
-    DEFAULT_CFAR_TYPE,
+    DEFAULT_ESPRIT_NUM_SOURCES,
+    DEFAULT_ESPRIT_SUBARRAY_SIZE,
+    DEFAULT_ESPRIT_WINDOW_SIZE,
     DEFAULT_RANGE_ROI,
-    default_range_cfar_detector,
     divide_cpi_to_complex_range_profile,
-    estimate_monostatic_range_m,
+    estimate_monostatic_range_esprit_m,
     grc_cooperative_processing_params,
     localize_xy_from_two_ranges,
 )
-from isac_imp.record_target_metadata import is_inner_target_xy_m
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_FRAME_INDEX,
     DATASET_KEY_PROFILES_DEV0,
@@ -46,6 +41,7 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_SESSION_INDEX,
     DATASET_KEY_TARGET_POSITION,
 )
+from isac_imp.record_target_metadata import is_inner_target_xy_m
 
 CSV_COLUMNS = (
     "sample_idx",
@@ -72,15 +68,15 @@ def _default_h5_path() -> Path:
 
 
 def _default_output_csv() -> Path:
-    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "music_rmse.csv"
+    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "esprit_rmse.csv"
 
 
 def _default_output_heatmap() -> Path:
-    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "music_rmse_heatmap.png"
+    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "esprit_rmse_heatmap.png"
 
 
 def _default_output_cdf() -> Path:
-    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "music_rmse_cdf.png"
+    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "esprit_rmse_cdf.png"
 
 
 def _load_plot_heatmap_module():
@@ -97,7 +93,7 @@ def _load_plot_heatmap_module():
 
 def argument_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate cooperative monostatic MUSIC localization RMSE from HDF5"
+        description="Evaluate cooperative monostatic ESPRIT localization RMSE from HDF5"
     )
     parser.add_argument(
         "--h5-path",
@@ -142,7 +138,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--aggregate-session",
         action="store_true",
-        help="average MUSIC ranges over frames per session before localization",
+        help="average ESPRIT ranges over frames per session before localization",
     )
     parser.add_argument(
         "--no-progress",
@@ -172,98 +168,37 @@ def argument_parser() -> argparse.Namespace:
         help="output CDF PNG when --plot-cdf is set",
     )
     parser.add_argument(
-        "--enable-cfar",
-        action="store_true",
-        help="apply 1D CFAR threshold before 1D MUSIC peak selection",
-    )
-    parser.add_argument(
-        "--cfar-type",
-        type=str,
-        default=DEFAULT_CFAR_TYPE,
-        choices=("ca", "os"),
-        help="CFAR type (default: ca)",
-    )
-    parser.add_argument(
-        "--cfar-guard",
+        "--esprit-num-sources",
         type=int,
-        default=DEFAULT_CFAR_GUARD,
-        help="CFAR guard cells (default: 2)",
+        default=DEFAULT_ESPRIT_NUM_SOURCES,
+        help=f"ESPRIT num sources (default: {DEFAULT_ESPRIT_NUM_SOURCES})",
     )
     parser.add_argument(
-        "--cfar-trailing",
+        "--esprit-subarray-size",
         type=int,
-        default=DEFAULT_CFAR_TRAILING,
-        help="CFAR trailing/reference cells (default: 4)",
+        default=DEFAULT_ESPRIT_SUBARRAY_SIZE,
+        help=f"ESPRIT subarray size (default: {DEFAULT_ESPRIT_SUBARRAY_SIZE})",
     )
     parser.add_argument(
-        "--cfar-pfa",
-        type=float,
-        default=DEFAULT_CFAR_PFA,
-        help="CFAR false-alarm rate (default: 1e-4)",
-    )
-    parser.add_argument(
-        "--cfar-detector",
-        type=str,
-        default=DEFAULT_CFAR_DETECTOR,
-        choices=("linear", "squarelaw"),
-        help="CFAR detector domain (default: linear)",
-    )
-    parser.add_argument(
-        "--cfar-k",
+        "--esprit-window-size",
         type=int,
-        default=None,
-        help="OS-CFAR rank k (required when --cfar-type os)",
-    )
-    parser.add_argument(
-        "--cfar-offset",
-        type=float,
-        default=None,
-        help="manual CFAR threshold scale (<1 looser, >1 stricter); default auto from pfa",
+        default=DEFAULT_ESPRIT_WINDOW_SIZE,
+        help=f"ESPRIT refine window size (default: {DEFAULT_ESPRIT_WINDOW_SIZE})",
     )
     return parser.parse_args()
 
 
-def _build_cfar_detector_from_args(args: argparse.Namespace) -> CFARDetector | None:
-    if not args.enable_cfar:
-        return None
-    cfar_type = str(args.cfar_type).strip().lower()
-    if cfar_type == "os" and args.cfar_k is None:
-        raise ValueError("--cfar-k is required when --cfar-type os")
-    return default_range_cfar_detector(
-        cfar_type=cfar_type,
-        guard=int(args.cfar_guard),
-        trailing=int(args.cfar_trailing),
-        pfa=float(args.cfar_pfa),
-        detector=str(args.cfar_detector),
-        k=int(args.cfar_k) if args.cfar_k is not None else None,
-        offset=float(args.cfar_offset) if args.cfar_offset is not None else None,
-    )
+def _apply_esprit_cli_overrides(proc_params: dict, args: argparse.Namespace) -> None:
+    proc_params["esprit_num_sources"] = int(args.esprit_num_sources)
+    proc_params["esprit_subarray_size"] = int(args.esprit_subarray_size)
+    proc_params["esprit_window_size"] = int(args.esprit_window_size)
 
 
-def _print_cfar_config(cfar_detector: CFARDetector | None) -> None:
-    if cfar_detector is None:
-        print("CFAR: off")
-        return
-    k_label = f", k={cfar_detector.k}" if cfar_detector.k is not None else ""
-    offset_label = (
-        f", offset={cfar_detector.offset}"
-        if cfar_detector.offset is not None
-        else ""
-    )
-    print(
-        "CFAR: on "
-        f"(type={cfar_detector.cfar_type}, guard={cfar_detector.guard}, "
-        f"trailing={cfar_detector.trailing}, pfa={cfar_detector.pfa}, "
-        f"detector={cfar_detector.detector}{k_label}{offset_label})"
-    )
-
-
-def _music_range_from_divide_cpi(
+def _esprit_range_from_divide_cpi(
     divide_cpi: np.ndarray,
     *,
     proc_params: dict,
     range_roi: tuple[float, float],
-    cfar_detector: CFARDetector | None = None,
 ) -> float:
     profile = divide_cpi_to_complex_range_profile(
         divide_cpi,
@@ -271,14 +206,13 @@ def _music_range_from_divide_cpi(
         zeropadding_fac=proc_params["zeropadding_fac"],
         transpose_len=proc_params["transpose_len"],
     )
-    return estimate_monostatic_range_m(
+    return estimate_monostatic_range_esprit_m(
         profile,
         range_bin_step=proc_params["range_bin_step"],
         range_roi=range_roi,
-        num_sources=proc_params["music_num_sources"],
-        subarray_size=proc_params["music_subarray_size"],
-        threshold=proc_params["music_threshold"],
-        cfar_detector=cfar_detector,
+        num_sources=proc_params["esprit_num_sources"],
+        subarray_size=proc_params["esprit_subarray_size"],
+        window_size=proc_params["esprit_window_size"],
     )
 
 
@@ -316,7 +250,6 @@ def _evaluate_per_frame(
     max_samples: int | None,
     session_index: int | None,
     show_progress: bool,
-    cfar_detector: CFARDetector | None = None,
 ) -> list[dict[str, float | int]]:
     rows: list[dict[str, float | int]] = []
     with h5py.File(h5_path, "r") as f:
@@ -337,7 +270,7 @@ def _evaluate_per_frame(
 
         iterator = tqdm(
             indices,
-            desc="MUSIC RMSE",
+            desc="ESPRIT RMSE",
             unit="frame",
             disable=not show_progress,
         )
@@ -347,17 +280,15 @@ def _evaluate_per_frame(
             true_x, true_y = (float(v) for v in target_ds[sample_idx, :2])
             true_xy = (true_x, true_y)
 
-            r0 = _music_range_from_divide_cpi(
+            r0 = _esprit_range_from_divide_cpi(
                 divide_dev0,
                 proc_params=proc_params,
                 range_roi=range_roi,
-                cfar_detector=cfar_detector,
             )
-            r1 = _music_range_from_divide_cpi(
+            r1 = _esprit_range_from_divide_cpi(
                 divide_dev1,
                 proc_params=proc_params,
                 range_roi=range_roi,
-                cfar_detector=cfar_detector,
             )
             est_x, est_y, rmse = _localize_sample(
                 r0,
@@ -393,7 +324,6 @@ def _evaluate_aggregate_session(
     max_samples: int | None,
     session_index: int | None,
     show_progress: bool,
-    cfar_detector: CFARDetector | None = None,
 ) -> list[dict[str, float | int]]:
     session_ranges: dict[int, dict[str, list[float]]] = defaultdict(
         lambda: {"r0": [], "r1": [], "true_x": [], "true_y": [], "frame_index": []}
@@ -416,23 +346,21 @@ def _evaluate_aggregate_session(
 
         iterator = tqdm(
             indices,
-            desc="MUSIC ranges",
+            desc="ESPRIT ranges",
             unit="frame",
             disable=not show_progress,
         )
         for sample_idx in iterator:
             sess = int(session_ds[sample_idx])
-            r0 = _music_range_from_divide_cpi(
+            r0 = _esprit_range_from_divide_cpi(
                 dev0_ds[sample_idx],
                 proc_params=proc_params,
                 range_roi=range_roi,
-                cfar_detector=cfar_detector,
             )
-            r1 = _music_range_from_divide_cpi(
+            r1 = _esprit_range_from_divide_cpi(
                 dev1_ds[sample_idx],
                 proc_params=proc_params,
                 range_roi=range_roi,
-                cfar_detector=cfar_detector,
             )
             bucket = session_ranges[sess]
             bucket["r0"].append(r0)
@@ -548,7 +476,7 @@ def _print_summary(rows: list[dict[str, float | int]]) -> None:
         ),
         _stats_table_row("outer", _rmse_stats(rmses[~inner_mask])),
     ]
-    print("\nMUSIC localization RMSE summary:")
+    print("\nESPRIT localization RMSE summary:")
     print(
         tabulate(
             table_rows,
@@ -566,12 +494,10 @@ def main() -> None:
         raise FileNotFoundError(h5_path)
 
     proc_params = grc_cooperative_processing_params()
+    _apply_esprit_cli_overrides(proc_params, args)
     range_roi = DEFAULT_RANGE_ROI
     dev0_xy = (float(args.dev0_xy[0]), float(args.dev0_xy[1]))
     dev1_xy = (float(args.dev1_xy[0]), float(args.dev1_xy[1]))
-    cfar_detector = _build_cfar_detector_from_args(args)
-    proc_params["cfar_enabled"] = cfar_detector is not None
-    _print_cfar_config(cfar_detector)
 
     if args.aggregate_session:
         rows = _evaluate_aggregate_session(
@@ -583,7 +509,6 @@ def main() -> None:
             max_samples=args.max_samples,
             session_index=args.session_index,
             show_progress=not args.no_progress,
-            cfar_detector=cfar_detector,
         )
     else:
         rows = _evaluate_per_frame(
@@ -595,7 +520,6 @@ def main() -> None:
             max_samples=args.max_samples,
             session_index=args.session_index,
             show_progress=not args.no_progress,
-            cfar_detector=cfar_detector,
         )
 
     output_csv = args.output_csv.resolve()
@@ -611,13 +535,14 @@ def main() -> None:
                 args.output_heatmap.resolve(),
                 dev0_xy=dev0_xy,
                 dev1_xy=dev1_xy,
+                title_prefix="Cooperative Monostatic ESPRIT Localization RMSE",
             )
             print(f"output heatmap: {args.output_heatmap.resolve()}")
         if args.plot_cdf:
             plot_mod.plot_rmse_cdf_from_csv(
                 output_csv,
                 args.output_cdf.resolve(),
-                title="MUSIC localization RMSE CDF",
+                title="ESPRIT localization RMSE CDF",
             )
             print(f"output cdf: {args.output_cdf.resolve()}")
 

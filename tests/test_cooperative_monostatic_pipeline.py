@@ -17,6 +17,7 @@ from isac_imp.cooperative_monostatic_pipeline import (
     compute_1d_cfar_threshold,
     default_range_cfar_detector,
     divide_cpi_to_complex_range_profile,
+    estimate_monostatic_range_esprit_m,
     estimate_monostatic_range_m,
     grc_cooperative_processing_params,
 )
@@ -61,6 +62,34 @@ def test_compute_1d_cfar_threshold_shape() -> None:
     detector = default_range_cfar_detector()
     threshold = compute_1d_cfar_threshold(magnitude, detector)
     assert threshold.shape == magnitude.shape
+
+
+def test_grc_processing_params_include_esprit_defaults() -> None:
+    params = grc_cooperative_processing_params()
+    assert params["esprit_num_sources"] == 1
+    assert params["esprit_subarray_size"] == 16
+    assert params["esprit_window_size"] == 32
+
+
+def test_estimate_monostatic_range_esprit_m_returns_finite_peak() -> None:
+    vlen = DEFAULT_FFT_LEN * DEFAULT_ZEROPADDING_FAC
+    step = cooperative_range_bin_step_m()
+    peak_bin = 20
+    x = np.arange(vlen, dtype=np.float64)
+    profile = (8.0 * np.exp(-0.5 * ((x - peak_bin) / 1.5) ** 2)).astype(np.complex64)
+    params = grc_cooperative_processing_params()
+
+    r_esprit = estimate_monostatic_range_esprit_m(
+        profile,
+        range_bin_step=params["range_bin_step"],
+        range_roi=params["range_roi"],
+        num_sources=params["esprit_num_sources"],
+        subarray_size=params["esprit_subarray_size"],
+        window_size=params["esprit_window_size"],
+    )
+
+    assert np.isfinite(r_esprit)
+    assert abs(r_esprit - peak_bin * step) < step
 
 
 def test_estimate_monostatic_range_with_and_without_cfar() -> None:

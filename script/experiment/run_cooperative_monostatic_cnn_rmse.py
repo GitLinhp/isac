@@ -37,7 +37,7 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_PROFILES_DEV1,
     DATASET_KEY_SESSION_INDEX,
     DATASET_KEY_TARGET_POSITION,
-    session_train_val_split,
+    session_train_val_split_by_region,
 )
 from isac_imp.record_target_metadata import is_inner_target_xy_m
 
@@ -61,7 +61,7 @@ def _default_h5_path() -> Path:
         PROJECT_ROOT
         / "data"
         / "experiment"
-        / "cooperative_monostatic"
+        / "cooperative_monostatic_measurement0"
         / "cooperative_monostatic_dataset.h5"
     )
 
@@ -76,6 +76,10 @@ def _default_output_csv() -> Path:
 
 def _default_output_heatmap() -> Path:
     return PROJECT_ROOT / "out" / "cooperative_monostatic" / "cnn_rmse_heatmap.png"
+
+
+def _default_output_cdf() -> Path:
+    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "cnn_rmse_cdf.png"
 
 
 def _load_plot_heatmap_module():
@@ -191,6 +195,17 @@ def argument_parser() -> argparse.Namespace:
         default=_default_output_heatmap(),
         help="output heatmap PNG when --plot-heatmap is set",
     )
+    parser.add_argument(
+        "--plot-cdf",
+        action="store_true",
+        help="after evaluation, plot RMSE CDF (global / inner / outer)",
+    )
+    parser.add_argument(
+        "--output-cdf",
+        type=Path,
+        default=_default_output_cdf(),
+        help="output CDF PNG when --plot-cdf is set",
+    )
     return parser.parse_args()
 
 
@@ -206,10 +221,18 @@ def _resolve_frame_indices(
     with h5py.File(h5_path, "r") as f:
         total = int(f[DATASET_KEY_PROFILES_DEV0].shape[0])
         session_arr = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
+        target_position = np.asarray(
+            f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
+        )
 
     indices = np.arange(total, dtype=np.int64)
     if val_only:
-        _, val_idx = session_train_val_split(session_arr, val_ratio, seed=seed)
+        _, val_idx, _ = session_train_val_split_by_region(
+            session_arr,
+            target_position,
+            val_ratio,
+            seed=seed,
+        )
         indices = val_idx
 
     if session_index is not None:
@@ -468,7 +491,7 @@ def main() -> None:
 
     model = load_cooperative_monostatic_cnn_checkpoint(checkpoint, device)
     split_label = (
-        f"val-only (ratio={args.val_ratio}, seed={args.seed})"
+        f"val-only region-stratified (9 regions, ratio={args.val_ratio}, seed={args.seed})"
         if args.val_only
         else "all frames"
     )
@@ -501,13 +524,21 @@ def main() -> None:
     print(f"output csv: {output_csv}")
     _print_summary(rows)
 
-    if args.plot_heatmap:
+    if args.plot_heatmap or args.plot_cdf:
         plot_mod = _load_plot_heatmap_module()
-        plot_mod.plot_rmse_heatmap_combined_from_csv(
-            output_csv,
-            args.output_heatmap.resolve(),
-        )
-        print(f"output heatmap: {args.output_heatmap.resolve()}")
+        if args.plot_heatmap:
+            plot_mod.plot_rmse_heatmap_combined_from_csv(
+                output_csv,
+                args.output_heatmap.resolve(),
+            )
+            print(f"output heatmap: {args.output_heatmap.resolve()}")
+        if args.plot_cdf:
+            plot_mod.plot_rmse_cdf_from_csv(
+                output_csv,
+                args.output_cdf.resolve(),
+                title="CNN localization RMSE CDF",
+            )
+            print(f"output cdf: {args.output_cdf.resolve()}")
 
 
 if __name__ == "__main__":

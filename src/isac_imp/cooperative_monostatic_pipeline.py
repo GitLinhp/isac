@@ -1,4 +1,4 @@
-"""Cooperative monostatic 离线 DSP：divide CPI → 距离谱 → MUSIC。"""
+"""Cooperative monostatic 离线 DSP：divide CPI → 距离谱 → MUSIC / ESPRIT。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import torch
 from gnuradio.fft import window
 
 from isac.sensing.detection.cfar import CFARDetector
+from isac.sensing.detection.range_esprit_estimator import RangeEspritEstimator
 from isac.sensing.detection.range_music_estimator import RangeMusicEstimator
 from isac.sensing.localization import localize_xy_two_monostatic_ranges
 
@@ -20,6 +21,9 @@ DEFAULT_RANGE_ROI = (0.0, 5.0)
 DEFAULT_MUSIC_NUM_SOURCES = 1
 DEFAULT_MUSIC_SUBARRAY_SIZE = 16
 DEFAULT_MUSIC_THRESHOLD = 0.1
+DEFAULT_ESPRIT_NUM_SOURCES = 1
+DEFAULT_ESPRIT_SUBARRAY_SIZE = 16
+DEFAULT_ESPRIT_WINDOW_SIZE = 32
 DEFAULT_CFAR_TYPE = "ca"
 DEFAULT_CFAR_GUARD = 2
 DEFAULT_CFAR_TRAILING = 4
@@ -166,6 +170,31 @@ def estimate_monostatic_range_m(
     return float(peaks.peak_ranges_m[0])
 
 
+def estimate_monostatic_range_esprit_m(
+    profile_complex: Sequence[complex] | np.ndarray,
+    *,
+    range_bin_step: float,
+    range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
+    num_sources: int = DEFAULT_ESPRIT_NUM_SOURCES,
+    subarray_size: int = DEFAULT_ESPRIT_SUBARRAY_SIZE,
+    window_size: int = DEFAULT_ESPRIT_WINDOW_SIZE,
+    estimator: RangeEspritEstimator | None = None,
+) -> float:
+    """对 CPI 复数距离谱做 1D ESPRIT，返回最强峰距离 (m)；无峰时 ``nan``。"""
+    est = estimator or RangeEspritEstimator()
+    peaks = est(
+        profile_complex,
+        range_bin_step=float(range_bin_step),
+        range_roi=range_roi,
+        num_sources=int(num_sources),
+        subarray_size=int(subarray_size),
+        window_size=int(window_size),
+    )
+    if peaks.peak_ranges_m.size == 0:
+        return float("nan")
+    return float(peaks.peak_ranges_m[0])
+
+
 def localize_xy_from_two_ranges(
     pos0_xy: Sequence[float],
     r0_m: float,
@@ -205,5 +234,8 @@ def grc_cooperative_processing_params() -> dict[str, Any]:
         "music_num_sources": DEFAULT_MUSIC_NUM_SOURCES,
         "music_subarray_size": DEFAULT_MUSIC_SUBARRAY_SIZE,
         "music_threshold": DEFAULT_MUSIC_THRESHOLD,
+        "esprit_num_sources": DEFAULT_ESPRIT_NUM_SOURCES,
+        "esprit_subarray_size": DEFAULT_ESPRIT_SUBARRAY_SIZE,
+        "esprit_window_size": DEFAULT_ESPRIT_WINDOW_SIZE,
         "cfar_enabled": False,
     }

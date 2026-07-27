@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import Colormap
+from matplotlib.ticker import PercentFormatter
 from scipy.interpolate import griddata
 
 from isac import PROJECT_ROOT
@@ -363,9 +364,6 @@ def _save_rmse_heatmap_figure(
         plt.show()
     plt.close(fig)
 
-    title_mean = f"{global_mean:.3f}" if np.isfinite(global_mean) else "nan"
-    print(f"heatmap saved: {output_png}")
-    print(f"filled cells: {filled_cells}, global mean RMSE: {title_mean} m")
     return {
         "filled_cells": filled_cells,
         "global_mean_rmse_m": global_mean,
@@ -463,6 +461,7 @@ def plot_rmse_heatmap_combined_from_csv(
     cmap: str | Colormap = DEFAULT_CMAP,
     dpi: int = 150,
     show: bool = False,
+    title_prefix: str = "Cooperative Monostatic MUSIC Localization RMSE",
 ) -> dict[str, float | int]:
     """读取 RMSE CSV，绘制全区域 10 cm 统一网格热力图（外侧插值）。"""
     df = pd.read_csv(input_csv)
@@ -480,7 +479,7 @@ def plot_rmse_heatmap_combined_from_csv(
         x_edges=_uniform_axis_edges(xs, UNIFIED_GRID_STEP_M),
         y_edges=_uniform_axis_edges(ys, UNIFIED_GRID_STEP_M),
         title=(
-            "Cooperative Monostatic MUSIC Localization RMSE\n"
+            f"{title_prefix}\n"
             f"(uniform 10 cm grid, outer interpolated), cells={filled_cells}, "
             f"mean RMSE={title_mean} m"
         ),
@@ -490,12 +489,103 @@ def plot_rmse_heatmap_combined_from_csv(
         dpi=dpi,
         show=show,
     )
-    print(f"interpolated cells: {interpolated_cells}")
     return {
         **summary,
         "interpolated_cells": interpolated_cells,
         "total_rows": int(len(df)),
     }
+
+
+def _empirical_cdf(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """对有限 RMSE 值计算经验 CDF，返回 ``(x_sorted, cdf_y)``。"""
+    valid = np.sort(values[np.isfinite(values)])
+    if valid.size == 0:
+        return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
+    cdf_y = np.arange(1, valid.size + 1, dtype=np.float64) / valid.size
+    return valid, cdf_y
+
+
+def _split_rmse_by_region(df: pd.DataFrame) -> dict[str, np.ndarray]:
+    """按 global / inner / outer 拆分 ``rmse_xy_m`` 数组。"""
+    if "true_x_m" not in df.columns or "true_y_m" not in df.columns:
+        raise ValueError("CSV must contain true_x_m and true_y_m columns")
+    if "rmse_xy_m" not in df.columns:
+        raise ValueError("CSV must contain rmse_xy_m column")
+
+    rmses = df["rmse_xy_m"].to_numpy(dtype=np.float64)
+    inner_mask = df.apply(
+        lambda row: is_inner_target_xy_m(
+            float(row["true_x_m"]), float(row["true_y_m"])
+        ),
+        axis=1,
+    ).to_numpy(dtype=bool)
+    return {
+        "global": rmses,
+        "inner": rmses[inner_mask],
+        "outer": rmses[~inner_mask],
+    }
+
+
+def plot_rmse_cdf_from_csv(
+    input_csv: Path,
+    output_png: Path,
+    *,
+    title: str = "Localization RMSE CDF",
+    dpi: int = 150,
+    show: bool = False,
+) -> dict[str, int | float | str]:
+    """从 RMSE CSV 绘制 global / inner / outer 经验 CDF 曲线。"""
+    df = pd.read_csv(input_csv)
+    by_region = _split_rmse_by_region(df)
+
+    curve_styles = {
+        "global": {"linestyle": "-", "label": "global"},
+        "inner": {"linestyle": "--", "label": "inner (|x|,|y| <= 0.5 m)"},
+        "outer": {"linestyle": "-.", "label": "outer"},
+    }
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    curves_plotted = 0
+    summary: dict[str, int | float | str] = {"total_rows": int(len(df))}
+
+    for region, values in by_region.items():
+        valid_count = int(np.isfinite(values).sum())
+        summary[f"{region}_valid"] = valid_count
+        x_cdf, y_cdf = _empirical_cdf(values)
+        if x_cdf.size == 0:
+            continue
+        style = curve_styles[region]
+        ax.plot(
+            x_cdf,
+            y_cdf,
+            linestyle=style["linestyle"],
+            linewidth=1.8,
+            label=f"{style['label']} (n={valid_count})",
+        )
+        curves_plotted += 1
+
+    if curves_plotted == 0:
+        raise ValueError(f"no finite rmse_xy_m values in {input_csv}")
+
+    ax.set_xlabel("RMSE (m)")
+    ax.set_ylabel("CDF")
+    ax.set_title(title)
+    ax.set_ylim(0.0, 1.0)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
+    ax.grid(True, alpha=0.25, linewidth=0.5)
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+
+    output_png = output_png.resolve()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_png, dpi=int(dpi), bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+    summary["curves_plotted"] = curves_plotted
+    summary["output_png"] = str(output_png)
+    return summary
 
 
 def _default_output_png() -> Path:
@@ -593,6 +683,7 @@ def main() -> None:
         combined_png,
         **plot_kwargs,
     )
+    print(f"output heatmap: {combined_png}")
     if args.legacy_outer_20cm_heatmap:
         plot_rmse_heatmap_outer_from_csv(
             input_csv,

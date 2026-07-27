@@ -320,3 +320,46 @@ def test_plot_rmse_heatmap_combined_from_csv_writes_png(plot_mod, tmp_path: Path
     assert summary["interpolated_cells"] > 0
     assert summary["total_rows"] == 3
 
+
+def test_empirical_cdf_monotonic(plot_mod) -> None:
+    values = np.array([1.0, 3.0, 2.0, np.nan], dtype=np.float64)
+    x_cdf, y_cdf = plot_mod._empirical_cdf(values)
+
+    assert np.allclose(x_cdf, [1.0, 2.0, 3.0])
+    assert np.allclose(y_cdf, [1.0 / 3.0, 2.0 / 3.0, 1.0])
+    assert y_cdf[-1] == pytest.approx(1.0)
+
+
+def test_split_rmse_by_region(plot_mod, tmp_path: Path) -> None:
+    csv_path = tmp_path / "rmse.csv"
+    _synthetic_inner_outer_rmse_csv(csv_path)
+    df = pd.read_csv(csv_path)
+
+    by_region = plot_mod._split_rmse_by_region(df)
+
+    assert by_region["global"].size == 3
+    assert by_region["inner"].size == 1
+    assert by_region["outer"].size == 2
+    assert np.isfinite(by_region["global"]).sum() == 3
+    assert by_region["inner"][0] == pytest.approx(0.5)
+
+
+def test_plot_rmse_cdf_from_csv_writes_png(plot_mod, tmp_path: Path) -> None:
+    csv_path = tmp_path / "rmse.csv"
+    png_path = tmp_path / "rmse_cdf.png"
+    _synthetic_inner_outer_rmse_csv(csv_path)
+
+    summary = plot_mod.plot_rmse_cdf_from_csv(
+        csv_path,
+        png_path,
+        title="Test RMSE CDF",
+    )
+
+    assert png_path.is_file()
+    assert png_path.stat().st_size > 0
+    assert summary["total_rows"] == 3
+    assert summary["global_valid"] == 3
+    assert summary["inner_valid"] == 1
+    assert summary["outer_valid"] == 2
+    assert summary["curves_plotted"] == 3
+

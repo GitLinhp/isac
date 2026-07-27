@@ -121,6 +121,50 @@ def is_inner_target_xy_m(
     return abs(x_m) <= radius_m and abs(y_m) <= radius_m
 
 
+REGION_COUNT = 9
+TARGET_REGION_NAMES: tuple[str, ...] = (
+    "SW",
+    "W",
+    "NW",
+    "S",
+    "C",
+    "N",
+    "SE",
+    "E",
+    "NE",
+)
+
+
+def _axis_band(coord_m: float, *, radius_m: float) -> int:
+    """单轴分档：0=负侧，1=中间带，2=正侧。"""
+    if coord_m < -radius_m:
+        return 0
+    if coord_m <= radius_m:
+        return 1
+    return 2
+
+
+def target_region_index_xy_m(
+    x_m: float,
+    y_m: float,
+    *,
+    radius_m: float = INNER_RADIUS_CM / 100.0,
+) -> int:
+    """目标 (x, y) 所属九宫格区域索引 0..8（内侧边界 |x|,|y| <= radius_m）。"""
+    if is_inner_target_xy_m(x_m, y_m, radius_m=radius_m):
+        return 4
+    x_band = _axis_band(x_m, radius_m=radius_m)
+    y_band = _axis_band(y_m, radius_m=radius_m)
+    return int(x_band * 3 + y_band)
+
+
+def target_region_name(region_id: int) -> str:
+    """九宫格区域名称（SW/W/NW/S/C/N/SE/E/NE）。"""
+    if not (0 <= region_id < REGION_COUNT):
+        raise ValueError(f"region_id 须在 [0, {REGION_COUNT})，收到 {region_id}")
+    return TARGET_REGION_NAMES[region_id]
+
+
 def _is_inner_coord(
     x_cm: float,
     y_cm: float,

@@ -36,12 +36,14 @@ from isac_imp.cooperative_monostatic_pipeline import (
 )
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_SESSION_INDEX,
+    DATASET_KEY_TARGET_POSITION,
     DEFAULT_LABEL_JITTER_M,
     CooperativeMonostaticRangeProfileDataset,
-    session_train_val_split,
+    session_train_val_split_by_region,
 )
+from isac_imp.record_target_metadata import REGION_COUNT, target_region_name
 
-DEFAULT_H5 = Path("data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5")
+DEFAULT_H5 = Path("data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5")
 DEFAULT_OUTPUT_DIR = Path("models/cooperative_monostatic_cnn")
 
 
@@ -59,6 +61,34 @@ def _parse_range_roi(values: list[float]) -> tuple[float, float]:
     if lo >= hi:
         raise argparse.ArgumentTypeError(f"range-roi 须满足 min < max，收到 {lo} {hi}")
     return lo, hi
+
+
+def _print_region_split_summary(
+    split_info: dict[int, dict[str, int]],
+    *,
+    val_ratio: float,
+    seed: int,
+) -> None:
+    rows = [
+        [
+            target_region_name(region_id),
+            info.get("train", 0),
+            info.get("val", 0),
+        ]
+        for region_id in range(REGION_COUNT)
+        for info in [split_info.get(region_id, {"train": 0, "val": 0})]
+    ]
+    print(
+        f"\nTrain/val split: region-stratified (9 regions), "
+        f"val_ratio={val_ratio:.2f}, seed={seed}"
+    )
+    print(
+        tabulate(
+            rows,
+            headers=["Region", "Train sessions", "Val sessions"],
+            tablefmt="simple",
+        )
+    )
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -99,6 +129,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--no-label-jitter",
         action="store_true",
         help="禁用训练标签抖动（等价于 --label-jitter-m 0）",
+    )
+    parser.add_argument(
+        "--plot-every",
+        type=int,
+        default=10,
+        help="每隔多少 epoch 刷新 training_curve.png（默认 10）",
     )
     parser.add_argument("--device", type=str, default=None)
     return parser
@@ -216,6 +252,8 @@ def main() -> None:
     h5_path = args.h5_path.resolve()
     if not h5_path.is_file():
         raise FileNotFoundError(f"HDF5 不存在: {h5_path}")
+    if args.plot_every < 1:
+        raise ValueError(f"--plot-every 须 >= 1，收到 {args.plot_every}")
 
     range_roi = _parse_range_roi(list(args.range_roi))
     proc_params = grc_cooperative_processing_params()
@@ -227,14 +265,24 @@ def main() -> None:
 
     with h5py.File(h5_path, "r") as f:
         session_indices = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
+        target_position = np.asarray(
+            f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
+        )
 
     if args.max_samples is not None:
         max_samples = min(int(args.max_samples), session_indices.size)
         session_indices = session_indices[:max_samples]
+        target_position = target_position[:max_samples]
 
-    train_idx, val_idx = session_train_val_split(
+    train_idx, val_idx, split_info = session_train_val_split_by_region(
         session_indices,
+        target_position,
         args.val_ratio,
+        seed=args.seed,
+    )
+    _print_region_split_summary(
+        split_info,
+        val_ratio=args.val_ratio,
         seed=args.seed,
     )
 
@@ -290,7 +338,7 @@ def main() -> None:
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"label_jitter_m={label_jitter_m:.3f} (train only)\n"
         f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
-        f"dropout={args.dropout}\n"
+        f"dropout={args.dropout}, plot_every={args.plot_every}\n"
         f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
     )
 
@@ -328,7 +376,8 @@ def main() -> None:
                 paths.best_model,
             )
 
-    _plot_training_history(history, paths.training_curve)
+        if epoch % args.plot_every == 0 or epoch == args.epochs:
+            _plot_training_history(history, paths.training_curve)
 
     summary_rows = [
         ["Train frames", len(train_dataset)],
