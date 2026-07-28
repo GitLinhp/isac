@@ -27,13 +27,16 @@ from tqdm import tqdm
 
 from isac.models import (
     COOPERATIVE_FEATURE_MODES,
+    CooperativeMonostatic2DCNN,
     CooperativeMonostaticCNN,
     TargetPositionRmseLoss,
     compute_logmag_norm_stats_from_h5,
     cooperative_feature_in_channels,
+    cooperative_model_type,
     load_cooperative_monostatic_cnn_checkpoint,
     save_cooperative_norm_stats,
 )
+from isac.models.loss import session_aggregated_target_rmse_loss
 from isac.utils import set_random_seed
 from isac_imp.cooperative_monostatic_pipeline import (
     DEFAULT_RANGE_ROI,
@@ -241,6 +244,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="max masked range bins for SpecAugment",
     )
     parser.add_argument(
+        "--session-aggregated-loss",
+        action="store_true",
+        help="train with session-level aggregated RMSE loss instead of frame-level",
+    )
+    parser.add_argument(
         "--plot-every",
         type=int,
         default=10,
@@ -269,10 +277,11 @@ def _collate_batch(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
 
 
 def _checkpoint_payload(
-    model: CooperativeMonostaticCNN,
+    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
     *,
     in_channels: int,
     feature_mode: str,
+    model_type: str,
     norm_stats_path: str | None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -282,6 +291,7 @@ def _checkpoint_payload(
         "num_layers": model.num_layers,
         "dropout": model.dropout,
         "feature_mode": feature_mode,
+        "model_type": model_type,
     }
     if norm_stats_path is not None:
         payload["norm_stats_path"] = norm_stats_path
@@ -345,14 +355,34 @@ def _plot_training_history(
     plt.close(fig)
 
 
+def _compute_batch_loss(
+    criterion: TargetPositionRmseLoss,
+    pred_xy: torch.Tensor,
+    target_xy: torch.Tensor,
+    session_index: torch.Tensor,
+    *,
+    sample_weight: torch.Tensor | None,
+    session_aggregated_loss: bool,
+) -> torch.Tensor:
+    if session_aggregated_loss:
+        return session_aggregated_target_rmse_loss(
+            pred_xy,
+            target_xy,
+            session_index,
+            sample_weight=sample_weight,
+        )
+    return criterion(pred_xy, target_xy, sample_weight=sample_weight)
+
+
 @torch.no_grad()
 def _evaluate(
     loader: DataLoader,
-    model: CooperativeMonostaticCNN,
+    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
     criterion: TargetPositionRmseLoss,
     device: torch.device | str,
     *,
     outer_ring_weight: float = 1.0,
+    session_aggregated_loss: bool = False,
 ) -> tuple[float, float]:
     model.eval()
     total_loss = 0.0
@@ -361,11 +391,19 @@ def _evaluate(
     for batch in loader:
         dual_profiles = batch["dual_profiles"].to(device)
         target_xy = batch["target_xy"].to(device)
+        session_index = batch["session_index"].to(device)
         pred_xy = model(dual_profiles)
         sample_weight = _outer_ring_sample_weights(
             target_xy, outer_weight=outer_ring_weight
         )
-        loss = criterion(pred_xy, target_xy, sample_weight=sample_weight)
+        loss = _compute_batch_loss(
+            criterion,
+            pred_xy,
+            target_xy,
+            session_index,
+            sample_weight=sample_weight,
+            session_aggregated_loss=session_aggregated_loss,
+        )
         total_loss += float(loss.item())
         total_euclidean += float(
             TargetPositionRmseLoss.mean_euclidean_error_m(
@@ -380,12 +418,13 @@ def _evaluate(
 
 def _train_one_epoch(
     loader: DataLoader,
-    model: CooperativeMonostaticCNN,
+    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
     criterion: TargetPositionRmseLoss,
     optimizer: torch.optim.Optimizer,
     device: torch.device | str,
     *,
     outer_ring_weight: float = 1.0,
+    session_aggregated_loss: bool = False,
 ) -> float:
     model.train()
     total_loss = 0.0
@@ -393,12 +432,20 @@ def _train_one_epoch(
     for batch in tqdm(loader, desc="train", unit="batch", leave=False):
         dual_profiles = batch["dual_profiles"].to(device)
         target_xy = batch["target_xy"].to(device)
+        session_index = batch["session_index"].to(device)
         sample_weight = _outer_ring_sample_weights(
             target_xy, outer_weight=outer_ring_weight
         )
         optimizer.zero_grad(set_to_none=True)
         pred_xy = model(dual_profiles)
-        loss = criterion(pred_xy, target_xy, sample_weight=sample_weight)
+        loss = _compute_batch_loss(
+            criterion,
+            pred_xy,
+            target_xy,
+            session_index,
+            sample_weight=sample_weight,
+            session_aggregated_loss=session_aggregated_loss,
+        )
         loss.backward()
         optimizer.step()
         total_loss += float(loss.item())
@@ -654,6 +701,7 @@ def main() -> None:
     )
 
     in_channels = cooperative_feature_in_channels(feature_mode)  # type: ignore[arg-type]
+    model_type = cooperative_model_type(feature_mode)  # type: ignore[arg-type]
     lr = float(args.finetune_lr if args.resume is not None and args.finetune_lr else args.lr)
 
     if args.resume is not None:
@@ -673,6 +721,13 @@ def main() -> None:
                 f"resume in_channels={ckpt.get('in_channels')} "
                 f"与当前 feature_mode 需要 {in_channels} 不一致"
             )
+    elif model_type == "2d":
+        model = CooperativeMonostatic2DCNN(
+            in_channels=in_channels,
+            base_channels=args.base_channels,
+            num_layers=args.num_layers,
+            dropout=args.dropout,
+        ).to(device)
     else:
         model = CooperativeMonostaticCNN(
             in_channels=in_channels,
@@ -716,10 +771,11 @@ def main() -> None:
 
     print(
         f"{dataset_msg}\n"
-        f"feature_mode={feature_mode}, in_channels={in_channels}\n"
+        f"feature_mode={feature_mode}, model_type={model_type}, in_channels={in_channels}\n"
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"label_jitter_m={label_jitter_m:.3f} (train only)\n"
         f"weight_decay={args.weight_decay}, outer_ring_weight={args.outer_ring_weight}, "
+        f"session_aggregated_loss={args.session_aggregated_loss}, "
         f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}\n"
         f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
         f"dropout={args.dropout}, lr={lr}, plot_every={args.plot_every}\n"
@@ -757,6 +813,7 @@ def main() -> None:
             optimizer,
             device,
             outer_ring_weight=args.outer_ring_weight,
+            session_aggregated_loss=args.session_aggregated_loss,
         )
         eval_loss, eval_mean_euclidean = _evaluate(
             eval_loader,
@@ -764,6 +821,7 @@ def main() -> None:
             criterion,
             device,
             outer_ring_weight=args.outer_ring_weight,
+            session_aggregated_loss=args.session_aggregated_loss,
         )
 
         history["epoch"].append(float(epoch))
@@ -789,6 +847,7 @@ def main() -> None:
                     model,
                     in_channels=in_channels,
                     feature_mode=feature_mode,
+                    model_type=model_type,
                     norm_stats_path=norm_stats_rel,
                 ),
                 paths.best_model,

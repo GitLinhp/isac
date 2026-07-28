@@ -295,14 +295,71 @@ def divide_cpi_dual_to_roi_range_profiles_np(
     return roi0, roi1
 
 
+def divide_cpi_to_roi_range_slowtime_np(
+    cpi_flat,
+    *,
+    proc_params: dict,
+    range_roi: tuple[float, float],
+) -> np.ndarray:
+    """divide CPI → per-symbol ROI 复数距离谱 ``(T, L)``，T=transpose_len。"""
+    from gnuradio.fft import window
+
+    from isac_imp.range_profile_roi_slice import compute_range_roi
+
+    fft_len = int(proc_params["fft_len"])
+    zeropadding_fac = int(proc_params["zeropadding_fac"])
+    transpose_len = int(proc_params["transpose_len"])
+    vlen_range = int(proc_params.get("vlen_range", fft_len * zeropadding_fac))
+    expected = vlen_range * transpose_len
+    flat = np.asarray(cpi_flat, dtype=np.complex64).reshape(-1)
+    if flat.size != expected:
+        raise ValueError(f"expected divide CPI length {expected}, got {flat.size}")
+
+    divide_buf = flat.reshape(transpose_len, vlen_range)
+    bh_window = np.asarray(window.blackmanharris(vlen_range), dtype=np.float32)
+    spectra = []
+    for symbol in divide_buf:
+        h_win = symbol * bh_window
+        spectra.append(np.fft.fft(h_win).astype(np.complex64, copy=False))
+    profile = np.stack(spectra, axis=0)
+    start_bin, num_bins, _ = compute_range_roi(
+        range_roi=range_roi,
+        range_bin_step=float(proc_params["range_bin_step"]),
+        vlen_in=int(profile.shape[1]),
+    )
+    return profile[:, start_bin : start_bin + num_bins].astype(np.complex64, copy=False)
+
+
+def divide_cpi_dual_to_roi_range_slowtime_np(
+    cpi_dev0,
+    cpi_dev1,
+    *,
+    proc_params: dict,
+    range_roi: tuple[float, float],
+) -> np.ndarray:
+    """双设备 divide CPI → ``(2, T, L)`` 复数 range×slow-time ROI。"""
+    roi0 = divide_cpi_to_roi_range_slowtime_np(
+        cpi_dev0, proc_params=proc_params, range_roi=range_roi
+    )
+    roi1 = divide_cpi_to_roi_range_slowtime_np(
+        cpi_dev1, proc_params=proc_params, range_roi=range_roi
+    )
+    return np.stack([roi0, roi1], axis=0).astype(np.complex64, copy=False)
+
+
 CooperativeFeatureMode = Literal[
-    "complex_roi", "real_imag", "logmag_fixed_norm", "legacy_4ch"
+    "complex_roi",
+    "real_imag",
+    "logmag_fixed_norm",
+    "legacy_4ch",
+    "range_slowtime_2d",
 ]
 COOPERATIVE_FEATURE_MODES: tuple[CooperativeFeatureMode, ...] = (
     "complex_roi",
     "real_imag",
     "logmag_fixed_norm",
     "legacy_4ch",
+    "range_slowtime_2d",
 )
 
 
@@ -311,6 +368,17 @@ def cooperative_feature_in_channels(mode: CooperativeFeatureMode) -> int:
     if mode == "logmag_fixed_norm":
         return 2
     return 4
+
+
+def cooperative_model_type(mode: CooperativeFeatureMode) -> str:
+    """Return ``'2d'`` for range×slow-time CNN, else ``'1d'``."""
+    if mode == "range_slowtime_2d":
+        return "2d"
+    return "1d"
+
+
+def cooperative_uses_slowtime_input(mode: CooperativeFeatureMode) -> bool:
+    return mode == "range_slowtime_2d"
 
 
 def cooperative_input_is_complex(mode: CooperativeFeatureMode) -> bool:
@@ -352,6 +420,50 @@ def dual_roi_to_real_imag_features(dual_roi: torch.Tensor) -> torch.Tensor:
     if dual_roi.ndim == 2:
         return feats[0]
     return torch.stack(feats, dim=0)
+
+
+def _dual_slowtime_to_batch(dual_slowtime: torch.Tensor) -> torch.Tensor:
+    """规范为 ``(B, 2, T, L)`` complex。"""
+    if dual_slowtime.ndim == 3:
+        if dual_slowtime.shape[0] != 2:
+            raise ValueError(
+                "dual_slowtime 单样本须为 (2, T, L) complex，"
+                f"收到 {tuple(dual_slowtime.shape)}"
+            )
+        return dual_slowtime.unsqueeze(0)
+    if dual_slowtime.ndim == 4 and dual_slowtime.shape[1] == 2:
+        return dual_slowtime
+    raise ValueError(
+        "dual_slowtime complex 须为 (2, T, L) 或 (B, 2, T, L)，"
+        f"收到 {tuple(dual_slowtime.shape)}"
+    )
+
+
+def dual_slowtime_to_real_imag_features(dual_slowtime: torch.Tensor) -> torch.Tensor:
+    """双设备 range×slow-time → ``(4, T, L)`` 或 ``(B, 4, T, L)`` real+imag float。"""
+    batch = _dual_slowtime_to_batch(dual_slowtime)
+    feats = []
+    for i in range(batch.shape[0]):
+        dev_feats = []
+        for dev in range(2):
+            real = batch[i, dev].real.to(dtype=torch.float32)
+            imag = batch[i, dev].imag.to(dtype=torch.float32)
+            dev_feats.extend([real, imag])
+        feats.append(torch.stack(dev_feats, dim=0))
+    if dual_slowtime.ndim == 3:
+        return feats[0]
+    return torch.stack(feats, dim=0)
+
+
+def dual_slowtime_to_model_input(
+    dual_slowtime: torch.Tensor,
+    *,
+    mode: CooperativeFeatureMode = "range_slowtime_2d",
+) -> torch.Tensor:
+    """双设备 range×slow-time 复数谱 → 2D CNN 输入 tensor。"""
+    if mode != "range_slowtime_2d":
+        raise ValueError(f"dual_slowtime_to_model_input 仅支持 range_slowtime_2d，收到 {mode!r}")
+    return dual_slowtime_to_real_imag_features(dual_slowtime)
 
 
 def _normalize_logmag_with_stats(
@@ -448,19 +560,32 @@ def apply_cooperative_feature_augmentation(
     noise_std: float = 0.0,
     spec_augment_prob: float = 0.0,
     spec_augment_max_bins: int = 3,
+    spec_augment_max_slowtime_rows: int = 1,
     rng: np.random.Generator | None = None,
 ) -> torch.Tensor:
-    """训练时对 float 特征做噪声 / SpecAugment。"""
+    """训练时对 float 特征做噪声 / SpecAugment（支持 1D ``(C,L)`` 与 2D ``(C,T,L)``）。"""
     out = features.clone()
     if noise_std > 0.0:
         out = out + torch.randn_like(out) * float(noise_std)
     if spec_augment_prob > 0.0:
         gen = rng or np.random.default_rng()
         if gen.random() < spec_augment_prob:
-            length = int(out.shape[-1])
-            width = int(gen.integers(1, max(2, spec_augment_max_bins + 1)))
-            start = int(gen.integers(0, max(1, length - width + 1)))
-            out[..., start : start + width] = 0.0
+            if out.ndim == 2:
+                length = int(out.shape[-1])
+                width = int(gen.integers(1, max(2, spec_augment_max_bins + 1)))
+                start = int(gen.integers(0, max(1, length - width + 1)))
+                out[..., start : start + width] = 0.0
+            elif out.ndim == 3:
+                length = int(out.shape[-1])
+                width = int(gen.integers(1, max(2, spec_augment_max_bins + 1)))
+                start = int(gen.integers(0, max(1, length - width + 1)))
+                out[..., start : start + width] = 0.0
+                if spec_augment_max_slowtime_rows > 0 and out.shape[-2] > 1:
+                    n_rows = int(
+                        gen.integers(1, min(out.shape[-2], spec_augment_max_slowtime_rows) + 1)
+                    )
+                    row_idx = gen.choice(out.shape[-2], size=n_rows, replace=False)
+                    out[..., row_idx, :] = 0.0
     return out
 
 

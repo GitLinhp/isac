@@ -26,8 +26,11 @@ from tqdm import tqdm
 from isac import PROJECT_ROOT
 from isac.models import load_cooperative_monostatic_cnn_checkpoint
 from isac.models.preprocess import (
+    cooperative_uses_slowtime_input,
     divide_cpi_dual_to_roi_range_profiles_np,
+    divide_cpi_dual_to_roi_range_slowtime_np,
     dual_roi_to_model_input,
+    dual_slowtime_to_model_input,
     load_cooperative_norm_stats,
 )
 from isac.sensing.localization import position_rmse_xy
@@ -317,13 +320,22 @@ def _evaluate_per_frame(
             for sample_idx in chunk:
                 divide_dev0 = dev0_ds[sample_idx]
                 divide_dev1 = dev1_ds[sample_idx]
-                roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
-                    divide_dev0,
-                    divide_dev1,
-                    proc_params=proc_params,
-                    range_roi=range_roi,
-                )
-                dual_list.append(np.stack([roi0, roi1], axis=0))
+                if cooperative_uses_slowtime_input(feature_mode):  # type: ignore[arg-type]
+                    dual_arr = divide_cpi_dual_to_roi_range_slowtime_np(
+                        divide_dev0,
+                        divide_dev1,
+                        proc_params=proc_params,
+                        range_roi=range_roi,
+                    )
+                    dual_list.append(dual_arr)
+                else:
+                    roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
+                        divide_dev0,
+                        divide_dev1,
+                        proc_params=proc_params,
+                        range_roi=range_roi,
+                    )
+                    dual_list.append(np.stack([roi0, roi1], axis=0))
                 true_x = float(target_ds[sample_idx, 0])
                 true_y = float(target_ds[sample_idx, 1])
                 meta.append(
@@ -338,12 +350,18 @@ def _evaluate_per_frame(
 
             dual_np = np.stack(dual_list, axis=0).astype(np.complex64, copy=False)
             dual_tensor = torch.from_numpy(dual_np)
-            model_input = dual_roi_to_model_input(
-                dual_tensor,
-                mode=feature_mode,  # type: ignore[arg-type]
-                norm_means=norm_means,
-                norm_stds=norm_stds,
-            )
+            if cooperative_uses_slowtime_input(feature_mode):  # type: ignore[arg-type]
+                model_input = dual_slowtime_to_model_input(
+                    dual_tensor,
+                    mode=feature_mode,  # type: ignore[arg-type]
+                )
+            else:
+                model_input = dual_roi_to_model_input(
+                    dual_tensor,
+                    mode=feature_mode,  # type: ignore[arg-type]
+                    norm_means=norm_means,
+                    norm_stds=norm_stds,
+                )
             pred_xy = _predict_xy_batch(model, device, model_input)
 
             for i, (sample_idx, sess, frame_idx, true_x, true_y) in enumerate(meta):

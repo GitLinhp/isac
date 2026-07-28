@@ -29,6 +29,7 @@ checkpoint
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -312,11 +313,101 @@ class CooperativeMonostaticCNN(nn.Module):
         return self.head(x)
 
 
+class CooperativeMonostatic2DCNN(nn.Module):
+    """双站 cooperative monostatic range×slow-time ROI → 目标 (x, y) 回归 2D CNN。"""
+
+    def __init__(
+        self,
+        *,
+        in_channels: int = 4,
+        base_channels: int = 32,
+        num_layers: int = 2,
+        dropout: float = 0.2,
+    ) -> None:
+        super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"num_layers 须 >= 1，收到 {num_layers}")
+
+        self.in_channels = in_channels
+        self.base_channels = base_channels
+        self.num_layers = num_layers
+        self.dropout = dropout
+        c = base_channels
+
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, c, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(c),
+            nn.ReLU(inplace=True),
+        )
+
+        layers: list[ConvResidualBlock] = []
+        for i in range(num_layers):
+            if i == 0:
+                layers.append(ConvResidualBlock(c, c, stride=1))
+            else:
+                in_ch = c * (2 ** (i - 1))
+                out_ch = c * (2**i)
+                layers.append(ConvResidualBlock(in_ch, out_ch, stride=(1, 2)))
+        self.layers = nn.ModuleList(layers)
+
+        final_ch = c * (2 ** (num_layers - 1))
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(final_ch, final_ch // 2),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+            nn.Linear(final_ch // 2, 2),
+        )
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """``(C, T, L)`` 或 ``(B, C, T, L)`` float → ``(B, 2)`` xy (m)。"""
+        x = features
+        if x.ndim == 3:
+            x = x.unsqueeze(0)
+        elif x.ndim != 4:
+            raise ValueError(
+                "CooperativeMonostatic2DCNN 输入须为 (C, T, L) 或 (B, C, T, L)，"
+                f"收到 {tuple(features.shape)}"
+            )
+        if x.shape[1] != self.in_channels:
+            raise ValueError(
+                f"特征通道数 {x.shape[1]} 与 in_channels={self.in_channels} 不一致"
+            )
+        x = self.stem(x)
+        for layer in self.layers:
+            x = layer(x)
+        return self.head(x)
+
+
+def _build_cooperative_localization_model_from_ckpt(
+    ckpt: dict[str, Any],
+) -> nn.Module:
+    model_type = str(ckpt.get("model_type", "1d"))
+    in_channels = int(ckpt["in_channels"])
+    base_channels = int(ckpt["base_channels"])
+    num_layers = int(ckpt.get("num_layers", 3 if model_type == "1d" else 2))
+    dropout = float(ckpt["dropout"])
+    if model_type == "2d":
+        return CooperativeMonostatic2DCNN(
+            in_channels=in_channels,
+            base_channels=base_channels,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    return CooperativeMonostaticCNN(
+        in_channels=in_channels,
+        base_channels=base_channels,
+        num_layers=num_layers,
+        dropout=dropout,
+    )
+
+
 def load_cooperative_monostatic_cnn_checkpoint(
     path: str | Path,
     device: torch.device | str,
-) -> CooperativeMonostaticCNN:
-    """从 checkpoint 加载 CooperativeMonostaticCNN。"""
+) -> CooperativeMonostaticCNN | CooperativeMonostatic2DCNN:
+    """从 checkpoint 加载 Cooperative Monostatic 定位 CNN（1D 或 2D）。"""
     ckpt_path = Path(path)
     if not ckpt_path.is_file():
         raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
@@ -326,12 +417,7 @@ def load_cooperative_monostatic_cnn_checkpoint(
     if missing:
         raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
 
-    model = CooperativeMonostaticCNN(
-        in_channels=int(ckpt["in_channels"]),
-        base_channels=int(ckpt["base_channels"]),
-        num_layers=int(ckpt.get("num_layers", 3)),
-        dropout=float(ckpt["dropout"]),
-    )
+    model = _build_cooperative_localization_model_from_ckpt(ckpt)
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device)
     model.eval()

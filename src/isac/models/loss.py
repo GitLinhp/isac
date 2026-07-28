@@ -138,3 +138,45 @@ class TargetPositionRmseLoss(nn.Module):
             return dist.mean()
         weight_sum = sample_weight.sum().clamp_min(1e-12)
         return (dist * sample_weight).sum() / weight_sum
+
+
+def session_aggregated_target_rmse_loss(
+    pred_xy: torch.Tensor,
+    target_xy: torch.Tensor,
+    session_index: torch.Tensor,
+    *,
+    sample_weight: torch.Tensor | None = None,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """按 session 聚合预测与标签后计算 batch 平均 session RMSE（可微）。"""
+    if pred_xy.shape != target_xy.shape:
+        raise ValueError(
+            "pred_xy 与 target_xy 形状须一致，"
+            f"收到 {tuple(pred_xy.shape)} 与 {tuple(target_xy.shape)}"
+        )
+    if pred_xy.ndim != 2 or pred_xy.shape[-1] != 2:
+        raise ValueError(f"pred_xy 须为 (B, 2)，收到 {tuple(pred_xy.shape)}")
+    if session_index.ndim != 1 or session_index.shape[0] != pred_xy.shape[0]:
+        raise ValueError(
+            "session_index 须为 (B,) 且与 batch 对齐，"
+            f"收到 {tuple(session_index.shape)} vs batch {pred_xy.shape[0]}"
+        )
+
+    unique_sessions = torch.unique(session_index)
+    session_sq: list[torch.Tensor] = []
+    session_weights: list[torch.Tensor] = []
+    for sess in unique_sessions:
+        mask = session_index == sess
+        pred_mean = pred_xy[mask].mean(dim=0)
+        target_mean = target_xy[mask].mean(dim=0)
+        sq_dist = ((pred_mean - target_mean) ** 2).sum()
+        session_sq.append(sq_dist)
+        if sample_weight is not None:
+            session_weights.append(sample_weight[mask].mean())
+        else:
+            session_weights.append(torch.tensor(1.0, device=pred_xy.device, dtype=pred_xy.dtype))
+
+    sq_tensor = torch.stack(session_sq)
+    w_tensor = torch.stack(session_weights)
+    weight_sum = w_tensor.sum().clamp_min(eps)
+    return torch.sqrt((sq_tensor * w_tensor).sum() / weight_sum + eps)

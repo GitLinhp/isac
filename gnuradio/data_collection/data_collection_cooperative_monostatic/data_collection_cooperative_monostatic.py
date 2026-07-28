@@ -109,7 +109,7 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
         self.record_max_frames = record_max_frames = 50
         self.record_file_path_dev1 = record_file_path_dev1 = "/dev/null"
         self.record_file_path_dev0 = record_file_path_dev0 = "/dev/null"
-        self.range_roi = range_roi = (0.0, 5)
+        self.range_roi = range_roi = (0.0, 4)
         self.range_bin_step = range_bin_step = 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
         self.num_delay_samp1 = num_delay_samp1 = 278
         self.num_delay_samp0 = num_delay_samp0 = 279

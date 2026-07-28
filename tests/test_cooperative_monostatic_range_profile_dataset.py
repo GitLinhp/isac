@@ -7,7 +7,10 @@ import numpy as np
 import pytest
 import torch
 
-from isac_imp.cooperative_monostatic_pipeline import grc_cooperative_processing_params
+from isac_imp.cooperative_monostatic_pipeline import (
+    DEFAULT_RANGE_ROI,
+    grc_cooperative_processing_params,
+)
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_FRAME_INDEX,
     DATASET_KEY_PROFILES_DEV0,
@@ -75,12 +78,13 @@ def test_lazy_dataset_roi_transform(tmp_path: Path):
         h5_path,
         frame_indices,
         proc_params=grc_cooperative_processing_params(),
-        range_roi=(0.0, 5.0),
+        range_roi=DEFAULT_RANGE_ROI,
         transform_on_load=True,
         feature_mode="complex_roi",
     )
     item = ds[0]
     assert item["dual_profiles"].shape[0] == 2
+    assert item["dual_profiles"].shape[1] == 27
     assert item["dual_profiles"].dtype == torch.complex64
     assert item["target_xy"].shape == (2,)
     assert item["session_index"].dtype == torch.int64

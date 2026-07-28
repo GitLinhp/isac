@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - torch optional
     torch = None
     Dataset = object  # type: ignore[misc, assignment]
 
+from isac_imp.cooperative_monostatic_pipeline import DEFAULT_RANGE_ROI
 from isac_imp.record_target_metadata import COOPERATIVE_TARGET_CSV, CSV_COLUMNS
 
 DEFAULT_COOPERATIVE_VLEN = 32768
@@ -392,7 +393,7 @@ def build_cooperative_monostatic_features_h5(
     source_h5: str | Path,
     output_path: str | Path,
     *,
-    range_roi: tuple[float, float] = (0.0, 5.0),
+    range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
     proc_params: dict[str, Any] | None = None,
     show_progress: bool = True,
 ) -> Path:
@@ -756,7 +757,7 @@ class CooperativeMonostaticRangeProfileDataset(
         frame_indices: np.ndarray | Sequence[int],
         *,
         proc_params: dict[str, Any] | None = None,
-        range_roi: tuple[float, float] = (0.0, 5.0),
+        range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
         transform_on_load: bool = True,
         label_jitter_m: float = 0.0,
         feature_mode: str = "real_imag",
@@ -827,15 +828,29 @@ class CooperativeMonostaticRangeProfileDataset(
         session_idx = int(f[DATASET_KEY_SESSION_INDEX][global_idx])
 
         if self.transform_on_load:
-            from isac.models.preprocess import divide_cpi_dual_to_roi_range_profiles_np
-
-            roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
-                cpi_dev0,
-                cpi_dev1,
-                proc_params=self.proc_params,
-                range_roi=self.range_roi,
+            from isac.models.preprocess import (
+                cooperative_uses_slowtime_input,
+                divide_cpi_dual_to_roi_range_profiles_np,
+                divide_cpi_dual_to_roi_range_slowtime_np,
+                dual_slowtime_to_model_input,
             )
-            dual_profiles = torch.from_numpy(np.stack([roi0, roi1], axis=0))
+
+            if cooperative_uses_slowtime_input(self.feature_mode):  # type: ignore[arg-type]
+                dual_arr = divide_cpi_dual_to_roi_range_slowtime_np(
+                    cpi_dev0,
+                    cpi_dev1,
+                    proc_params=self.proc_params,
+                    range_roi=self.range_roi,
+                )
+                dual_profiles = torch.from_numpy(dual_arr)
+            else:
+                roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
+                    cpi_dev0,
+                    cpi_dev1,
+                    proc_params=self.proc_params,
+                    range_roi=self.range_roi,
+                )
+                dual_profiles = torch.from_numpy(np.stack([roi0, roi1], axis=0))
         else:
             dual_profiles = torch.stack(
                 [
@@ -857,16 +872,24 @@ class CooperativeMonostaticRangeProfileDataset(
         from isac.models.preprocess import (
             apply_cooperative_feature_augmentation,
             cooperative_input_is_complex,
+            cooperative_uses_slowtime_input,
             dual_roi_to_model_input,
+            dual_slowtime_to_model_input,
         )
 
         if self.transform_on_load:
-            model_input = dual_roi_to_model_input(
-                dual_profiles,
-                mode=self.feature_mode,  # type: ignore[arg-type]
-                norm_means=self.norm_means,
-                norm_stds=self.norm_stds,
-            )
+            if cooperative_uses_slowtime_input(self.feature_mode):  # type: ignore[arg-type]
+                model_input = dual_slowtime_to_model_input(
+                    dual_profiles,
+                    mode=self.feature_mode,  # type: ignore[arg-type]
+                )
+            else:
+                model_input = dual_roi_to_model_input(
+                    dual_profiles,
+                    mode=self.feature_mode,  # type: ignore[arg-type]
+                    norm_means=self.norm_means,
+                    norm_stds=self.norm_stds,
+                )
             if (
                 self.augment
                 and not cooperative_input_is_complex(self.feature_mode)  # type: ignore[arg-type]
@@ -962,7 +985,7 @@ def open_cooperative_monostatic_training_dataset(
     frame_indices: np.ndarray | Sequence[int],
     *,
     proc_params: dict[str, Any] | None = None,
-    range_roi: tuple[float, float] = (0.0, 5.0),
+    range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
     transform_on_load: bool = True,
     label_jitter_m: float = 0.0,
     feature_mode: str = "real_imag",

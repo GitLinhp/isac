@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from isac.models import CooperativeMonostaticCNN
+from isac_imp.cooperative_monostatic_pipeline import DEFAULT_RANGE_ROI
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_FRAME_INDEX,
     DATASET_KEY_PROFILES_DEV0,
@@ -112,7 +113,7 @@ def test_evaluate_per_frame_smoke(tmp_path: Path, eval_mod) -> None:
             "isac_imp.cooperative_monostatic_pipeline",
             fromlist=["grc_cooperative_processing_params"],
         ).grc_cooperative_processing_params(),
-        range_roi=(0.0, 5.0),
+        range_roi=DEFAULT_RANGE_ROI,
         frame_indices=[0, 1, 2, 3],
         batch_size=2,
         show_progress=False,
