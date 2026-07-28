@@ -31,6 +31,7 @@ from tqdm import tqdm
 from isac import PROJECT_ROOT
 from isac.models import (
     COOPERATIVE_FEATURE_MODES,
+    COOPERATIVE_POOL_MODES,
     CooperativeMonostatic2DCNN,
     CooperativeMonostaticCNN,
     TargetPositionRmseLoss,
@@ -220,7 +221,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--val-ratio",
         type=float,
-        default=0.2,
+        default=0.4,
         help="val split ratio on --h5-path when not using external test",
     )
     parser.add_argument(
@@ -247,6 +248,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-channels", type=int, default=32)
     parser.add_argument("--num-layers", type=int, default=3)
     parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument(
+        "--pool-mode",
+        type=str,
+        choices=list(COOPERATIVE_POOL_MODES),
+        default="gap",
+        help=(
+            "1D CNN range pooling (S1): gap | attention | multiscale | "
+            "gap_gmp | soft_argmax (default: gap)"
+        ),
+    )
+    parser.add_argument(
+        "--multiscale-bins",
+        type=int,
+        default=8,
+        help="AdaptiveAvgPool1d bins when --pool-mode multiscale (default: 8)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--num-workers",
@@ -398,6 +415,10 @@ def _checkpoint_payload(
         "feature_mode": feature_mode,
         "model_type": model_type,
     }
+    if isinstance(model, CooperativeMonostaticCNN):
+        payload["pool_mode"] = model.pool_mode
+        payload["multiscale_bins"] = model.multiscale_bins
+        payload["soft_argmax_temp"] = model.soft_argmax_temp
     if norm_stats_path is not None:
         payload["norm_stats_path"] = norm_stats_path
     return payload
@@ -1178,6 +1199,8 @@ def main() -> None:
             base_channels=args.base_channels,
             num_layers=args.num_layers,
             dropout=args.dropout,
+            pool_mode=args.pool_mode,
+            multiscale_bins=args.multiscale_bins,
         ).to(device)
 
     criterion = TargetPositionRmseLoss()
@@ -1225,7 +1248,8 @@ def main() -> None:
         f"session_aggregated_loss={args.session_aggregated_loss}, "
         f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}\n"
         f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
-        f"dropout={args.dropout}, lr={lr}\n"
+        f"dropout={args.dropout}, pool_mode={args.pool_mode}, "
+        f"multiscale_bins={args.multiscale_bins}, lr={lr}\n"
         f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
     )
     if norm_stats_path is not None:

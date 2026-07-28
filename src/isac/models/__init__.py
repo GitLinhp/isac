@@ -34,6 +34,7 @@ from .loss import (
     session_aggregated_target_rmse_loss,
 )
 from .model_design import (
+    COOPERATIVE_POOL_MODES,
     Conv1dResidualBlock,
     ConvResidualBlock,
     CooperativeMonostatic2DCNN,
@@ -44,6 +45,7 @@ from .model_design import (
 
 __all__ = [
     "COOPERATIVE_FEATURE_MODES",
+    "COOPERATIVE_POOL_MODES",
     "CooperativeFeatureMode",
     "Conv1dResidualBlock",
     "ConvResidualBlock",

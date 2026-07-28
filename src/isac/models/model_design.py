@@ -238,6 +238,145 @@ class Conv1dResidualBlock(nn.Module):
         return out
 
 
+# 1D 定位 CNN 的 range 池化方式（S1：保留距离维几何信息）
+COOPERATIVE_POOL_MODES = (
+    "gap",
+    "attention",
+    "multiscale",
+    "gap_gmp",
+    "soft_argmax",
+)
+CooperativePoolMode = str  # one of COOPERATIVE_POOL_MODES
+
+
+class RangeAttentionPool1d(nn.Module):
+    """对 range 维做可学习注意力加权求和，保留峰位置线索。"""
+
+    def __init__(self, channels: int) -> None:
+        super().__init__()
+        self.score = nn.Conv1d(channels, 1, kernel_size=1, bias=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C, L) → (B, C)
+        attn = torch.softmax(self.score(x), dim=-1)
+        return (x * attn).sum(dim=-1)
+
+
+class SoftArgmaxRangeCue(nn.Module):
+    """将特征投影为两站 range 能量，再 soft-argmax 得到归一化距离估计。"""
+
+    def __init__(self, channels: int, *, temperature: float = 1.0) -> None:
+        super().__init__()
+        if temperature <= 0:
+            raise ValueError(f"temperature 须 > 0，收到 {temperature}")
+        self.proj = nn.Conv1d(channels, 2, kernel_size=1, bias=True)
+        self.temperature = float(temperature)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C, L) → (B, 2) 归一化 soft-argmax 位置 ∈ [0, 1]
+        logits = self.proj(x) / self.temperature
+        weights = torch.softmax(logits, dim=-1)
+        length = x.shape[-1]
+        if length <= 1:
+            return weights.sum(dim=-1) * 0.0
+        coords = torch.linspace(
+            0.0,
+            1.0,
+            length,
+            device=x.device,
+            dtype=x.dtype,
+        )
+        return (weights * coords).sum(dim=-1)
+
+
+class CooperativeRangePoolHead(nn.Module):
+    """保留距离维信息的池化 + MLP 回归头。
+
+    ``gap``
+        AdaptiveAvgPool1d(1)（基线，抹掉 bin 位置）
+    ``attention``
+        range 维可学习加权求和
+    ``multiscale``
+        AdaptiveAvgPool1d(k) 展平，保留粗粒度位置
+    ``gap_gmp``
+        GAP 与 GMP 拼接
+    ``soft_argmax``
+        GAP 特征 + 两站 soft-argmax 距离线索拼接
+    """
+
+    def __init__(
+        self,
+        channels: int,
+        *,
+        dropout: float = 0.2,
+        pool_mode: str = "gap",
+        multiscale_bins: int = 8,
+        soft_argmax_temp: float = 1.0,
+    ) -> None:
+        super().__init__()
+        mode = str(pool_mode)
+        if mode not in COOPERATIVE_POOL_MODES:
+            raise ValueError(
+                f"pool_mode 须为 {COOPERATIVE_POOL_MODES}，收到 {mode!r}"
+            )
+        if multiscale_bins < 1:
+            raise ValueError(f"multiscale_bins 须 >= 1，收到 {multiscale_bins}")
+
+        self.pool_mode = mode
+        self.multiscale_bins = int(multiscale_bins)
+        self.channels = int(channels)
+
+        self.attn_pool: RangeAttentionPool1d | None = None
+        self.soft_argmax: SoftArgmaxRangeCue | None = None
+        self.multi_pool: nn.AdaptiveAvgPool1d | None = None
+
+        if mode == "gap":
+            head_in = channels
+        elif mode == "attention":
+            self.attn_pool = RangeAttentionPool1d(channels)
+            head_in = channels
+        elif mode == "multiscale":
+            self.multi_pool = nn.AdaptiveAvgPool1d(self.multiscale_bins)
+            head_in = channels * self.multiscale_bins
+        elif mode == "gap_gmp":
+            head_in = channels * 2
+        else:  # soft_argmax
+            self.soft_argmax = SoftArgmaxRangeCue(
+                channels, temperature=soft_argmax_temp
+            )
+            head_in = channels + 2
+
+        self.mlp = nn.Sequential(
+            nn.Linear(head_in, channels // 2),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+            nn.Linear(channels // 2, 2),
+        )
+
+    def _pool(self, x: torch.Tensor) -> torch.Tensor:
+        mode = self.pool_mode
+        if mode == "gap":
+            return F.adaptive_avg_pool1d(x, 1).flatten(1)
+        if mode == "attention":
+            assert self.attn_pool is not None
+            return self.attn_pool(x)
+        if mode == "multiscale":
+            assert self.multi_pool is not None
+            return self.multi_pool(x).flatten(1)
+        if mode == "gap_gmp":
+            gap = F.adaptive_avg_pool1d(x, 1).flatten(1)
+            gmp = F.adaptive_max_pool1d(x, 1).flatten(1)
+            return torch.cat([gap, gmp], dim=1)
+        # soft_argmax：全局平均特征 + 两站归一化距离线索
+        assert self.soft_argmax is not None
+        gap = F.adaptive_avg_pool1d(x, 1).flatten(1)
+        range_cue = self.soft_argmax(x)
+        return torch.cat([gap, range_cue], dim=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.mlp(self._pool(x))
+
+
 class CooperativeMonostaticCNN(nn.Module):
     """双站 cooperative monostatic ROI 距离谱 → 目标 (x, y) 回归 CNN。"""
 
@@ -248,6 +387,9 @@ class CooperativeMonostaticCNN(nn.Module):
         base_channels: int = 32,
         num_layers: int = 3,
         dropout: float = 0.2,
+        pool_mode: str = "gap",
+        multiscale_bins: int = 8,
+        soft_argmax_temp: float = 1.0,
     ) -> None:
         super().__init__()
         if num_layers < 1:
@@ -257,6 +399,13 @@ class CooperativeMonostaticCNN(nn.Module):
         self.base_channels = base_channels
         self.num_layers = num_layers
         self.dropout = dropout
+        self.pool_mode = str(pool_mode)
+        if self.pool_mode not in COOPERATIVE_POOL_MODES:
+            raise ValueError(
+                f"pool_mode 须为 {COOPERATIVE_POOL_MODES}，收到 {self.pool_mode!r}"
+            )
+        self.multiscale_bins = int(multiscale_bins)
+        self.soft_argmax_temp = float(soft_argmax_temp)
         c = base_channels
 
         self.stem = nn.Sequential(
@@ -277,14 +426,24 @@ class CooperativeMonostaticCNN(nn.Module):
         self.layers = nn.ModuleList(layers)
 
         final_ch = c * (2 ** (num_layers - 1))
-        self.head = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
-            nn.Flatten(),
-            nn.Linear(final_ch, final_ch // 2),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout),
-            nn.Linear(final_ch // 2, 2),
-        )
+        # gap 保持旧 Sequential head，兼容已有 checkpoint 的 state_dict 键名
+        if self.pool_mode == "gap":
+            self.head = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+                nn.Flatten(),
+                nn.Linear(final_ch, final_ch // 2),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=dropout),
+                nn.Linear(final_ch // 2, 2),
+            )
+        else:
+            self.head = CooperativeRangePoolHead(
+                final_ch,
+                dropout=dropout,
+                pool_mode=self.pool_mode,
+                multiscale_bins=self.multiscale_bins,
+                soft_argmax_temp=self.soft_argmax_temp,
+            )
 
     def forward(self, dual_profiles: torch.Tensor) -> torch.Tensor:
         """ROI 双设备距离谱 → 目标位置 ``(B, 2)`` = ``[x_m, y_m]``。
@@ -400,6 +559,9 @@ def _build_cooperative_localization_model_from_ckpt(
         base_channels=base_channels,
         num_layers=num_layers,
         dropout=dropout,
+        pool_mode=str(ckpt.get("pool_mode", "gap")),
+        multiscale_bins=int(ckpt.get("multiscale_bins", 8)),
+        soft_argmax_temp=float(ckpt.get("soft_argmax_temp", 1.0)),
     )
 
 
