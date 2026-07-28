@@ -302,8 +302,7 @@ def divide_cpi_to_roi_range_slowtime_np(
     range_roi: tuple[float, float],
 ) -> np.ndarray:
     """divide CPI → per-symbol ROI 复数距离谱 ``(T, L)``，T=transpose_len。"""
-    from gnuradio.fft import window
-
+    from isac.utils.windows import blackmanharris
     from isac_imp.range_profile_roi_slice import compute_range_roi
 
     fft_len = int(proc_params["fft_len"])
@@ -316,7 +315,7 @@ def divide_cpi_to_roi_range_slowtime_np(
         raise ValueError(f"expected divide CPI length {expected}, got {flat.size}")
 
     divide_buf = flat.reshape(transpose_len, vlen_range)
-    bh_window = np.asarray(window.blackmanharris(vlen_range), dtype=np.float32)
+    bh_window = np.asarray(blackmanharris(vlen_range), dtype=np.float32)
     spectra = []
     for symbol in divide_buf:
         h_win = symbol * bh_window
@@ -563,12 +562,18 @@ def apply_cooperative_feature_augmentation(
     spec_augment_max_slowtime_rows: int = 1,
     rng: np.random.Generator | None = None,
 ) -> torch.Tensor:
-    """训练时对 float 特征做噪声 / SpecAugment（支持 1D ``(C,L)`` 与 2D ``(C,T,L)``）。"""
+    """训练时对 float 特征做噪声 / SpecAugment（支持 1D ``(C,L)`` 与 2D ``(C,T,L)``）。
+
+    噪声与 SpecAugment 均由 ``rng``（缺省新建 Generator）驱动，便于按 seed 严格复现。
+    """
     out = features.clone()
+    gen = rng or np.random.default_rng()
     if noise_std > 0.0:
-        out = out + torch.randn_like(out) * float(noise_std)
+        noise = gen.normal(0.0, float(noise_std), size=tuple(out.shape)).astype(
+            np.float32, copy=False
+        )
+        out = out + torch.from_numpy(noise).to(dtype=out.dtype, device=out.device)
     if spec_augment_prob > 0.0:
-        gen = rng or np.random.default_rng()
         if gen.random() < spec_augment_prob:
             if out.ndim == 2:
                 length = int(out.shape[-1])

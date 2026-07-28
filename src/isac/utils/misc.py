@@ -10,6 +10,8 @@
 - 进度条创建
 """
 
+import os
+
 import torch
 import numpy as np
 from sionna.phy import config as sn_config
@@ -30,6 +32,9 @@ def set_random_seed(seed: int) -> None:
     - seed : int
         随机种子值，应为非负整数
     """
+    # cuBLAS 确定性工作区（须在首次 CUDA 调用前设置）
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
     # 设置 NumPy 随机种子
     np.random.seed(seed)
 
@@ -42,6 +47,9 @@ def set_random_seed(seed: int) -> None:
         # 确保 CUDA 操作的确定性（如果支持）
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+    # warn_only：个别算子不支持确定性时告警而非直接崩溃
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
     sn_config.seed = seed
 

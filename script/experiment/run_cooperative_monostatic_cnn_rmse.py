@@ -39,11 +39,14 @@ from isac_imp.cooperative_monostatic_pipeline import (
     grc_cooperative_processing_params,
 )
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
+    DATASET_KEY_FEATURES,
     DATASET_KEY_FRAME_INDEX,
     DATASET_KEY_PROFILES_DEV0,
     DATASET_KEY_PROFILES_DEV1,
     DATASET_KEY_SESSION_INDEX,
     DATASET_KEY_TARGET_POSITION,
+    is_cooperative_monostatic_features_h5,
+    resolve_cooperative_features_h5,
     session_train_val_split_by_region,
 )
 from isac_imp.record_target_metadata import is_inner_target_xy_m
@@ -118,7 +121,13 @@ def argument_parser() -> argparse.Namespace:
         "--h5-path",
         type=Path,
         default=_default_h5_path(),
-        help="input cooperative monostatic HDF5 dataset",
+        help="input cooperative monostatic HDF5 dataset (raw or features)",
+    )
+    parser.add_argument(
+        "--features-h5",
+        type=Path,
+        default=None,
+        help="预计算 features sidecar（默认按 --h5-path / ROI / checkpoint feature_mode 自动查找）",
     )
     parser.add_argument(
         "--checkpoint",
@@ -192,26 +201,31 @@ def argument_parser() -> argparse.Namespace:
         help="disable tqdm progress bar",
     )
     parser.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="skip heatmap/CDF PNG outputs after evaluation",
+    )
+    parser.add_argument(
         "--plot-heatmap",
         action="store_true",
-        help="after evaluation, plot RMSE heatmap by target position",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--output-heatmap",
         type=Path,
         default=_default_output_heatmap(),
-        help="output heatmap PNG when --plot-heatmap is set",
+        help="output heatmap PNG path (default: under out/cooperative_monostatic/)",
     )
     parser.add_argument(
         "--plot-cdf",
         action="store_true",
-        help="after evaluation, plot RMSE CDF (global / inner / outer)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--output-cdf",
         type=Path,
         default=_default_output_cdf(),
-        help="output CDF PNG when --plot-cdf is set",
+        help="output CDF PNG path (default: under out/cooperative_monostatic/)",
     )
     return parser.parse_args()
 
@@ -226,7 +240,10 @@ def _resolve_frame_indices(
     seed: int,
 ) -> list[int]:
     with h5py.File(h5_path, "r") as f:
-        total = int(f[DATASET_KEY_PROFILES_DEV0].shape[0])
+        if DATASET_KEY_FEATURES in f:
+            total = int(f[DATASET_KEY_FEATURES].shape[0])
+        else:
+            total = int(f[DATASET_KEY_PROFILES_DEV0].shape[0])
         session_arr = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
         target_position = np.asarray(
             f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
@@ -281,6 +298,62 @@ def _load_checkpoint_inference_config(
     return feature_mode, norm_means, norm_stds
 
 
+def _evaluate_per_frame_from_features(
+    h5_path: Path,
+    model: torch.nn.Module,
+    device: torch.device | str,
+    *,
+    frame_indices: list[int],
+    batch_size: int,
+    show_progress: bool,
+) -> list[dict[str, float | int]]:
+    """从预计算 features sidecar 评估（跳过 CPI→ROI FFT）。"""
+    rows: list[dict[str, float | int]] = []
+    if not frame_indices:
+        return rows
+
+    with h5py.File(h5_path, "r") as f:
+        feat_ds = f[DATASET_KEY_FEATURES]
+        target_ds = f[DATASET_KEY_TARGET_POSITION]
+        session_ds = f[DATASET_KEY_SESSION_INDEX]
+        frame_ds = f[DATASET_KEY_FRAME_INDEX]
+
+        batch_bar = tqdm(
+            range(0, len(frame_indices), batch_size),
+            desc="CNN RMSE",
+            unit="batch",
+            disable=not show_progress,
+        )
+        for start in batch_bar:
+            chunk = frame_indices[start : start + batch_size]
+            feats = np.stack(
+                [np.asarray(feat_ds[i], dtype=np.float32) for i in chunk],
+                axis=0,
+            )
+            model_input = torch.from_numpy(feats)
+            pred_xy = _predict_xy_batch(model, device, model_input)
+
+            for i, sample_idx in enumerate(chunk):
+                true_x = float(target_ds[sample_idx, 0])
+                true_y = float(target_ds[sample_idx, 1])
+                est_x = float(pred_xy[i, 0])
+                est_y = float(pred_xy[i, 1])
+                rmse = position_rmse_xy((est_x, est_y), (true_x, true_y))
+                rows.append(
+                    {
+                        "sample_idx": sample_idx,
+                        "session_index": int(session_ds[sample_idx]),
+                        "frame_index": int(frame_ds[sample_idx]),
+                        "true_x_m": true_x,
+                        "true_y_m": true_y,
+                        "est_x_m": est_x,
+                        "est_y_m": est_y,
+                        "rmse_xy_m": rmse,
+                    }
+                )
+    return rows
+
+
 def _evaluate_per_frame(
     h5_path: Path,
     model: torch.nn.Module,
@@ -295,6 +368,16 @@ def _evaluate_per_frame(
     norm_means: np.ndarray | None = None,
     norm_stds: np.ndarray | None = None,
 ) -> list[dict[str, float | int]]:
+    if is_cooperative_monostatic_features_h5(h5_path):
+        return _evaluate_per_frame_from_features(
+            h5_path,
+            model,
+            device,
+            frame_indices=frame_indices,
+            batch_size=batch_size,
+            show_progress=show_progress,
+        )
+
     rows: list[dict[str, float | int]] = []
     if not frame_indices:
         return rows
@@ -515,9 +598,9 @@ def _print_summary(rows: list[dict[str, float | int]]) -> None:
 
 def main() -> None:
     args = argument_parser()
-    h5_path = args.h5_path.resolve()
-    if not h5_path.is_file():
-        raise FileNotFoundError(h5_path)
+    raw_h5_path = args.h5_path.resolve()
+    if not raw_h5_path.is_file():
+        raise FileNotFoundError(raw_h5_path)
 
     checkpoint = args.checkpoint.resolve()
     if not checkpoint.is_file():
@@ -530,6 +613,19 @@ def main() -> None:
     )
     batch_size = max(1, int(args.batch_size))
 
+    model = load_cooperative_monostatic_cnn_checkpoint(checkpoint, device)
+    feature_mode, norm_means, norm_stds = _load_checkpoint_inference_config(checkpoint)
+
+    h5_path = resolve_cooperative_features_h5(
+        raw_h5_path,
+        range_roi=range_roi,
+        feature_mode=feature_mode,
+        features_h5=args.features_h5,
+        require=False,
+    )
+    if h5_path != raw_h5_path:
+        print(f"Using features sidecar: {h5_path}", flush=True)
+
     frame_indices = _resolve_frame_indices(
         h5_path,
         max_samples=args.max_samples,
@@ -539,8 +635,6 @@ def main() -> None:
         seed=int(args.seed),
     )
 
-    model = load_cooperative_monostatic_cnn_checkpoint(checkpoint, device)
-    feature_mode, norm_means, norm_stds = _load_checkpoint_inference_config(checkpoint)
     split_label = (
         f"val-only region-stratified (9 regions, ratio={args.val_ratio}, seed={args.seed})"
         if args.val_only
@@ -579,21 +673,19 @@ def main() -> None:
     print(f"output csv: {output_csv}")
     _print_summary(rows)
 
-    if args.plot_heatmap or args.plot_cdf:
+    if not args.no_plot:
         plot_mod = _load_plot_heatmap_module()
-        if args.plot_heatmap:
-            plot_mod.plot_rmse_heatmap_combined_from_csv(
-                output_csv,
-                args.output_heatmap.resolve(),
-            )
-            print(f"output heatmap: {args.output_heatmap.resolve()}")
-        if args.plot_cdf:
-            plot_mod.plot_rmse_cdf_from_csv(
-                output_csv,
-                args.output_cdf.resolve(),
-                title="CNN localization RMSE CDF",
-            )
-            print(f"output cdf: {args.output_cdf.resolve()}")
+        plot_mod.plot_rmse_heatmap_combined_from_csv(
+            output_csv,
+            args.output_heatmap.resolve(),
+        )
+        print(f"output heatmap: {args.output_heatmap.resolve()}")
+        plot_mod.plot_rmse_cdf_from_csv(
+            output_csv,
+            args.output_cdf.resolve(),
+            title="CNN localization RMSE CDF",
+        )
+        print(f"output cdf: {args.output_cdf.resolve()}")
 
 
 if __name__ == "__main__":

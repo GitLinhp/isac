@@ -6,9 +6,9 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
-from gnuradio.fft import window
 
 from isac.sensing.detection.cfar import CFARDetector
+from isac.utils.windows import blackmanharris
 from isac.sensing.detection.range_esprit_estimator import RangeEspritEstimator
 from isac.sensing.detection.range_music_estimator import RangeMusicEstimator
 from isac.sensing.localization import localize_xy_two_monostatic_ranges
@@ -58,7 +58,7 @@ def divide_cpi_to_complex_range_profile(
         )
 
     divide_buf = flat.reshape(int(transpose_len), vlen_range)
-    bh_window = np.asarray(window.blackmanharris(vlen_range), dtype=np.float32)
+    bh_window = np.asarray(blackmanharris(vlen_range), dtype=np.float32)
     complex_acc = np.zeros(vlen_range, dtype=np.complex128)
     for symbol in divide_buf:
         h_win = symbol * bh_window

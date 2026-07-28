@@ -9,9 +9,10 @@ from typing import Any
 
 import numpy as np
 import torch
+from scipy.signal.windows import blackmanharris as _scipy_blackmanharris
 from scipy.signal.windows import get_window
 
-__all__ = ["apply_window"]
+__all__ = ["apply_window", "blackmanharris"]
 
 HAS_TORCH_SIGNAL_WINDOWS = hasattr(torch, "signal") and hasattr(torch.signal, "windows")
 
@@ -113,6 +114,13 @@ def _make_window_tensor(
 
     w = get_window(spec, nx, fftbins=periodic)
     return _numpy_window_to_torch(w, device=device, dtype=dtype)
+
+
+def blackmanharris(n: int) -> np.ndarray:
+    """与 GNU Radio ``window.blackmanharris(n)`` 等价的对称 Blackman-Harris 窗。"""
+    if n < 1:
+        raise ValueError(f"n 须 >= 1，收到 {n}")
+    return np.asarray(_scipy_blackmanharris(n, sym=True), dtype=np.float64)
 
 
 def apply_window(

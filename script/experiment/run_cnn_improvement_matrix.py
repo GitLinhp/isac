@@ -256,10 +256,8 @@ def _eval_experiment(exp: Experiment) -> dict[str, str | float]:
         str(checkpoint),
         "--output-csv",
         str(csv_path),
-        "--plot-heatmap",
         "--output-heatmap",
         str(out_dir / "cnn_rmse_heatmap.png"),
-        "--plot-cdf",
         "--output-cdf",
         str(out_dir / "cnn_rmse_cdf.png"),
     ]

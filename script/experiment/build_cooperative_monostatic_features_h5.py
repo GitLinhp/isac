@@ -4,7 +4,8 @@
 示例::
 
     python script/experiment/build_cooperative_monostatic_features_h5.py \\
-        --input-h5 data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5
+        --input-h5 data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 \\
+        --range-roi 0 4.5 --feature-mode real_imag
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from isac_imp.cooperative_monostatic_pipeline import DEFAULT_RANGE_ROI
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
+    SIDECAR_FEATURE_MODES,
     build_cooperative_monostatic_features_h5,
     default_features_h5_path,
     summarize_cooperative_monostatic_h5,
@@ -43,7 +45,7 @@ def argument_parser() -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help="output features HDF5 (default: {input-stem}_features.h5)",
+        help="output features HDF5 (default: derived from input stem / ROI / feature-mode)",
     )
     parser.add_argument(
         "--range-roi",
@@ -51,6 +53,13 @@ def argument_parser() -> argparse.Namespace:
         nargs=2,
         default=list(DEFAULT_RANGE_ROI),
         metavar=("MIN_M", "MAX_M"),
+    )
+    parser.add_argument(
+        "--feature-mode",
+        type=str,
+        choices=list(SIDECAR_FEATURE_MODES),
+        default="legacy_4ch",
+        help="offline feature mode (default: legacy_4ch)",
     )
     parser.add_argument(
         "--no-progress",
@@ -63,17 +72,21 @@ def argument_parser() -> argparse.Namespace:
 def main() -> None:
     args = argument_parser()
     input_h5 = args.input_h5.resolve()
+    range_roi = _parse_range_roi(list(args.range_roi))
+    feature_mode = str(args.feature_mode)
     output_path = (
         args.output.resolve()
         if args.output is not None
-        else default_features_h5_path(input_h5)
+        else default_features_h5_path(
+            input_h5, range_roi=range_roi, feature_mode=feature_mode
+        )
     )
-    range_roi = _parse_range_roi(list(args.range_roi))
 
     build_cooperative_monostatic_features_h5(
         input_h5,
         output_path,
         range_roi=range_roi,
+        feature_mode=feature_mode,
         show_progress=not args.no_progress,
     )
 
@@ -82,7 +95,8 @@ def main() -> None:
     print(
         f"output features h5: {summary['path']} "
         f"({file_size_mb:.2f} MiB, frames={summary['total_frames']}, "
-        f"features_shape={summary['features_shape']})"
+        f"features_shape={summary['features_shape']}, "
+        f"feature_mode={feature_mode}, roi={range_roi})"
     )
 
 

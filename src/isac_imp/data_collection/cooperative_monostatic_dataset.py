@@ -33,6 +33,7 @@ _DEFAULT_RDCC_NBYTES = 32 * 1024 * 1024
 DATASET_KEY_PROFILES_DEV0 = "profiles_dev0"
 DATASET_KEY_PROFILES_DEV1 = "profiles_dev1"
 DATASET_KEY_FEATURES = "features"
+DATASET_KEY_FRAME_ENERGY = "frame_energy"
 DATASET_KEY_TARGET_POSITION = "target_position"
 DATASET_KEY_SESSION_INDEX = "session_index"
 DATASET_KEY_FRAME_INDEX = "frame_index"
@@ -43,7 +44,12 @@ META_KEY_SOURCE_H5 = "source_h5"
 META_KEY_RANGE_ROI_MIN_M = "range_roi_min_m"
 META_KEY_RANGE_ROI_MAX_M = "range_roi_max_m"
 META_KEY_FEATURE_CHANNELS = "feature_channels"
+META_KEY_FEATURE_MODE = "feature_mode"
 META_KEY_ROI_LEN = "roi_len"
+
+# Sidecar 可离线缓存的 feature_mode（不含需 norm_stats / 复数 / 2D 的模式）
+SIDECAR_FEATURE_MODES: tuple[str, ...] = ("real_imag", "legacy_4ch")
+_ROI_PATH_EPS = 1e-6
 META_KEY_VLEN = "vlen"
 META_KEY_FFT_LEN = "fft_len"
 META_KEY_ZEROPADDING_FAC = "zeropadding_fac"
@@ -384,9 +390,180 @@ def is_cooperative_monostatic_features_h5(filepath: str | Path) -> bool:
         return str(f.attrs.get(META_KEY_DATA_KIND, "")) == _DATA_KIND_FEATURES
 
 
-def default_features_h5_path(source_h5: str | Path) -> Path:
+def _format_roi_for_path(value: float) -> str:
+    text = f"{float(value):.6g}"
+    return text.replace("-", "m")
+
+
+def default_features_h5_path(
+    source_h5: str | Path,
+    *,
+    range_roi: tuple[float, float] | None = None,
+    feature_mode: str = "legacy_4ch",
+) -> Path:
+    """默认 features sidecar 路径。
+
+    - ``legacy_4ch`` + 默认 ROI（或未传 ROI）：``{stem}_features.h5``（向后兼容）
+    - 其余：``{stem}_features_roi{lo}_{hi}_{mode}.h5``
+    """
     source_h5 = Path(source_h5)
-    return source_h5.with_name(f"{source_h5.stem}_features{source_h5.suffix}")
+    mode = str(feature_mode)
+    if mode not in SIDECAR_FEATURE_MODES:
+        raise ValueError(
+            f"sidecar feature_mode 须为 {SIDECAR_FEATURE_MODES}，收到 {mode!r}"
+        )
+    if range_roi is None:
+        range_roi = DEFAULT_RANGE_ROI
+    lo, hi = float(range_roi[0]), float(range_roi[1])
+    use_legacy_name = (
+        mode == "legacy_4ch"
+        and abs(lo - float(DEFAULT_RANGE_ROI[0])) < _ROI_PATH_EPS
+        and abs(hi - float(DEFAULT_RANGE_ROI[1])) < _ROI_PATH_EPS
+    )
+    if use_legacy_name:
+        return source_h5.with_name(f"{source_h5.stem}_features{source_h5.suffix}")
+    return source_h5.with_name(
+        f"{source_h5.stem}_features_roi{_format_roi_for_path(lo)}"
+        f"_{_format_roi_for_path(hi)}_{mode}{source_h5.suffix}"
+    )
+
+
+def _validate_features_h5_attrs(
+    filepath: Path,
+    *,
+    range_roi: tuple[float, float],
+    feature_mode: str,
+) -> None:
+    """校验 features sidecar 的 ROI / feature_mode attrs。"""
+    with h5py.File(filepath, "r") as f:
+        data_kind = str(f.attrs.get(META_KEY_DATA_KIND, ""))
+        if data_kind != _DATA_KIND_FEATURES:
+            raise ValueError(
+                f"不是 features sidecar (data_kind={data_kind!r}): {filepath}"
+            )
+        stored_mode = str(f.attrs.get(META_KEY_FEATURE_MODE, "legacy_4ch"))
+        if stored_mode != feature_mode:
+            raise ValueError(
+                f"features sidecar feature_mode={stored_mode!r} "
+                f"与请求 {feature_mode!r} 不一致: {filepath}"
+            )
+        stored_lo = float(f.attrs.get(META_KEY_RANGE_ROI_MIN_M, float("nan")))
+        stored_hi = float(f.attrs.get(META_KEY_RANGE_ROI_MAX_M, float("nan")))
+        want_lo, want_hi = float(range_roi[0]), float(range_roi[1])
+        if (
+            abs(stored_lo - want_lo) > _ROI_PATH_EPS
+            or abs(stored_hi - want_hi) > _ROI_PATH_EPS
+        ):
+            raise ValueError(
+                f"features sidecar ROI ({stored_lo}, {stored_hi}) "
+                f"与请求 ({want_lo}, {want_hi}) 不一致: {filepath}"
+            )
+
+
+def resolve_cooperative_features_h5(
+    raw_or_sidecar: str | Path,
+    *,
+    range_roi: tuple[float, float],
+    feature_mode: str,
+    features_h5: str | Path | None = None,
+    require: bool = False,
+) -> Path:
+    """解析训练/评估用的有效 HDF5 路径（优先 features sidecar）。
+
+    - 若 ``features_h5`` 显式给出：校验后返回该路径
+    - 若 ``raw_or_sidecar`` 已是 features H5：校验后返回
+    - 若为 raw H5：查找默认 sidecar；存在则返回，否则回退 raw（``require=True`` 时报错）
+    """
+    if feature_mode not in SIDECAR_FEATURE_MODES:
+        if features_h5 is not None:
+            raise ValueError(
+                f"feature_mode={feature_mode!r} 不支持 features sidecar；"
+                f"仅支持 {SIDECAR_FEATURE_MODES}"
+            )
+        path = Path(raw_or_sidecar)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if is_cooperative_monostatic_features_h5(path):
+            raise ValueError(
+                f"feature_mode={feature_mode!r} 不能使用 features sidecar: {path}"
+            )
+        return path.resolve()
+
+    range_roi = (float(range_roi[0]), float(range_roi[1]))
+
+    if features_h5 is not None:
+        path = Path(features_h5)
+        if not path.is_file():
+            raise FileNotFoundError(f"features HDF5 不存在: {path}")
+        _validate_features_h5_attrs(
+            path, range_roi=range_roi, feature_mode=feature_mode
+        )
+        return path.resolve()
+
+    path = Path(raw_or_sidecar)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+
+    if is_cooperative_monostatic_features_h5(path):
+        _validate_features_h5_attrs(
+            path, range_roi=range_roi, feature_mode=feature_mode
+        )
+        return path.resolve()
+
+    candidate = default_features_h5_path(
+        path, range_roi=range_roi, feature_mode=feature_mode
+    )
+    if candidate.is_file():
+        _validate_features_h5_attrs(
+            candidate, range_roi=range_roi, feature_mode=feature_mode
+        )
+        return candidate.resolve()
+
+    if require:
+        raise FileNotFoundError(
+            f"未找到 features sidecar（require=True）: {candidate}"
+        )
+    print(
+        f"Warning: features sidecar 不存在，回退 raw CPI 在线变换: {candidate}",
+        flush=True,
+    )
+    return path.resolve()
+
+
+def load_cooperative_frame_energy(h5_path: str | Path) -> np.ndarray | None:
+    """若 HDF5 含 ``frame_energy`` 则返回 ``(N,)`` float64，否则 ``None``。"""
+    h5_path = Path(h5_path)
+    with h5py.File(h5_path, "r") as f:
+        if DATASET_KEY_FRAME_ENERGY not in f:
+            return None
+        return np.asarray(f[DATASET_KEY_FRAME_ENERGY][:], dtype=np.float64)
+
+
+def _frame_feature_from_roi(
+    roi0: np.ndarray,
+    roi1: np.ndarray,
+    *,
+    feature_mode: str,
+) -> np.ndarray:
+    """ROI 复数距离谱 → float 特征 ``(C, L)``。"""
+    from isac.models.preprocess import (
+        dual_range_profile_to_features,
+        dual_roi_to_model_input,
+    )
+
+    dual = torch.from_numpy(np.stack([roi0, roi1], axis=0))
+    if feature_mode == "legacy_4ch":
+        feat = dual_range_profile_to_features(
+            torch.from_numpy(roi0),
+            torch.from_numpy(roi1),
+        )
+    elif feature_mode == "real_imag":
+        feat = dual_roi_to_model_input(dual, mode="real_imag")
+    else:
+        raise ValueError(
+            f"build features 仅支持 {SIDECAR_FEATURE_MODES}，收到 {feature_mode!r}"
+        )
+    return feat.numpy().astype(_FEATURE_DTYPE, copy=False)
 
 
 def build_cooperative_monostatic_features_h5(
@@ -394,21 +571,21 @@ def build_cooperative_monostatic_features_h5(
     output_path: str | Path,
     *,
     range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
+    feature_mode: str = "legacy_4ch",
     proc_params: dict[str, Any] | None = None,
     show_progress: bool = True,
 ) -> Path:
-    """从 raw CPI HDF5 离线构建 4 通道 ROI float 特征 sidecar。"""
+    """从 raw CPI HDF5 离线构建 ROI float 特征 sidecar（含 ``frame_energy``）。"""
     if torch is None:
         raise ImportError("torch is required for build_cooperative_monostatic_features_h5")
 
-    from isac.models.preprocess import (
-        divide_cpi_dual_to_roi_range_profiles_np,
-        dual_range_profile_to_features,
-    )
-    from isac_imp.cooperative_monostatic_pipeline import (
-        DEFAULT_RANGE_ROI,
-        grc_cooperative_processing_params,
-    )
+    from isac.models.preprocess import divide_cpi_dual_to_roi_range_profiles_np
+    from isac_imp.cooperative_monostatic_pipeline import grc_cooperative_processing_params
+
+    if feature_mode not in SIDECAR_FEATURE_MODES:
+        raise ValueError(
+            f"feature_mode 须为 {SIDECAR_FEATURE_MODES}，收到 {feature_mode!r}"
+        )
 
     source_h5 = Path(source_h5).resolve()
     output_path = Path(output_path)
@@ -435,10 +612,7 @@ def build_cooperative_monostatic_features_h5(
             proc_params=proc_params,
             range_roi=range_roi,
         )
-        sample_feat = dual_range_profile_to_features(
-            torch.from_numpy(roi0),
-            torch.from_numpy(roi1),
-        )
+        sample_feat = _frame_feature_from_roi(roi0, roi1, feature_mode=feature_mode)
         feature_channels = int(sample_feat.shape[0])
         roi_len = int(sample_feat.shape[1])
 
@@ -449,6 +623,12 @@ def build_cooperative_monostatic_features_h5(
                 shape=(total_frames, feature_channels, roi_len),
                 dtype=_FEATURE_DTYPE,
                 chunks=(min(256, total_frames), feature_channels, roi_len),
+            )
+            energy_ds = dst.create_dataset(
+                DATASET_KEY_FRAME_ENERGY,
+                shape=(total_frames,),
+                dtype=_FEATURE_DTYPE,
+                chunks=(min(4096, total_frames),),
             )
             dst.create_dataset(
                 DATASET_KEY_TARGET_POSITION,
@@ -471,17 +651,19 @@ def build_cooperative_monostatic_features_h5(
                 frame_iter = tqdm(frame_iter, desc="features", unit="frame")
 
             for frame_idx in frame_iter:
+                cpi0 = np.asarray(profiles_dev0[frame_idx])
+                cpi1 = np.asarray(profiles_dev1[frame_idx])
+                mean_abs = float(np.abs(cpi0).mean() + np.abs(cpi1).mean())
+                energy_ds[frame_idx] = np.float32(np.log1p(mean_abs))
                 roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
-                    profiles_dev0[frame_idx],
-                    profiles_dev1[frame_idx],
+                    cpi0,
+                    cpi1,
                     proc_params=proc_params,
                     range_roi=range_roi,
                 )
-                feat = dual_range_profile_to_features(
-                    torch.from_numpy(roi0),
-                    torch.from_numpy(roi1),
-                ).numpy().astype(_FEATURE_DTYPE, copy=False)
-                features_ds[frame_idx] = feat
+                features_ds[frame_idx] = _frame_feature_from_roi(
+                    roi0, roi1, feature_mode=feature_mode
+                )
 
             for key, value in src.attrs.items():
                 dst.attrs[key] = value
@@ -490,9 +672,11 @@ def build_cooperative_monostatic_features_h5(
             dst.attrs[META_KEY_RANGE_ROI_MIN_M] = range_roi[0]
             dst.attrs[META_KEY_RANGE_ROI_MAX_M] = range_roi[1]
             dst.attrs[META_KEY_FEATURE_CHANNELS] = feature_channels
+            dst.attrs[META_KEY_FEATURE_MODE] = feature_mode
             dst.attrs[META_KEY_ROI_LEN] = roi_len
             dst.attrs[META_KEY_DESCRIPTION] = (
-                f"Cooperative monostatic CNN features sidecar ({total_frames} frames)"
+                f"Cooperative monostatic CNN features sidecar "
+                f"({feature_mode}, {total_frames} frames)"
             )
 
     return output_path.resolve()
@@ -694,6 +878,140 @@ def _session_region_map(
     return session_to_region
 
 
+def cooperative_frame_cpi_energy(
+    profiles_dev0: np.ndarray,
+    profiles_dev1: np.ndarray,
+) -> np.ndarray:
+    """原始 divide CPI 平均幅度能量：``log(1 + mean|c0| + mean|c1|)``，shape ``(N,)``。"""
+    d0 = np.asarray(profiles_dev0)
+    d1 = np.asarray(profiles_dev1)
+    if d0.ndim != 2 or d1.ndim != 2:
+        raise ValueError(
+            "profiles_dev0/dev1 须为 (N, vlen)，"
+            f"收到 {d0.shape} / {d1.shape}"
+        )
+    if d0.shape[0] != d1.shape[0]:
+        raise ValueError(
+            "profiles_dev0/dev1 帧数须一致，"
+            f"收到 {d0.shape[0]} vs {d1.shape[0]}"
+        )
+    mean_abs = np.abs(d0).mean(axis=1) + np.abs(d1).mean(axis=1)
+    return np.log1p(mean_abs.astype(np.float64, copy=False))
+
+
+def filter_cooperative_frames_hard(
+    target_xy: np.ndarray,
+    *,
+    profiles_dev0: np.ndarray | None = None,
+    profiles_dev1: np.ndarray | None = None,
+    xy_max_m: float = 1.0,
+    energy_eps: float = 1e-8,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """硬过滤：标签有限且在场地内；可选检查 CPI 有限且平均幅度非近零。
+
+    返回 ``(keep_indices, drop_counts)``，``drop_counts`` 键为
+    ``nan_label`` / ``oob_xy`` / ``nan_cpi`` / ``near_zero``。
+    """
+    xy = np.asarray(target_xy, dtype=np.float64)
+    if xy.ndim != 2 or xy.shape[1] < 2:
+        raise ValueError(f"target_xy 须为 (N, >=2)，收到 {xy.shape}")
+    n = int(xy.shape[0])
+    x = xy[:, 0]
+    y = xy[:, 1]
+
+    nan_label = ~(np.isfinite(x) & np.isfinite(y))
+    oob_xy = (~nan_label) & ((np.abs(x) > xy_max_m) | (np.abs(y) > xy_max_m))
+    keep = ~(nan_label | oob_xy)
+
+    nan_cpi = np.zeros(n, dtype=bool)
+    near_zero = np.zeros(n, dtype=bool)
+    if profiles_dev0 is not None or profiles_dev1 is not None:
+        if profiles_dev0 is None or profiles_dev1 is None:
+            raise ValueError("profiles_dev0 与 profiles_dev1 须同时提供或同时省略")
+        d0 = np.asarray(profiles_dev0)
+        d1 = np.asarray(profiles_dev1)
+        if d0.shape[0] != n or d1.shape[0] != n:
+            raise ValueError(
+                "profiles 帧数须与 target_xy 一致，"
+                f"收到 {d0.shape[0]}, {d1.shape[0]} vs {n}"
+            )
+        finite0 = np.isfinite(d0.real) & np.isfinite(d0.imag)
+        finite1 = np.isfinite(d1.real) & np.isfinite(d1.imag)
+        if d0.ndim == 2:
+            finite0 = finite0.all(axis=1)
+            finite1 = finite1.all(axis=1)
+        else:
+            raise ValueError(f"profiles 须为 2-D，收到 {d0.ndim}-D")
+        nan_cpi = ~(finite0 & finite1)
+        mean0 = np.abs(d0).mean(axis=1)
+        mean1 = np.abs(d1).mean(axis=1)
+        near_zero = (~nan_cpi) & ((mean0 <= energy_eps) | (mean1 <= energy_eps))
+        keep &= ~(nan_cpi | near_zero)
+
+    drop_counts = {
+        "nan_label": int(nan_label.sum()),
+        "oob_xy": int(oob_xy.sum()),
+        "nan_cpi": int(nan_cpi.sum()),
+        "near_zero": int(near_zero.sum()),
+    }
+    keep_indices = np.flatnonzero(keep).astype(np.int64, copy=False)
+    return keep_indices, drop_counts
+
+
+def filter_cooperative_frames_energy_mad(
+    frame_indices: np.ndarray,
+    session_indices: np.ndarray,
+    energy: np.ndarray,
+    *,
+    z_thresh: float = 5.0,
+) -> tuple[np.ndarray, int]:
+    """按 session 内能量 MAD z-score 软剔除异常帧。
+
+    ``session_indices`` 与 ``energy`` 与**全库帧**对齐；``frame_indices`` 为待过滤子集
+    （通常为 train）。返回保留的 ``frame_indices`` 子集与丢弃数量。
+    """
+    frame_indices = np.asarray(frame_indices, dtype=np.int64).reshape(-1)
+    session_indices = np.asarray(session_indices, dtype=np.int64).reshape(-1)
+    energy = np.asarray(energy, dtype=np.float64).reshape(-1)
+    if session_indices.size != energy.size:
+        raise ValueError(
+            "session_indices 与 energy 长度须一致，"
+            f"收到 {session_indices.size} vs {energy.size}"
+        )
+    if z_thresh <= 0.0:
+        raise ValueError(f"z_thresh 须 > 0，收到 {z_thresh}")
+    if frame_indices.size == 0:
+        return frame_indices.copy(), 0
+
+    if np.any(frame_indices < 0) or np.any(frame_indices >= session_indices.size):
+        raise ValueError("frame_indices 超出 session_indices / energy 范围")
+
+    keep_mask = np.ones(frame_indices.size, dtype=bool)
+    mad_scale = 1.4826
+    mad_eps = 1e-12
+
+    # 仅对候选帧涉及的 session 做统计
+    cand_sessions = session_indices[frame_indices]
+    for sess in np.unique(cand_sessions):
+        # session 内全部帧用于估计中位数/MAD（更稳），但只丢弃候选子集中的离群点
+        sess_all = np.flatnonzero(session_indices == sess)
+        e_all = energy[sess_all]
+        if e_all.size < 3:
+            continue
+        median = float(np.median(e_all))
+        mad = float(np.median(np.abs(e_all - median))) * mad_scale
+        if mad < mad_eps:
+            continue
+        # 候选子集中属于该 session 的位置
+        local = np.flatnonzero(cand_sessions == sess)
+        z = np.abs(energy[frame_indices[local]] - median) / mad
+        keep_mask[local] = z <= z_thresh
+
+    kept = frame_indices[keep_mask]
+    dropped = int(frame_indices.size - kept.size)
+    return kept.astype(np.int64, copy=False), dropped
+
+
 def session_train_val_split_by_region(
     session_indices: np.ndarray,
     target_position: np.ndarray,
@@ -767,6 +1085,7 @@ class CooperativeMonostaticRangeProfileDataset(
         spec_augment_prob: float = 0.0,
         spec_augment_max_bins: int = 3,
         augment: bool = False,
+        seed: int = 42,
     ) -> None:
         if torch is None:
             raise ImportError("torch is required for CooperativeMonostaticRangeProfileDataset")
@@ -792,9 +1111,15 @@ class CooperativeMonostaticRangeProfileDataset(
         self.label_jitter_m = float(label_jitter_m)
         if self.label_jitter_m < 0.0:
             raise ValueError(f"label_jitter_m 须 >= 0，收到 {label_jitter_m}")
-        self._label_rng = np.random.default_rng()
-        self._aug_rng = np.random.default_rng()
+        self.seed = int(seed)
+        self.reseed(self.seed)
         self._h5: h5py.File | None = None
+
+    def reseed(self, seed: int) -> None:
+        """按 seed 重建 label / augment RNG（供 DataLoader worker 调用）。"""
+        self.seed = int(seed)
+        self._label_rng = np.random.default_rng(self.seed)
+        self._aug_rng = np.random.default_rng(self.seed + 1)
 
     def __len__(self) -> int:
         return int(self.frame_indices.size)
@@ -808,6 +1133,12 @@ class CooperativeMonostaticRangeProfileDataset(
         if self._h5 is not None:
             self._h5.close()
             self._h5 = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        # DataLoader workers 须各自打开 H5，避免继承父进程句柄
+        state = dict(self.__dict__)
+        state["_h5"] = None
+        return state
 
     def __del__(self) -> None:
         self.close()
@@ -914,7 +1245,7 @@ class CooperativeMonostaticRangeProfileDataset(
 class CooperativeMonostaticFeaturesDataset(
     Dataset if torch is not None else object  # type: ignore[misc]
 ):
-    """Cooperative monostatic 预计算 4 通道 ROI 特征 HDF5 Dataset。"""
+    """Cooperative monostatic 预计算 ROI float 特征 HDF5 Dataset。"""
 
     def __init__(
         self,
@@ -922,6 +1253,11 @@ class CooperativeMonostaticFeaturesDataset(
         frame_indices: np.ndarray | Sequence[int],
         *,
         label_jitter_m: float = 0.0,
+        feature_noise_std: float = 0.0,
+        spec_augment_prob: float = 0.0,
+        spec_augment_max_bins: int = 3,
+        augment: bool = False,
+        seed: int = 42,
     ) -> None:
         if torch is None:
             raise ImportError("torch is required for CooperativeMonostaticFeaturesDataset")
@@ -931,8 +1267,19 @@ class CooperativeMonostaticFeaturesDataset(
         self.label_jitter_m = float(label_jitter_m)
         if self.label_jitter_m < 0.0:
             raise ValueError(f"label_jitter_m 须 >= 0，收到 {label_jitter_m}")
-        self._label_rng = np.random.default_rng()
+        self.feature_noise_std = float(feature_noise_std)
+        self.spec_augment_prob = float(spec_augment_prob)
+        self.spec_augment_max_bins = int(spec_augment_max_bins)
+        self.augment = bool(augment)
+        self.seed = int(seed)
+        self.reseed(self.seed)
         self._h5: h5py.File | None = None
+
+    def reseed(self, seed: int) -> None:
+        """按 seed 重建 label / augment RNG（供 DataLoader worker 调用）。"""
+        self.seed = int(seed)
+        self._label_rng = np.random.default_rng(self.seed)
+        self._aug_rng = np.random.default_rng(self.seed + 1)
 
     def __len__(self) -> int:
         return int(self.frame_indices.size)
@@ -946,6 +1293,11 @@ class CooperativeMonostaticFeaturesDataset(
         if self._h5 is not None:
             self._h5.close()
             self._h5 = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = dict(self.__dict__)
+        state["_h5"] = None
+        return state
 
     def __del__(self) -> None:
         self.close()
@@ -973,8 +1325,20 @@ class CooperativeMonostaticFeaturesDataset(
             ).astype(np.float32)
             xy = xy + jitter
 
+        model_input = torch.from_numpy(np.asarray(features, dtype=_FEATURE_DTYPE))
+        if self.augment:
+            from isac.models.preprocess import apply_cooperative_feature_augmentation
+
+            model_input = apply_cooperative_feature_augmentation(
+                model_input,
+                noise_std=self.feature_noise_std,
+                spec_augment_prob=self.spec_augment_prob,
+                spec_augment_max_bins=self.spec_augment_max_bins,
+                rng=self._aug_rng,
+            )
+
         return {
-            "dual_profiles": torch.from_numpy(np.asarray(features, dtype=_FEATURE_DTYPE)),
+            "dual_profiles": model_input,
             "target_xy": torch.from_numpy(xy),
             "session_index": torch.tensor(session_idx, dtype=torch.int64),
         }
@@ -995,6 +1359,7 @@ def open_cooperative_monostatic_training_dataset(
     spec_augment_prob: float = 0.0,
     spec_augment_max_bins: int = 3,
     augment: bool = False,
+    seed: int = 42,
 ) -> CooperativeMonostaticFeaturesDataset | CooperativeMonostaticRangeProfileDataset:
     """按 HDF5 data_kind 打开训练 Dataset（features sidecar 或 raw CPI）。"""
     from isac.models.preprocess import COOPERATIVE_FEATURE_MODES
@@ -1004,15 +1369,25 @@ def open_cooperative_monostatic_training_dataset(
 
     h5_path = Path(h5_path)
     if is_cooperative_monostatic_features_h5(h5_path):
-        if feature_mode != "legacy_4ch":
+        if feature_mode not in SIDECAR_FEATURE_MODES:
             raise ValueError(
-                "features sidecar 仅支持 feature_mode='legacy_4ch'；"
-                "跨域训练请使用 raw cooperative_monostatic_dataset.h5"
+                f"features sidecar 仅支持 feature_mode={SIDECAR_FEATURE_MODES}；"
+                f"收到 {feature_mode!r}"
             )
+        _validate_features_h5_attrs(
+            h5_path,
+            range_roi=range_roi,
+            feature_mode=feature_mode,
+        )
         return CooperativeMonostaticFeaturesDataset(
             h5_path,
             frame_indices,
             label_jitter_m=label_jitter_m,
+            feature_noise_std=feature_noise_std,
+            spec_augment_prob=spec_augment_prob,
+            spec_augment_max_bins=spec_augment_max_bins,
+            augment=augment,
+            seed=seed,
         )
     return CooperativeMonostaticRangeProfileDataset(
         h5_path,
@@ -1028,4 +1403,5 @@ def open_cooperative_monostatic_training_dataset(
         spec_augment_prob=spec_augment_prob,
         spec_augment_max_bins=spec_augment_max_bins,
         augment=augment,
+        seed=seed,
     )

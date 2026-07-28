@@ -1,6 +1,8 @@
 """距离谱 ROI 向量切片 GR 块与 ``compute_range_roi`` 工具函数。
 
-``compute_range_roi`` 供 :mod:`isac_imp.range_profile_plot` 在显示块内裁剪 ROI。
+``compute_range_roi`` 供离线 DSP / CNN 预处理与 :mod:`isac_imp.range_profile_plot`
+在显示块内裁剪 ROI，不依赖 GNU Radio。
+
 ``RangeProfileRoiSliceBlock`` 仍可用于需要在 GR 链中显式输出 ROI 向量的流图；
 data_collection 显示链已改用 ``RangeProfilePlotBlock``（内置 ROI + PyQtGraph）。
 """
@@ -8,9 +10,9 @@ data_collection 显示链已改用 ``RangeProfilePlotBlock``（内置 ROI + PyQt
 from __future__ import annotations
 
 import warnings
+from typing import Any
 
 import numpy as np
-from gnuradio import gr
 
 _DEFAULT_ROI_MAX_M = 30.0
 
@@ -51,62 +53,72 @@ def compute_range_roi(
     return start_bin, num_bins, x_start_m
 
 
-class RangeProfileRoiSliceBlock(gr.sync_block):
-    """float32 距离谱向量 → 按 bin 索引切片后的 ROI 向量。"""
+def __getattr__(name: str) -> Any:
+    """惰性加载 GR 块，避免离线导入路径依赖 gnuradio。"""
+    if name != "RangeProfileRoiSliceBlock":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-    def __init__(
-        self,
-        vlen_in: int = 4096,
-        start_bin: int = 0,
-        num_bins: int = 99,
-    ) -> None:
-        self._vlen_in = int(vlen_in)
-        start_bin, num_bins, _ = self._clamp_bins(int(start_bin), int(num_bins))
+    from gnuradio import gr
 
-        self._start_bin = start_bin
-        self._num_bins = num_bins
+    class RangeProfileRoiSliceBlock(gr.sync_block):
+        """float32 距离谱向量 → 按 bin 索引切片后的 ROI 向量。"""
 
-        gr.sync_block.__init__(
+        def __init__(
             self,
-            name="Range Profile ROI Slice",
-            in_sig=[(np.float32, self._vlen_in)],
-            out_sig=[(np.float32, self._num_bins)],
-        )
+            vlen_in: int = 4096,
+            start_bin: int = 0,
+            num_bins: int = 99,
+        ) -> None:
+            self._vlen_in = int(vlen_in)
+            start_bin, num_bins, _ = self._clamp_bins(int(start_bin), int(num_bins))
 
-    def _clamp_bins(self, start_bin: int, num_bins: int) -> tuple[int, int, float]:
-        step_hint = 1.0
-        x_start = start_bin * step_hint
-        if not 0 <= start_bin < self._vlen_in:
-            warnings.warn(
-                f"start_bin {start_bin} out of [0, {self._vlen_in}); clamping",
-                stacklevel=2,
+            self._start_bin = start_bin
+            self._num_bins = num_bins
+
+            gr.sync_block.__init__(
+                self,
+                name="Range Profile ROI Slice",
+                in_sig=[(np.float32, self._vlen_in)],
+                out_sig=[(np.float32, self._num_bins)],
             )
-            start_bin = max(0, min(start_bin, self._vlen_in - 1))
-        if num_bins < 1:
-            warnings.warn(f"num_bins {num_bins} < 1; using 1", stacklevel=2)
-            num_bins = 1
-        if start_bin + num_bins > self._vlen_in:
-            warnings.warn(
-                f"start_bin + num_bins ({start_bin + num_bins}) exceeds vlen_in "
-                f"({self._vlen_in}); clamping num_bins",
-                stacklevel=2,
-            )
-            num_bins = self._vlen_in - start_bin
-        return start_bin, num_bins, x_start
 
-    def set_start_bin(self, start_bin: int) -> None:
-        """更新起始 bin（输出 vlen 不变，仅平移 ROI 窗口）。"""
-        start_bin, num_bins, _ = self._clamp_bins(int(start_bin), self._num_bins)
-        self._start_bin = start_bin
-        self._num_bins = num_bins
+        def _clamp_bins(self, start_bin: int, num_bins: int) -> tuple[int, int, float]:
+            step_hint = 1.0
+            x_start = start_bin * step_hint
+            if not 0 <= start_bin < self._vlen_in:
+                warnings.warn(
+                    f"start_bin {start_bin} out of [0, {self._vlen_in}); clamping",
+                    stacklevel=2,
+                )
+                start_bin = max(0, min(start_bin, self._vlen_in - 1))
+            if num_bins < 1:
+                warnings.warn(f"num_bins {num_bins} < 1; using 1", stacklevel=2)
+                num_bins = 1
+            if start_bin + num_bins > self._vlen_in:
+                warnings.warn(
+                    f"start_bin + num_bins ({start_bin + num_bins}) exceeds vlen_in "
+                    f"({self._vlen_in}); clamping num_bins",
+                    stacklevel=2,
+                )
+                num_bins = self._vlen_in - start_bin
+            return start_bin, num_bins, x_start
 
-    def set_num_bins(self, num_bins: int) -> None:
-        """更新 bin 数（须与下游 vector_sink vlen 一致；改变 vlen 需重启流图）。"""
-        start_bin, num_bins, _ = self._clamp_bins(self._start_bin, int(num_bins))
-        self._start_bin = start_bin
-        self._num_bins = num_bins
+        def set_start_bin(self, start_bin: int) -> None:
+            """更新起始 bin（输出 vlen 不变，仅平移 ROI 窗口）。"""
+            start_bin, num_bins, _ = self._clamp_bins(int(start_bin), self._num_bins)
+            self._start_bin = start_bin
+            self._num_bins = num_bins
 
-    def work(self, input_items, output_items) -> int:
-        s, n = self._start_bin, self._num_bins
-        output_items[0][0][:] = input_items[0][0][s : s + n]
-        return 1
+        def set_num_bins(self, num_bins: int) -> None:
+            """更新 bin 数（须与下游 vector_sink vlen 一致；改变 vlen 需重启流图）。"""
+            start_bin, num_bins, _ = self._clamp_bins(self._start_bin, int(num_bins))
+            self._start_bin = start_bin
+            self._num_bins = num_bins
+
+        def work(self, input_items, output_items) -> int:
+            s, n = self._start_bin, self._num_bins
+            output_items[0][0][:] = input_items[0][0][s : s + n]
+            return 1
+
+    globals()[name] = RangeProfileRoiSliceBlock
+    return RangeProfileRoiSliceBlock

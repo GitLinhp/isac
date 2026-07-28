@@ -4,15 +4,18 @@
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py
 
-Smoke test::
+默认已对齐部署配置（ROI 0–4 m、batch 128、增强与 outlier 过滤等）。
+覆盖示例::
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py \\
-        --epochs 2 --batch-size 32 --max-samples 512
+        --epochs 2 --batch-size 32 --max-samples 512 --no-filter-outliers
 """
 
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,6 +28,7 @@ from tabulate import tabulate
 from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
+from isac import PROJECT_ROOT
 from isac.models import (
     COOPERATIVE_FEATURE_MODES,
     CooperativeMonostatic2DCNN,
@@ -39,17 +43,27 @@ from isac.models import (
 from isac.models.loss import session_aggregated_target_rmse_loss
 from isac.utils import set_random_seed
 from isac_imp.cooperative_monostatic_pipeline import (
-    DEFAULT_RANGE_ROI,
     grc_cooperative_processing_params,
 )
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
+    DATASET_KEY_PROFILES_DEV0,
+    DATASET_KEY_PROFILES_DEV1,
     DATASET_KEY_SESSION_INDEX,
     DATASET_KEY_TARGET_POSITION,
-    DEFAULT_LABEL_JITTER_M,
+    cooperative_frame_cpi_energy,
+    filter_cooperative_frames_energy_mad,
+    filter_cooperative_frames_hard,
+    is_cooperative_monostatic_features_h5,
+    load_cooperative_frame_energy,
     open_cooperative_monostatic_training_dataset,
+    resolve_cooperative_features_h5,
     session_train_val_split_by_region,
 )
-from isac_imp.record_target_metadata import REGION_COUNT, is_inner_target_xy_m, target_region_name
+from isac_imp.record_target_metadata import (
+    REGION_COUNT,
+    is_inner_target_xy_m,
+    target_region_name,
+)
 
 DEFAULT_H5 = Path(
     "data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5"
@@ -57,7 +71,14 @@ DEFAULT_H5 = Path(
 DEFAULT_TEST_H5 = Path(
     "data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5"
 )
-DEFAULT_OUTPUT_DIR = Path("models/cooperative_monostatic_cnn")
+DEFAULT_OUTPUT_DIR = Path("models/cnn_deploy_strict_roi4")
+# 训练脚本默认 ROI（部署配置）；pipeline 全局 DEFAULT_RANGE_ROI 仍为 (0, 3.5)
+TRAIN_DEFAULT_RANGE_ROI = (0.0, 4.0)
+TRAIN_DEFAULT_LABEL_JITTER_M = 0.05
+TRAIN_DEFAULT_OUTER_RING_WEIGHT = 2.0
+TRAIN_DEFAULT_FEATURE_NOISE_STD = 0.02
+TRAIN_DEFAULT_SPEC_AUGMENT_PROB = 0.3
+EVAL_SCRIPT = PROJECT_ROOT / "script/experiment/run_cooperative_monostatic_cnn_rmse.py"
 
 
 @dataclass(frozen=True)
@@ -105,6 +126,26 @@ def _print_region_split_summary(
     )
 
 
+def _resolve_dataset_h5_paths(
+    args: argparse.Namespace,
+) -> tuple[Path, Path, Path]:
+    """解析训练 / 训练后评估 / legacy test HDF5 路径。
+
+    ``--swap-train-eval-h5`` 时交换 train 与 eval；若 ``test`` 原与 ``eval`` 相同则随 eval 一起换。
+    """
+    train_h5 = args.h5_path.resolve()
+    eval_h5 = args.eval_h5_path.resolve()
+    test_h5 = args.test_h5_path.resolve()
+    if not args.swap_train_eval_h5:
+        return train_h5, eval_h5, test_h5
+
+    orig_train, orig_eval, orig_test = train_h5, eval_h5, test_h5
+    train_h5, eval_h5 = orig_eval, orig_train
+    if orig_test == orig_eval:
+        test_h5 = eval_h5
+    return train_h5, eval_h5, test_h5
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="训练 Cooperative Monostatic CNN（双站 ROI 距离谱 → xy）"
@@ -115,6 +156,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="optional second HDF5 concatenated into training set (e.g. Run2 finetune train)",
+    )
+    parser.add_argument(
+        "--swap-train-eval-h5",
+        action="store_true",
+        help="交换训练集与训练后评估集（Run1↔Run2）；等价于互换 --h5-path 与 --eval-h5-path",
     )
     parser.add_argument(
         "--test-h5-path",
@@ -151,7 +197,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument(
         "--weight-decay",
@@ -194,14 +240,38 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--range-roi",
         type=float,
         nargs=2,
-        default=list(DEFAULT_RANGE_ROI),
+        default=list(TRAIN_DEFAULT_RANGE_ROI),
         metavar=("MIN_M", "MAX_M"),
+        help="range ROI in meters (default: 0 4)",
     )
     parser.add_argument("--base-channels", type=int, default=32)
     parser.add_argument("--num-layers", type=int, default=3)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="DataLoader workers (default: 4; set 0 to disable)",
+    )
+    parser.add_argument(
+        "--features-h5",
+        type=Path,
+        default=None,
+        help="预计算 features sidecar（默认按 --h5-path / ROI / feature-mode 自动查找）",
+    )
+    parser.add_argument(
+        "--eval-features-h5",
+        type=Path,
+        default=None,
+        help="post-train eval 用 features sidecar（默认按 --eval-h5-path 自动查找）",
+    )
+    parser.add_argument(
+        "--require-features-h5",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="找不到 features sidecar 时直接报错（默认开启；--no-require-features-h5 关闭）",
+    )
     parser.add_argument(
         "--max-samples",
         type=int,
@@ -209,10 +279,34 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="调试用：限制参与划分的总帧数",
     )
     parser.add_argument(
+        "--filter-outliers",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="训练前剔除异常帧（默认开启；--no-filter-outliers 关闭）",
+    )
+    parser.add_argument(
+        "--xy-max-m",
+        type=float,
+        default=1.0,
+        help="硬过滤：|x|,|y| 超过该值视为越界 (m)，默认 1.0",
+    )
+    parser.add_argument(
+        "--outlier-energy-eps",
+        type=float,
+        default=1e-8,
+        help="硬过滤：任一站 CPI 平均幅度 <= eps 视为近零",
+    )
+    parser.add_argument(
+        "--outlier-energy-mad-z",
+        type=float,
+        default=5.0,
+        help="软剔除：session 内能量 MAD z-score 阈值，默认 5.0",
+    )
+    parser.add_argument(
         "--label-jitter-m",
         type=float,
-        default=DEFAULT_LABEL_JITTER_M,
-        help="训练集 target_xy 各轴均匀抖动半幅 (m)，验证集始终为 0",
+        default=TRAIN_DEFAULT_LABEL_JITTER_M,
+        help="训练集 target_xy 各轴均匀抖动半幅 (m)，验证集始终为 0（default: 0.05）",
     )
     parser.add_argument(
         "--no-label-jitter",
@@ -222,20 +316,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--outer-ring-weight",
         type=float,
-        default=1.0,
-        help="loss weight for outer-ring targets (|x|>0.6 or |y|>0.6); default 1.0",
+        default=TRAIN_DEFAULT_OUTER_RING_WEIGHT,
+        help="loss weight for outer-ring targets (|x|>0.6 or |y|>0.6); default 2.0",
     )
     parser.add_argument(
         "--feature-noise-std",
         type=float,
-        default=0.0,
-        help="Gaussian noise std on float training features",
+        default=TRAIN_DEFAULT_FEATURE_NOISE_STD,
+        help="Gaussian noise std on float training features (default: 0.02)",
     )
     parser.add_argument(
         "--spec-augment-prob",
         type=float,
-        default=0.0,
-        help="probability of range-bin SpecAugment on training features",
+        default=TRAIN_DEFAULT_SPEC_AUGMENT_PROB,
+        help="probability of range-bin SpecAugment on training features (default: 0.3)",
     )
     parser.add_argument(
         "--spec-augment-max-bins",
@@ -249,12 +343,23 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="train with session-level aggregated RMSE loss instead of frame-level",
     )
     parser.add_argument(
-        "--plot-every",
-        type=int,
-        default=10,
-        help="每隔多少 epoch 刷新 training_curve.png（默认 10）",
+        "--eval-h5-path",
+        type=Path,
+        default=DEFAULT_TEST_H5,
+        help="训练结束后自动评估用的 HDF5（默认 Run2）",
     )
-    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--eval-output-dir",
+        type=Path,
+        default=None,
+        help="自动评估输出目录（默认 out/cooperative_monostatic/<output-dir 名>）",
+    )
+    parser.add_argument(
+        "--no-eval-after-train",
+        action="store_true",
+        help="跳过训练结束后的 Run2 RMSE 自动评估",
+    )
+    parser.add_argument("--device", type=str, default="cuda:0")
     return parser
 
 
@@ -305,7 +410,9 @@ def _outer_ring_sample_weights(
 ) -> torch.Tensor | None:
     if outer_weight == 1.0:
         return None
-    weights = torch.ones(target_xy.shape[0], dtype=target_xy.dtype, device=target_xy.device)
+    weights = torch.ones(
+        target_xy.shape[0], dtype=target_xy.dtype, device=target_xy.device
+    )
     for i in range(target_xy.shape[0]):
         x = float(target_xy[i, 0])
         y = float(target_xy[i, 1])
@@ -389,9 +496,9 @@ def _evaluate(
     total_euclidean = 0.0
     n_batches = 0
     for batch in loader:
-        dual_profiles = batch["dual_profiles"].to(device)
-        target_xy = batch["target_xy"].to(device)
-        session_index = batch["session_index"].to(device)
+        dual_profiles = batch["dual_profiles"].to(device, non_blocking=True)
+        target_xy = batch["target_xy"].to(device, non_blocking=True)
+        session_index = batch["session_index"].to(device, non_blocking=True)
         pred_xy = model(dual_profiles)
         sample_weight = _outer_ring_sample_weights(
             target_xy, outer_weight=outer_ring_weight
@@ -430,9 +537,9 @@ def _train_one_epoch(
     total_loss = 0.0
     n_batches = 0
     for batch in tqdm(loader, desc="train", unit="batch", leave=False):
-        dual_profiles = batch["dual_profiles"].to(device)
-        target_xy = batch["target_xy"].to(device)
-        session_index = batch["session_index"].to(device)
+        dual_profiles = batch["dual_profiles"].to(device, non_blocking=True)
+        target_xy = batch["target_xy"].to(device, non_blocking=True)
+        session_index = batch["session_index"].to(device, non_blocking=True)
         sample_weight = _outer_ring_sample_weights(
             target_xy, outer_weight=outer_ring_weight
         )
@@ -510,6 +617,7 @@ def _make_dataset(
     spec_augment_prob: float,
     spec_augment_max_bins: int,
     augment: bool,
+    seed: int,
 ):
     return open_cooperative_monostatic_training_dataset(
         h5_path,
@@ -525,20 +633,233 @@ def _make_dataset(
         spec_augment_prob=spec_augment_prob,
         spec_augment_max_bins=spec_augment_max_bins,
         augment=augment,
+        seed=seed,
     )
+
+
+def _reseed_dataset_rngs(dataset: Any, seed: int) -> None:
+    """递归对 Dataset / ConcatDataset 调用 ``reseed``。"""
+    if isinstance(dataset, ConcatDataset):
+        for i, sub in enumerate(dataset.datasets):
+            _reseed_dataset_rngs(sub, int(seed) + i * 1009)
+        return
+    reseed = getattr(dataset, "reseed", None)
+    if callable(reseed):
+        reseed(int(seed))
+
+
+def _dataloader_worker_init_fn(worker_id: int) -> None:
+    """DataLoader worker：按 info.seed 播种 numpy/torch 与 Dataset RNG。"""
+    info = torch.utils.data.get_worker_info()
+    if info is None:
+        return
+    worker_seed = int(info.seed) % (2**32)
+    np.random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+    _reseed_dataset_rngs(info.dataset, worker_seed)
+
+
+def _load_profiles_for_frames(
+    h5_path: Path,
+    n_frames: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """读取前 ``n_frames`` 帧的双站 divide CPI。"""
+    with h5py.File(h5_path, "r") as f:
+        profiles_dev0 = np.asarray(f[DATASET_KEY_PROFILES_DEV0][:n_frames])
+        profiles_dev1 = np.asarray(f[DATASET_KEY_PROFILES_DEV1][:n_frames])
+    return profiles_dev0, profiles_dev1
+
+
+def _apply_outlier_filters(
+    *,
+    h5_path: Path,
+    session_indices: np.ndarray,
+    target_position: np.ndarray,
+    train_idx: np.ndarray,
+    eval_idx: np.ndarray | None,
+    xy_max_m: float,
+    energy_eps: float,
+    energy_mad_z: float,
+    soft_filter: bool = True,
+    require_nonempty_train: bool = True,
+    label: str = "",
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """硬过滤全体候选帧，可选对 train/val 做能量 MAD 软剔除。
+
+    ``session_indices`` / ``target_position`` 与 H5 前 N 帧对齐；
+    ``train_idx`` / ``eval_idx`` 为该范围内的全局帧索引。
+    MAD 统计使用全库能量，再分别过滤 train/val 子集。
+    若 H5 含 ``frame_energy``（features sidecar），则跳过 raw CPI 全库读取。
+    """
+    n_frames = int(session_indices.shape[0])
+    energy = load_cooperative_frame_energy(h5_path)
+    profiles_dev0: np.ndarray | None = None
+    profiles_dev1: np.ndarray | None = None
+    if energy is not None:
+        energy = np.asarray(energy[:n_frames], dtype=np.float64)
+        if energy.shape[0] != n_frames:
+            raise ValueError(
+                f"frame_energy 长度 {energy.shape[0]} 与 n_frames={n_frames} 不一致"
+            )
+        keep_hard, drop_counts = filter_cooperative_frames_hard(
+            target_position[:, :2],
+            xy_max_m=xy_max_m,
+            energy_eps=energy_eps,
+        )
+    else:
+        if is_cooperative_monostatic_features_h5(h5_path):
+            raise RuntimeError(
+                f"features sidecar 缺少 frame_energy，无法做 outlier 过滤: {h5_path}"
+            )
+        profiles_dev0, profiles_dev1 = _load_profiles_for_frames(h5_path, n_frames)
+        energy = cooperative_frame_cpi_energy(profiles_dev0, profiles_dev1)
+        keep_hard, drop_counts = filter_cooperative_frames_hard(
+            target_position[:, :2],
+            profiles_dev0=profiles_dev0,
+            profiles_dev1=profiles_dev1,
+            xy_max_m=xy_max_m,
+            energy_eps=energy_eps,
+        )
+    hard_set = set(int(i) for i in keep_hard)
+    if keep_hard.size == 0:
+        raise RuntimeError(
+            f"outlier 硬过滤后无剩余帧"
+            + (f" ({label})" if label else "")
+            + f": {drop_counts}"
+        )
+
+    train_idx = np.asarray([i for i in train_idx if int(i) in hard_set], dtype=np.int64)
+    eval_kept: np.ndarray | None
+    if eval_idx is None:
+        eval_kept = None
+    else:
+        eval_kept = np.asarray(
+            [i for i in eval_idx if int(i) in hard_set], dtype=np.int64
+        )
+
+    soft_dropped_train = 0
+    soft_dropped_val = 0
+    if soft_filter:
+        if train_idx.size > 0:
+            train_idx, soft_dropped_train = filter_cooperative_frames_energy_mad(
+                train_idx,
+                session_indices,
+                energy,
+                z_thresh=energy_mad_z,
+            )
+        if eval_kept is not None and eval_kept.size > 0:
+            eval_kept, soft_dropped_val = filter_cooperative_frames_energy_mad(
+                eval_kept,
+                session_indices,
+                energy,
+                z_thresh=energy_mad_z,
+            )
+
+    hard_dropped = n_frames - int(keep_hard.size)
+    prefix = f"Outlier filter{f' [{label}]' if label else ''}:"
+    eval_n = "n/a" if eval_kept is None else str(int(eval_kept.size))
+    train_n = int(train_idx.size)
+    print(
+        f"{prefix} hard dropped {hard_dropped} "
+        f"(nan_label={drop_counts['nan_label']}, oob_xy={drop_counts['oob_xy']}, "
+        f"nan_cpi={drop_counts['nan_cpi']}, near_zero={drop_counts['near_zero']}); "
+        f"soft dropped {soft_dropped_train} from train, {soft_dropped_val} from val; "
+        f"train {train_n} / eval {eval_n}",
+        flush=True,
+    )
+    if require_nonempty_train and train_idx.size == 0:
+        raise RuntimeError(
+            "outlier 过滤后训练集为空" + (f" ({label})" if label else "")
+        )
+    if eval_kept is not None and eval_kept.size == 0:
+        raise RuntimeError(
+            "outlier 过滤后验证/测试集为空" + (f" ({label})" if label else "")
+        )
+    return train_idx, eval_kept
+
+
+def _run_post_train_eval(
+    *,
+    checkpoint: Path,
+    eval_h5: Path,
+    range_roi: tuple[float, float],
+    output_dir: Path,
+    device: str | None = None,
+    features_h5: Path | None = None,
+) -> None:
+    """训练结束后调用 cnn_rmse 评估脚本（Run2 等外部集）。"""
+    if not checkpoint.is_file():
+        print(
+            f"Warning: skip post-train eval, checkpoint missing: {checkpoint}",
+            flush=True,
+        )
+        return
+    if not eval_h5.is_file():
+        print(
+            f"Warning: skip post-train eval, eval HDF5 missing: {eval_h5}", flush=True
+        )
+        return
+    if not EVAL_SCRIPT.is_file():
+        print(
+            f"Warning: skip post-train eval, script missing: {EVAL_SCRIPT}", flush=True
+        )
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "cnn_rmse.csv"
+    heatmap_path = output_dir / "cnn_rmse_heatmap.png"
+    cdf_path = output_dir / "cnn_rmse_cdf.png"
+    cmd = [
+        sys.executable,
+        str(EVAL_SCRIPT),
+        "--h5-path",
+        str(eval_h5),
+        "--checkpoint",
+        str(checkpoint),
+        "--range-roi",
+        str(range_roi[0]),
+        str(range_roi[1]),
+        "--output-csv",
+        str(csv_path),
+        "--output-heatmap",
+        str(heatmap_path),
+        "--output-cdf",
+        str(cdf_path),
+    ]
+    if features_h5 is not None:
+        cmd.extend(["--features-h5", str(features_h5)])
+    if device:
+        cmd.extend(["--device", str(device)])
+
+    print("\n>>> post-train eval:", " ".join(cmd), flush=True)
+    subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
 
 
 def main() -> None:
     args = _build_arg_parser().parse_args()
     set_random_seed(args.seed)
 
-    h5_path = args.h5_path.resolve()
+    h5_path, post_eval_h5, resolved_test_h5 = _resolve_dataset_h5_paths(args)
+    if args.swap_train_eval_h5:
+        print(
+            f"Dataset swap: train={h5_path} | eval={post_eval_h5}",
+            flush=True,
+        )
     if not h5_path.is_file():
         raise FileNotFoundError(f"HDF5 不存在: {h5_path}")
-    if args.plot_every < 1:
-        raise ValueError(f"--plot-every 须 >= 1，收到 {args.plot_every}")
     if args.outer_ring_weight <= 0.0:
         raise ValueError(f"--outer-ring-weight 须 > 0，收到 {args.outer_ring_weight}")
+    if args.filter_outliers:
+        if args.xy_max_m <= 0.0:
+            raise ValueError(f"--xy-max-m 须 > 0，收到 {args.xy_max_m}")
+        if args.outlier_energy_eps < 0.0:
+            raise ValueError(
+                f"--outlier-energy-eps 须 >= 0，收到 {args.outlier_energy_eps}"
+            )
+        if args.outlier_energy_mad_z <= 0.0:
+            raise ValueError(
+                f"--outlier-energy-mad-z 须 > 0，收到 {args.outlier_energy_mad_z}"
+            )
 
     use_external_test = args.use_test_h5 and not args.no_test_h5
     if args.finetune and use_external_test:
@@ -546,7 +867,7 @@ def main() -> None:
     if args.extra_train_h5_path is not None and use_external_test:
         raise ValueError("--extra-train-h5-path 与 --use-test-h5 不能同时使用")
 
-    test_h5_path = args.test_h5_path.resolve() if use_external_test else None
+    test_h5_path = resolved_test_h5 if use_external_test else None
     if test_h5_path is not None and not test_h5_path.is_file():
         raise FileNotFoundError(f"测试 HDF5 不存在: {test_h5_path}")
 
@@ -558,6 +879,31 @@ def main() -> None:
     )
     paths = _resolve_paths(args.output_dir.resolve())
     paths.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_h5_path = h5_path
+    h5_path = resolve_cooperative_features_h5(
+        raw_h5_path,
+        range_roi=range_roi,
+        feature_mode=feature_mode,
+        features_h5=args.features_h5,
+        require=bool(args.require_features_h5),
+    )
+    if h5_path != raw_h5_path.resolve():
+        print(f"Using features sidecar for train: {h5_path}", flush=True)
+
+    post_eval_features: Path | None = None
+    try:
+        resolved_post_eval = resolve_cooperative_features_h5(
+            post_eval_h5,
+            range_roi=range_roi,
+            feature_mode=feature_mode,
+            features_h5=args.eval_features_h5,
+            require=False,
+        )
+        if is_cooperative_monostatic_features_h5(resolved_post_eval):
+            post_eval_features = resolved_post_eval
+    except (FileNotFoundError, ValueError):
+        post_eval_features = None
 
     with h5py.File(h5_path, "r") as f:
         n_frames = int(f[DATASET_KEY_SESSION_INDEX].shape[0])
@@ -574,8 +920,23 @@ def main() -> None:
 
     if use_external_test:
         train_idx = np.arange(n_frames, dtype=np.int64)
+        assert test_h5_path is not None
+        raw_test_h5 = test_h5_path
+        test_h5_path = resolve_cooperative_features_h5(
+            raw_test_h5,
+            range_roi=range_roi,
+            feature_mode=feature_mode,
+            features_h5=None,
+            require=bool(args.require_features_h5),
+        )
+        if test_h5_path != raw_test_h5.resolve():
+            print(f"Using features sidecar for test: {test_h5_path}", flush=True)
         with h5py.File(test_h5_path, "r") as f:
             n_test_frames = int(f[DATASET_KEY_SESSION_INDEX].shape[0])
+            test_sessions = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
+            test_targets = np.asarray(
+                f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
+            )
         eval_idx = np.arange(n_test_frames, dtype=np.int64)
         eval_h5_path = test_h5_path
         eval_label = "Test"
@@ -593,6 +954,52 @@ def main() -> None:
         )
         eval_h5_path = h5_path
         eval_label = "Val"
+        test_sessions = None
+        test_targets = None
+
+    if args.filter_outliers:
+        if use_external_test:
+            train_idx, _ = _apply_outlier_filters(
+                h5_path=h5_path,
+                session_indices=session_indices,
+                target_position=target_position,
+                train_idx=train_idx,
+                eval_idx=None,
+                xy_max_m=args.xy_max_m,
+                energy_eps=args.outlier_energy_eps,
+                energy_mad_z=args.outlier_energy_mad_z,
+                soft_filter=True,
+                require_nonempty_train=True,
+                label="train-h5",
+            )
+            assert test_h5_path is not None
+            assert test_sessions is not None and test_targets is not None
+            _, eval_idx = _apply_outlier_filters(
+                h5_path=test_h5_path,
+                session_indices=test_sessions,
+                target_position=test_targets,
+                train_idx=np.array([], dtype=np.int64),
+                eval_idx=eval_idx,
+                xy_max_m=args.xy_max_m,
+                energy_eps=args.outlier_energy_eps,
+                energy_mad_z=args.outlier_energy_mad_z,
+                soft_filter=True,
+                require_nonempty_train=False,
+                label="test-h5",
+            )
+        else:
+            train_idx, eval_idx = _apply_outlier_filters(
+                h5_path=h5_path,
+                session_indices=session_indices,
+                target_position=target_position,
+                train_idx=train_idx,
+                eval_idx=eval_idx,
+                xy_max_m=args.xy_max_m,
+                energy_eps=args.outlier_energy_eps,
+                energy_mad_z=args.outlier_energy_mad_z,
+                soft_filter=True,
+                require_nonempty_train=True,
+            )
 
     label_jitter_m = 0.0 if args.no_label_jitter else float(args.label_jitter_m)
     if label_jitter_m < 0.0:
@@ -622,16 +1029,26 @@ def main() -> None:
             spec_augment_prob=args.spec_augment_prob,
             spec_augment_max_bins=args.spec_augment_max_bins,
             augment=True,
+            seed=args.seed,
         )
     ]
     if args.extra_train_h5_path is not None:
         extra_path = args.extra_train_h5_path.resolve()
         if not extra_path.is_file():
             raise FileNotFoundError(f"extra train HDF5 不存在: {extra_path}")
+        extra_path = resolve_cooperative_features_h5(
+            extra_path,
+            range_roi=range_roi,
+            feature_mode=feature_mode,
+            features_h5=None,
+            require=bool(args.require_features_h5),
+        )
         with h5py.File(extra_path, "r") as f:
             extra_n = int(f[DATASET_KEY_SESSION_INDEX].shape[0])
             extra_sessions = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
-            extra_targets = np.asarray(f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64)
+            extra_targets = np.asarray(
+                f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
+            )
         if args.finetune:
             extra_train_idx, _, extra_split = session_train_val_split_by_region(
                 extra_sessions,
@@ -646,6 +1063,20 @@ def main() -> None:
             )
         else:
             extra_train_idx = np.arange(extra_n, dtype=np.int64)
+        if args.filter_outliers:
+            extra_train_idx, _ = _apply_outlier_filters(
+                h5_path=extra_path,
+                session_indices=extra_sessions,
+                target_position=extra_targets,
+                train_idx=extra_train_idx,
+                eval_idx=None,
+                xy_max_m=args.xy_max_m,
+                energy_eps=args.outlier_energy_eps,
+                energy_mad_z=args.outlier_energy_mad_z,
+                soft_filter=True,
+                require_nonempty_train=True,
+                label="extra-train-h5",
+            )
         train_datasets.append(
             _make_dataset(
                 extra_path,
@@ -660,14 +1091,13 @@ def main() -> None:
                 spec_augment_prob=args.spec_augment_prob,
                 spec_augment_max_bins=args.spec_augment_max_bins,
                 augment=True,
+                seed=args.seed + 17,
             )
         )
 
     train_dataset: ConcatDataset | Any
     train_dataset = (
-        train_datasets[0]
-        if len(train_datasets) == 1
-        else ConcatDataset(train_datasets)
+        train_datasets[0] if len(train_datasets) == 1 else ConcatDataset(train_datasets)
     )
 
     eval_dataset = _make_dataset(
@@ -683,26 +1113,40 @@ def main() -> None:
         spec_augment_prob=0.0,
         spec_augment_max_bins=args.spec_augment_max_bins,
         augment=False,
+        seed=args.seed,
     )
+
+    pin_memory = device.type == "cuda"
+    loader_gen = torch.Generator()
+    loader_gen.manual_seed(int(args.seed))
+    loader_kwargs: dict[str, Any] = {
+        "num_workers": args.num_workers,
+        "collate_fn": _collate_batch,
+        "pin_memory": pin_memory,
+    }
+    if args.num_workers > 0:
+        loader_kwargs["persistent_workers"] = True
+        loader_kwargs["worker_init_fn"] = _dataloader_worker_init_fn
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=args.num_workers,
-        collate_fn=_collate_batch,
+        generator=loader_gen,
+        **loader_kwargs,
     )
     eval_loader = DataLoader(
         eval_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.num_workers,
-        collate_fn=_collate_batch,
+        **loader_kwargs,
     )
 
     in_channels = cooperative_feature_in_channels(feature_mode)  # type: ignore[arg-type]
     model_type = cooperative_model_type(feature_mode)  # type: ignore[arg-type]
-    lr = float(args.finetune_lr if args.resume is not None and args.finetune_lr else args.lr)
+    lr = float(
+        args.finetune_lr if args.resume is not None and args.finetune_lr else args.lr
+    )
 
     if args.resume is not None:
         resume_path = args.resume.resolve()
@@ -763,8 +1207,11 @@ def main() -> None:
             f"训练 {len(train_dataset)} / 验证 {len(eval_dataset)} 帧"
         )
     else:
+        train_label = (
+            "部署验证训练 (swapped)" if args.swap_train_eval_h5 else "部署验证训练"
+        )
         dataset_msg = (
-            f"部署验证训练 (Run1 only): {h5_path}\n"
+            f"{train_label}: {h5_path}\n"
             f"训练 {len(train_dataset)} / 验证 {len(eval_dataset)} 帧 | "
             f"checkpoint 依据 val_loss"
         )
@@ -778,7 +1225,7 @@ def main() -> None:
         f"session_aggregated_loss={args.session_aggregated_loss}, "
         f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}\n"
         f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
-        f"dropout={args.dropout}, lr={lr}, plot_every={args.plot_every}\n"
+        f"dropout={args.dropout}, lr={lr}\n"
         f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
     )
     if norm_stats_path is not None:
@@ -855,9 +1302,6 @@ def main() -> None:
         else:
             epochs_without_improve += 1
 
-        if epoch % args.plot_every == 0 or epoch == args.epochs:
-            _plot_training_history(history, paths.training_curve, eval_label=eval_label)
-
         if (
             args.early_stop_patience > 0
             and epochs_without_improve >= args.early_stop_patience
@@ -867,6 +1311,8 @@ def main() -> None:
                 f"{args.early_stop_patience} epochs."
             )
             break
+
+    _plot_training_history(history, paths.training_curve, eval_label=eval_label)
 
     if use_external_test:
         summary_rows = [
@@ -897,6 +1343,26 @@ def main() -> None:
             ["Training curve", str(paths.training_curve)],
         ]
     print("\n" + tabulate(summary_rows, headers=["Metric", "Value"], tablefmt="simple"))
+
+    if not args.no_eval_after_train:
+        eval_out = (
+            args.eval_output_dir.resolve()
+            if args.eval_output_dir is not None
+            else (
+                PROJECT_ROOT
+                / "out"
+                / "cooperative_monostatic"
+                / paths.checkpoint_dir.name
+            )
+        )
+        _run_post_train_eval(
+            checkpoint=paths.best_model,
+            eval_h5=post_eval_h5,
+            range_roi=range_roi,
+            output_dir=eval_out,
+            device=args.device,
+            features_h5=post_eval_features,
+        )
 
 
 if __name__ == "__main__":
