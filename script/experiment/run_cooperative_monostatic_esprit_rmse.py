@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import importlib.util
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -32,7 +33,13 @@ from isac_imp.cooperative_monostatic_pipeline import (
     divide_cpi_to_complex_range_profile,
     estimate_monostatic_range_esprit_m,
     grc_cooperative_processing_params,
-    localize_xy_from_two_ranges,
+    localize_xy_from_two_ranges_with_bias,
+)
+from isac_imp.cooperative_monostatic_range_calibration import (
+    add_range_bias_calib_arguments,
+    correct_monostatic_range_pair,
+    resolve_and_apply_eval_row_calibration,
+    resolve_loaded_range_biases,
 )
 from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_FRAME_INDEX,
@@ -53,6 +60,8 @@ CSV_COLUMNS = (
     "est_y_m",
     "r_dev0_m",
     "r_dev1_m",
+    "r_dev0_cal_m",
+    "r_dev1_cal_m",
     "rmse_xy_m",
 )
 
@@ -80,6 +89,15 @@ def _default_output_cdf() -> Path:
     return PROJECT_ROOT / "out" / "cooperative_monostatic" / "esprit_rmse_cdf.png"
 
 
+def _default_output_range_heatmap() -> Path:
+    return (
+        PROJECT_ROOT
+        / "out"
+        / "cooperative_monostatic"
+        / "esprit_range_mae_heatmap_dev.png"
+    )
+
+
 def _load_plot_heatmap_module():
     plot_path = Path(__file__).resolve().with_name(
         "plot_cooperative_monostatic_music_rmse_heatmap.py"
@@ -88,6 +106,20 @@ def _load_plot_heatmap_module():
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load heatmap plot module from {plot_path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_plot_range_heatmap_module():
+    plot_path = Path(__file__).resolve().with_name(
+        "plot_cooperative_monostatic_range_rmse_heatmap.py"
+    )
+    spec = importlib.util.spec_from_file_location("plot_range_mae_heatmap", plot_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load range heatmap plot module from {plot_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -169,6 +201,17 @@ def argument_parser() -> argparse.Namespace:
         help="output CDF PNG when --plot-cdf is set",
     )
     parser.add_argument(
+        "--plot-range-heatmap",
+        action="store_true",
+        help="after evaluation, plot per-device range MAE heatmap (dev0 + dev1)",
+    )
+    parser.add_argument(
+        "--output-range-heatmap",
+        type=Path,
+        default=_default_output_range_heatmap(),
+        help="output range MAE heatmap PNG when --plot-range-heatmap is set",
+    )
+    parser.add_argument(
         "--esprit-num-sources",
         type=int,
         default=DEFAULT_ESPRIT_NUM_SOURCES,
@@ -186,6 +229,7 @@ def argument_parser() -> argparse.Namespace:
         default=DEFAULT_ESPRIT_WINDOW_SIZE,
         help=f"ESPRIT refine window size (default: {DEFAULT_ESPRIT_WINDOW_SIZE})",
     )
+    add_range_bias_calib_arguments(parser)
     return parser.parse_args()
 
 
@@ -224,21 +268,79 @@ def _localize_sample(
     *,
     dev0_xy: tuple[float, float],
     dev1_xy: tuple[float, float],
+    bias_dev0_m: float = 0.0,
+    bias_dev1_m: float = 0.0,
 ) -> tuple[float, float, float]:
     if not np.isfinite(r0_m) or not np.isfinite(r1_m):
         return float("nan"), float("nan"), float("nan")
     try:
-        est_x, est_y = localize_xy_from_two_ranges(
+        est_x, est_y = localize_xy_from_two_ranges_with_bias(
             dev0_xy,
             r0_m,
             dev1_xy,
             r1_m,
+            bias_dev0_m=bias_dev0_m,
+            bias_dev1_m=bias_dev1_m,
             y_hint=true_xy[1],
         )
     except ValueError:
         return float("nan"), float("nan"), float("nan")
     rmse = position_rmse_xy((est_x, est_y), true_xy)
     return est_x, est_y, rmse
+
+
+def _range_bias_tuple(
+    range_biases: tuple[float, float] | None,
+) -> tuple[float, float]:
+    if range_biases is None:
+        return 0.0, 0.0
+    return float(range_biases[0]), float(range_biases[1])
+
+
+def _build_eval_row(
+    *,
+    sample_idx: int,
+    session_index: int,
+    frame_index: int,
+    true_x: float,
+    true_y: float,
+    r0: float,
+    r1: float,
+    dev0_xy: tuple[float, float],
+    dev1_xy: tuple[float, float],
+    range_biases: tuple[float, float] | None = None,
+) -> dict[str, float | int]:
+    bias_dev0_m, bias_dev1_m = _range_bias_tuple(range_biases)
+    true_xy = (true_x, true_y)
+    r0_cal, r1_cal = correct_monostatic_range_pair(
+        r0,
+        r1,
+        bias_dev0_m=bias_dev0_m,
+        bias_dev1_m=bias_dev1_m,
+    )
+    est_x, est_y, rmse = _localize_sample(
+        r0,
+        r1,
+        true_xy,
+        dev0_xy=dev0_xy,
+        dev1_xy=dev1_xy,
+        bias_dev0_m=bias_dev0_m,
+        bias_dev1_m=bias_dev1_m,
+    )
+    return {
+        "sample_idx": int(sample_idx),
+        "session_index": int(session_index),
+        "frame_index": int(frame_index),
+        "true_x_m": true_x,
+        "true_y_m": true_y,
+        "est_x_m": est_x,
+        "est_y_m": est_y,
+        "r_dev0_m": r0,
+        "r_dev1_m": r1,
+        "r_dev0_cal_m": r0_cal,
+        "r_dev1_cal_m": r1_cal,
+        "rmse_xy_m": rmse,
+    }
 
 
 def _evaluate_per_frame(
@@ -251,6 +353,7 @@ def _evaluate_per_frame(
     max_samples: int | None,
     session_index: int | None,
     show_progress: bool,
+    range_biases: tuple[float, float] | None = None,
 ) -> list[dict[str, float | int]]:
     rows: list[dict[str, float | int]] = []
     with h5py.File(h5_path, "r") as f:
@@ -279,7 +382,6 @@ def _evaluate_per_frame(
             divide_dev0 = dev0_ds[sample_idx]
             divide_dev1 = dev1_ds[sample_idx]
             true_x, true_y = (float(v) for v in target_ds[sample_idx, :2])
-            true_xy = (true_x, true_y)
 
             r0 = _esprit_range_from_divide_cpi(
                 divide_dev0,
@@ -291,26 +393,19 @@ def _evaluate_per_frame(
                 proc_params=proc_params,
                 range_roi=range_roi,
             )
-            est_x, est_y, rmse = _localize_sample(
-                r0,
-                r1,
-                true_xy,
-                dev0_xy=dev0_xy,
-                dev1_xy=dev1_xy,
-            )
             rows.append(
-                {
-                    "sample_idx": int(sample_idx),
-                    "session_index": int(session_ds[sample_idx]),
-                    "frame_index": int(frame_ds[sample_idx]),
-                    "true_x_m": true_x,
-                    "true_y_m": true_y,
-                    "est_x_m": est_x,
-                    "est_y_m": est_y,
-                    "r_dev0_m": r0,
-                    "r_dev1_m": r1,
-                    "rmse_xy_m": rmse,
-                }
+                _build_eval_row(
+                    sample_idx=int(sample_idx),
+                    session_index=int(session_ds[sample_idx]),
+                    frame_index=int(frame_ds[sample_idx]),
+                    true_x=true_x,
+                    true_y=true_y,
+                    r0=r0,
+                    r1=r1,
+                    dev0_xy=dev0_xy,
+                    dev1_xy=dev1_xy,
+                    range_biases=range_biases,
+                )
             )
     return rows
 
@@ -325,6 +420,7 @@ def _evaluate_aggregate_session(
     max_samples: int | None,
     session_index: int | None,
     show_progress: bool,
+    range_biases: tuple[float, float] | None = None,
 ) -> list[dict[str, float | int]]:
     session_ranges: dict[int, dict[str, list[float]]] = defaultdict(
         lambda: {"r0": [], "r1": [], "true_x": [], "true_y": [], "frame_index": []}
@@ -375,29 +471,21 @@ def _evaluate_aggregate_session(
         bucket = session_ranges[sess]
         true_x = float(np.mean(bucket["true_x"]))
         true_y = float(np.mean(bucket["true_y"]))
-        true_xy = (true_x, true_y)
         r0 = float(np.nanmean(bucket["r0"]))
         r1 = float(np.nanmean(bucket["r1"]))
-        est_x, est_y, rmse = _localize_sample(
-            r0,
-            r1,
-            true_xy,
-            dev0_xy=dev0_xy,
-            dev1_xy=dev1_xy,
-        )
         rows.append(
-            {
-                "sample_idx": sess,
-                "session_index": sess,
-                "frame_index": int(np.mean(bucket["frame_index"])),
-                "true_x_m": true_x,
-                "true_y_m": true_y,
-                "est_x_m": est_x,
-                "est_y_m": est_y,
-                "r_dev0_m": r0,
-                "r_dev1_m": r1,
-                "rmse_xy_m": rmse,
-            }
+            _build_eval_row(
+                sample_idx=sess,
+                session_index=sess,
+                frame_index=int(np.mean(bucket["frame_index"])),
+                true_x=true_x,
+                true_y=true_y,
+                r0=r0,
+                r1=r1,
+                dev0_xy=dev0_xy,
+                dev1_xy=dev1_xy,
+                range_biases=range_biases,
+            )
         )
     return rows
 
@@ -490,6 +578,9 @@ def _print_summary(rows: list[dict[str, float | int]]) -> None:
 
 def main() -> None:
     args = argument_parser()
+    if args.calibrate_range and args.calib_json is not None:
+        raise ValueError("--calibrate-range 与 --calib-json 不能同时使用")
+
     h5_path = args.h5_path.resolve()
     if not h5_path.is_file():
         raise FileNotFoundError(h5_path)
@@ -499,6 +590,7 @@ def main() -> None:
     range_roi = DEFAULT_RANGE_ROI
     dev0_xy = (float(args.dev0_xy[0]), float(args.dev0_xy[1]))
     dev1_xy = (float(args.dev1_xy[0]), float(args.dev1_xy[1]))
+    range_biases = resolve_loaded_range_biases(args)
 
     if args.aggregate_session:
         rows = _evaluate_aggregate_session(
@@ -510,6 +602,7 @@ def main() -> None:
             max_samples=args.max_samples,
             session_index=args.session_index,
             show_progress=not args.no_progress,
+            range_biases=range_biases,
         )
     else:
         rows = _evaluate_per_frame(
@@ -521,14 +614,24 @@ def main() -> None:
             max_samples=args.max_samples,
             session_index=args.session_index,
             show_progress=not args.no_progress,
+            range_biases=range_biases,
         )
+
+    resolve_and_apply_eval_row_calibration(
+        rows,
+        args,
+        dev0_xy=dev0_xy,
+        dev1_xy=dev1_xy,
+        localize_fn=_localize_sample,
+        calibration_preapplied=range_biases is not None,
+    )
 
     output_csv = args.output_csv.resolve()
     _write_csv(output_csv, rows)
     print(f"output csv: {output_csv}")
     _print_summary(rows)
 
-    if args.plot_heatmap or args.plot_cdf:
+    if args.plot_heatmap or args.plot_cdf or args.plot_range_heatmap:
         plot_mod = _load_plot_heatmap_module()
         if args.plot_heatmap:
             plot_mod.plot_rmse_heatmap_combined_from_csv(
@@ -546,6 +649,23 @@ def main() -> None:
                 title="ESPRIT localization RMSE CDF",
             )
             print(f"output cdf: {args.output_cdf.resolve()}")
+        if args.plot_range_heatmap:
+            range_plot_mod = _load_plot_range_heatmap_module()
+            import pandas as pd
+
+            from isac_imp.cooperative_monostatic_range_calibration import (
+                dataframe_for_range_mae,
+            )
+
+            plot_df = dataframe_for_range_mae(pd.DataFrame(rows))
+            range_plot_mod.plot_range_mae_heatmap_dual_dev_from_df(
+                plot_df,
+                args.output_range_heatmap.resolve(),
+                method="esprit",
+                dev0_xy=dev0_xy,
+                dev1_xy=dev1_xy,
+            )
+            print(f"output range heatmap: {args.output_range_heatmap.resolve()}")
 
 
 if __name__ == "__main__":

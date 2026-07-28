@@ -8,8 +8,8 @@ from isac_imp.cooperative_monostatic_pipeline import (
 from isac_imp.range_profile_roi_slice import compute_range_roi
 
 
-def test_default_range_roi_is_zero_to_four_meters() -> None:
-    assert DEFAULT_RANGE_ROI == (0.0, 4.0)
+def test_default_range_roi_is_zero_to_three_point_five_meters() -> None:
+    assert DEFAULT_RANGE_ROI == (0.0, 3.5)
 
 
 def test_grc_params_range_roi_matches_default() -> None:
@@ -17,11 +17,11 @@ def test_grc_params_range_roi_matches_default() -> None:
     assert params["range_roi"] == DEFAULT_RANGE_ROI
 
 
-def test_compute_range_roi_bin_counts_for_four_and_five_m() -> None:
+def test_compute_range_roi_bin_counts_for_three_point_five_and_five_m() -> None:
     step = cooperative_range_bin_step_m()
     vlen_in = 8192
-    _, num_bins_4, _ = compute_range_roi(
-        range_roi=(0.0, 4.0),
+    _, num_bins_3_5, _ = compute_range_roi(
+        range_roi=(0.0, 3.5),
         range_bin_step=step,
         vlen_in=vlen_in,
     )
@@ -30,6 +30,6 @@ def test_compute_range_roi_bin_counts_for_four_and_five_m() -> None:
         range_bin_step=step,
         vlen_in=vlen_in,
     )
-    assert num_bins_4 == 27
+    assert num_bins_3_5 == 24
     assert num_bins_5 == 34
-    assert num_bins_5 > num_bins_4
+    assert num_bins_5 > num_bins_3_5

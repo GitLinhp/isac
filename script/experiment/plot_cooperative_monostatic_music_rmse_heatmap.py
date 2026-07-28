@@ -27,6 +27,7 @@ DEFAULT_GRID_MAX_M = 1.0
 OUTER_GRID_STEP_M = 0.2
 INNER_GRID_STEP_M = 0.1
 UNIFIED_GRID_STEP_M = 0.1
+AXIS_TICK_STEP_M = 0.2
 INNER_RADIUS_M = INNER_RADIUS_CM / 100.0
 GRID_COORD_DECIMALS = 1
 DEFAULT_CMAP = "RdYlGn_r"
@@ -64,6 +65,24 @@ def _uniform_axis_edges(axis: np.ndarray, step_m: float) -> np.ndarray:
     axis = np.asarray(axis, dtype=np.float64)
     half = float(step_m) / 2.0
     return np.concatenate([axis - half, [axis[-1] + half]])
+
+
+def _apply_axis_ticks(
+    ax,
+    xs: np.ndarray,
+    ys: np.ndarray,
+    *,
+    tick_step_m: float = AXIS_TICK_STEP_M,
+    pad_m: float | None = None,
+) -> None:
+    """设置热力图 x/y 轴范围与刻度显示间隔（默认 0.2 m）。"""
+    pad = float(pad_m) if pad_m is not None else float(tick_step_m) / 2.0
+    ax.set_xlim(xs[0] - pad, xs[-1] + pad)
+    ax.set_ylim(ys[0] - pad, ys[-1] + pad)
+    tick_x = np.arange(xs[0], xs[-1] + tick_step_m * 0.5, tick_step_m)
+    tick_y = np.arange(ys[0], ys[-1] + tick_step_m * 0.5, tick_step_m)
+    ax.set_xticks(np.round(tick_x, GRID_COORD_DECIMALS))
+    ax.set_yticks(np.round(tick_y, GRID_COORD_DECIMALS))
 
 
 def _default_output_outer_png() -> Path:
@@ -193,11 +212,15 @@ def build_rmse_grid_inner(
     return xs, ys, z
 
 
-def _validate_rmse_columns(df: pd.DataFrame) -> None:
+def _validate_grid_columns(df: pd.DataFrame, value_col: str) -> None:
     if "true_x_m" not in df.columns or "true_y_m" not in df.columns:
         raise ValueError("CSV must contain true_x_m and true_y_m columns")
-    if "rmse_xy_m" not in df.columns:
-        raise ValueError("CSV must contain rmse_xy_m column")
+    if value_col not in df.columns:
+        raise ValueError(f"CSV must contain {value_col!r} column")
+
+
+def _validate_rmse_columns(df: pd.DataFrame) -> None:
+    _validate_grid_columns(df, "rmse_xy_m")
 
 
 def _outer_cell_mask(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
@@ -211,9 +234,11 @@ def _outer_cell_mask(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
 
 def build_rmse_grid_10cm(
     df: pd.DataFrame,
+    *,
+    value_col: str = "rmse_xy_m",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """全区域 21×21、10 cm 均匀网格 RMSE；返回 ``measured_invalid_mask``。"""
-    _validate_rmse_columns(df)
+    """全区域 21×21、10 cm 均匀网格；返回 ``measured_invalid_mask``。"""
+    _validate_grid_columns(df, value_col)
 
     xs = ys = unified_grid_axis_m()
     work = df.copy()
@@ -222,12 +247,11 @@ def build_rmse_grid_10cm(
     work["true_x_m"] = work["true_x_m"].round(GRID_COORD_DECIMALS)
     work["true_y_m"] = work["true_y_m"].round(GRID_COORD_DECIMALS)
     grouped = work.groupby(["true_y_m", "true_x_m"], as_index=False).agg(
-        rmse_xy_m=("rmse_xy_m", "mean"),
-        n=("rmse_xy_m", "size"),
+        **{value_col: (value_col, "mean"), "n": (value_col, "size")},
     )
     grouped["true_x_m"] = grouped["true_x_m"].round(GRID_COORD_DECIMALS)
     grouped["true_y_m"] = grouped["true_y_m"].round(GRID_COORD_DECIMALS)
-    pivot = grouped.pivot(index="true_y_m", columns="true_x_m", values="rmse_xy_m")
+    pivot = grouped.pivot(index="true_y_m", columns="true_x_m", values=value_col)
     pivot = pivot.reindex(index=ys, columns=xs)
     z = pivot.to_numpy(dtype=np.float64)
     count_pivot = grouped.pivot(index="true_y_m", columns="true_x_m", values="n")
@@ -271,9 +295,11 @@ def interpolate_outer_rmse_gaps(
 
 def build_rmse_grid_10cm_interpolated(
     df: pd.DataFrame,
+    *,
+    value_col: str = "rmse_xy_m",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """全区域 10 cm 网格 RMSE，外侧缺失格插值填充。"""
-    xs, ys, z, measured_invalid_mask = build_rmse_grid_10cm(df)
+    """全区域 10 cm 网格，外侧缺失格插值填充。"""
+    xs, ys, z, measured_invalid_mask = build_rmse_grid_10cm(df, value_col=value_col)
     z_interp, interpolated_cells = interpolate_outer_rmse_gaps(
         z,
         xs,
@@ -349,8 +375,7 @@ def _save_rmse_heatmap_figure(
         zorder=3,
     )
 
-    ax.set_xlim(xs[0] - 0.1, xs[-1] + 0.1)
-    ax.set_ylim(ys[0] - 0.1, ys[-1] + 0.1)
+    _apply_axis_ticks(ax, xs, ys)
     ax.set_xlabel("Target x (m)")
     ax.set_ylabel("Target y (m)")
     ax.set_aspect("equal", adjustable="box")

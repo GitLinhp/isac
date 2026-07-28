@@ -17,7 +17,7 @@ DEFAULT_FFT_LEN = 2048
 DEFAULT_ZEROPADDING_FAC = 4
 DEFAULT_TRANSPOSE_LEN = 4
 DEFAULT_SUBCARRIER_SPACING_HZ = 120e3
-DEFAULT_RANGE_ROI = (0.0, 4.0)
+DEFAULT_RANGE_ROI = (0.0, 3.5)
 DEFAULT_MUSIC_NUM_SOURCES = 1
 DEFAULT_MUSIC_SUBARRAY_SIZE = 16
 DEFAULT_MUSIC_THRESHOLD = 0.1
@@ -209,6 +209,36 @@ def localize_xy_from_two_ranges(
         r0_m,
         pos1_xy,
         r1_m,
+        y_hint=y_hint,
+    )
+
+
+def localize_xy_from_two_ranges_with_bias(
+    pos0_xy: Sequence[float],
+    r0_m: float,
+    pos1_xy: Sequence[float],
+    r1_m: float,
+    *,
+    bias_dev0_m: float = 0.0,
+    bias_dev1_m: float = 0.0,
+    y_hint: float | None = None,
+) -> tuple[float, float]:
+    """应用 per-dev 距离偏置后再做双圆交会定位。"""
+    from isac_imp.cooperative_monostatic_range_calibration import (
+        correct_monostatic_range_pair,
+    )
+
+    r0_cal, r1_cal = correct_monostatic_range_pair(
+        r0_m,
+        r1_m,
+        bias_dev0_m=bias_dev0_m,
+        bias_dev1_m=bias_dev1_m,
+    )
+    return localize_xy_from_two_ranges(
+        pos0_xy,
+        r0_cal,
+        pos1_xy,
+        r1_cal,
         y_hint=y_hint,
     )
 

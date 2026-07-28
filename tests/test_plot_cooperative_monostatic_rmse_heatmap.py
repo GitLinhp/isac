@@ -32,6 +32,25 @@ def fixture_plot_mod():
     return _load_plot_module()
 
 
+def test_apply_axis_ticks_step_0_2(plot_mod) -> None:
+    import matplotlib.pyplot as plt
+
+    xs = plot_mod.unified_grid_axis_m()
+    ys = plot_mod.unified_grid_axis_m()
+    _, ax = plt.subplots()
+    plot_mod._apply_axis_ticks(ax, xs, ys)
+    xticks = ax.get_xticks()
+    yticks = ax.get_yticks()
+    plt.close()
+
+    assert xticks.shape == (11,)
+    assert yticks.shape == (11,)
+    assert np.allclose(np.diff(xticks), plot_mod.AXIS_TICK_STEP_M)
+    assert np.allclose(np.diff(yticks), plot_mod.AXIS_TICK_STEP_M)
+    assert xticks[0] == pytest.approx(-1.0)
+    assert xticks[-1] == pytest.approx(1.0)
+
+
 def _synthetic_rmse_csv(path: Path) -> None:
     rows = []
     sample_idx = 0
