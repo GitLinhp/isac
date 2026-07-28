@@ -31,9 +31,12 @@ from .loss import (
     MonostaticSensingLoss,
     MonostaticSensingLossConfig,
     TargetPositionRmseLoss,
+    aux_range_rmse_loss,
+    monostatic_ranges_from_xy,
     session_aggregated_target_rmse_loss,
 )
 from .model_design import (
+    COOPERATIVE_FUSION_MODES,
     COOPERATIVE_POOL_MODES,
     Conv1dResidualBlock,
     ConvResidualBlock,
@@ -45,6 +48,7 @@ from .model_design import (
 
 __all__ = [
     "COOPERATIVE_FEATURE_MODES",
+    "COOPERATIVE_FUSION_MODES",
     "COOPERATIVE_POOL_MODES",
     "CooperativeFeatureMode",
     "Conv1dResidualBlock",
@@ -53,6 +57,7 @@ __all__ = [
     "CooperativeMonostaticCNN",
     "SensingCNN",
     "apply_cooperative_feature_augmentation",
+    "aux_range_rmse_loss",
     "cooperative_feature_in_channels",
     "cooperative_input_is_complex",
     "cooperative_model_type",
@@ -69,6 +74,7 @@ __all__ = [
     "MonostaticSensingLoss",
     "MonostaticSensingLossConfig",
     "TargetPositionRmseLoss",
+    "monostatic_ranges_from_xy",
     "session_aggregated_target_rmse_loss",
     "save_cooperative_norm_stats",
     "dd_spectrum_to_features",

@@ -140,6 +140,51 @@ class TargetPositionRmseLoss(nn.Module):
         return (dist * sample_weight).sum() / weight_sum
 
 
+def monostatic_ranges_from_xy(
+    target_xy: torch.Tensor,
+    *,
+    dev0_xy: tuple[float, float] | torch.Tensor = (0.0, -2.0),
+    dev1_xy: tuple[float, float] | torch.Tensor = (-2.0, 0.0),
+) -> torch.Tensor:
+    """由目标 ``(B, 2)`` xy 与双站坐标计算几何单站距离 ``(B, 2)`` = ``[r0, r1]``。"""
+    if target_xy.ndim != 2 or target_xy.shape[-1] != 2:
+        raise ValueError(f"target_xy 须为 (B, 2)，收到 {tuple(target_xy.shape)}")
+    d0 = torch.as_tensor(dev0_xy, dtype=target_xy.dtype, device=target_xy.device).reshape(2)
+    d1 = torch.as_tensor(dev1_xy, dtype=target_xy.dtype, device=target_xy.device).reshape(2)
+    r0 = torch.linalg.vector_norm(target_xy - d0, dim=-1)
+    r1 = torch.linalg.vector_norm(target_xy - d1, dim=-1)
+    return torch.stack([r0, r1], dim=-1)
+
+
+def aux_range_rmse_loss(
+    pred_ranges: torch.Tensor,
+    target_ranges: torch.Tensor,
+    *,
+    sample_weight: torch.Tensor | None = None,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """双站距离辅助头 RMSE（可微）。"""
+    if pred_ranges.shape != target_ranges.shape:
+        raise ValueError(
+            "pred_ranges 与 target_ranges 形状须一致，"
+            f"收到 {tuple(pred_ranges.shape)} 与 {tuple(target_ranges.shape)}"
+        )
+    if pred_ranges.ndim != 2 or pred_ranges.shape[-1] != 2:
+        raise ValueError(
+            f"pred_ranges 须为 (B, 2)，收到 {tuple(pred_ranges.shape)}"
+        )
+    sq = ((pred_ranges - target_ranges) ** 2).sum(dim=-1)
+    if sample_weight is not None:
+        if sample_weight.shape != sq.shape:
+            raise ValueError(
+                "sample_weight 形状须为 (B,)，"
+                f"收到 {tuple(sample_weight.shape)}"
+            )
+        weight_sum = sample_weight.sum().clamp_min(eps)
+        return torch.sqrt((sq * sample_weight).sum() / weight_sum + eps)
+    return torch.sqrt(sq.mean() + eps)
+
+
 def session_aggregated_target_rmse_loss(
     pred_xy: torch.Tensor,
     target_xy: torch.Tensor,

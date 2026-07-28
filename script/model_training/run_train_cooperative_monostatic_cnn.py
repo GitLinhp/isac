@@ -31,14 +31,17 @@ from tqdm import tqdm
 from isac import PROJECT_ROOT
 from isac.models import (
     COOPERATIVE_FEATURE_MODES,
+    COOPERATIVE_FUSION_MODES,
     COOPERATIVE_POOL_MODES,
     CooperativeMonostatic2DCNN,
     CooperativeMonostaticCNN,
     TargetPositionRmseLoss,
+    aux_range_rmse_loss,
     compute_logmag_norm_stats_from_h5,
     cooperative_feature_in_channels,
     cooperative_model_type,
     load_cooperative_monostatic_cnn_checkpoint,
+    monostatic_ranges_from_xy,
     save_cooperative_norm_stats,
 )
 from isac.models.loss import session_aggregated_target_rmse_loss
@@ -264,6 +267,44 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=8,
         help="AdaptiveAvgPool1d bins when --pool-mode multiscale (default: 8)",
     )
+    parser.add_argument(
+        "--fusion-mode",
+        type=str,
+        choices=list(COOPERATIVE_FUSION_MODES),
+        default="early",
+        help=(
+            "1D CNN station fusion (S2): early | late "
+            "(late = shared-weight per-station backbone + concat; default: early)"
+        ),
+    )
+    parser.add_argument(
+        "--aux-range",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="enable auxiliary (r0, r1) range heads (S2; default off)",
+    )
+    parser.add_argument(
+        "--aux-range-weight",
+        type=float,
+        default=0.5,
+        help="weight for aux range RMSE when --aux-range (default: 0.5)",
+    )
+    parser.add_argument(
+        "--dev0-xy",
+        type=float,
+        nargs=2,
+        default=[0.0, -2.0],
+        metavar=("X_M", "Y_M"),
+        help="dev0 sensor xy for aux range targets (default: 0 -2)",
+    )
+    parser.add_argument(
+        "--dev1-xy",
+        type=float,
+        nargs=2,
+        default=[-2.0, 0.0],
+        metavar=("X_M", "Y_M"),
+        help="dev1 sensor xy for aux range targets (default: -2 0)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--num-workers",
@@ -419,6 +460,8 @@ def _checkpoint_payload(
         payload["pool_mode"] = model.pool_mode
         payload["multiscale_bins"] = model.multiscale_bins
         payload["soft_argmax_temp"] = model.soft_argmax_temp
+        payload["fusion_mode"] = model.fusion_mode
+        payload["aux_range"] = model.aux_range
     if norm_stats_path is not None:
         payload["norm_stats_path"] = norm_stats_path
     return payload
@@ -491,15 +534,38 @@ def _compute_batch_loss(
     *,
     sample_weight: torch.Tensor | None,
     session_aggregated_loss: bool,
+    pred_ranges: torch.Tensor | None = None,
+    aux_range_weight: float = 0.0,
+    dev0_xy: tuple[float, float] = (0.0, -2.0),
+    dev1_xy: tuple[float, float] = (-2.0, 0.0),
 ) -> torch.Tensor:
     if session_aggregated_loss:
-        return session_aggregated_target_rmse_loss(
+        xy_loss = session_aggregated_target_rmse_loss(
             pred_xy,
             target_xy,
             session_index,
             sample_weight=sample_weight,
         )
-    return criterion(pred_xy, target_xy, sample_weight=sample_weight)
+    else:
+        xy_loss = criterion(pred_xy, target_xy, sample_weight=sample_weight)
+    if pred_ranges is None or aux_range_weight <= 0.0:
+        return xy_loss
+    target_ranges = monostatic_ranges_from_xy(
+        target_xy, dev0_xy=dev0_xy, dev1_xy=dev1_xy
+    )
+    range_loss = aux_range_rmse_loss(
+        pred_ranges, target_ranges, sample_weight=sample_weight
+    )
+    return xy_loss + float(aux_range_weight) * range_loss
+
+
+def _model_forward_xy_and_ranges(
+    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
+    dual_profiles: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    if isinstance(model, CooperativeMonostaticCNN) and model.aux_range:
+        return model.forward_with_aux(dual_profiles)
+    return model(dual_profiles), None
 
 
 @torch.no_grad()
@@ -511,6 +577,9 @@ def _evaluate(
     *,
     outer_ring_weight: float = 1.0,
     session_aggregated_loss: bool = False,
+    aux_range_weight: float = 0.0,
+    dev0_xy: tuple[float, float] = (0.0, -2.0),
+    dev1_xy: tuple[float, float] = (-2.0, 0.0),
 ) -> tuple[float, float]:
     model.eval()
     total_loss = 0.0
@@ -520,7 +589,7 @@ def _evaluate(
         dual_profiles = batch["dual_profiles"].to(device, non_blocking=True)
         target_xy = batch["target_xy"].to(device, non_blocking=True)
         session_index = batch["session_index"].to(device, non_blocking=True)
-        pred_xy = model(dual_profiles)
+        pred_xy, pred_ranges = _model_forward_xy_and_ranges(model, dual_profiles)
         sample_weight = _outer_ring_sample_weights(
             target_xy, outer_weight=outer_ring_weight
         )
@@ -531,6 +600,10 @@ def _evaluate(
             session_index,
             sample_weight=sample_weight,
             session_aggregated_loss=session_aggregated_loss,
+            pred_ranges=pred_ranges,
+            aux_range_weight=aux_range_weight,
+            dev0_xy=dev0_xy,
+            dev1_xy=dev1_xy,
         )
         total_loss += float(loss.item())
         total_euclidean += float(
@@ -553,6 +626,9 @@ def _train_one_epoch(
     *,
     outer_ring_weight: float = 1.0,
     session_aggregated_loss: bool = False,
+    aux_range_weight: float = 0.0,
+    dev0_xy: tuple[float, float] = (0.0, -2.0),
+    dev1_xy: tuple[float, float] = (-2.0, 0.0),
 ) -> float:
     model.train()
     total_loss = 0.0
@@ -565,7 +641,7 @@ def _train_one_epoch(
             target_xy, outer_weight=outer_ring_weight
         )
         optimizer.zero_grad(set_to_none=True)
-        pred_xy = model(dual_profiles)
+        pred_xy, pred_ranges = _model_forward_xy_and_ranges(model, dual_profiles)
         loss = _compute_batch_loss(
             criterion,
             pred_xy,
@@ -573,6 +649,10 @@ def _train_one_epoch(
             session_index,
             sample_weight=sample_weight,
             session_aggregated_loss=session_aggregated_loss,
+            pred_ranges=pred_ranges,
+            aux_range_weight=aux_range_weight,
+            dev0_xy=dev0_xy,
+            dev1_xy=dev1_xy,
         )
         loss.backward()
         optimizer.step()
@@ -870,6 +950,10 @@ def main() -> None:
         raise FileNotFoundError(f"HDF5 不存在: {h5_path}")
     if args.outer_ring_weight <= 0.0:
         raise ValueError(f"--outer-ring-weight 须 > 0，收到 {args.outer_ring_weight}")
+    if args.aux_range and args.aux_range_weight < 0.0:
+        raise ValueError(
+            f"--aux-range-weight 须 >= 0，收到 {args.aux_range_weight}"
+        )
     if args.filter_outliers:
         if args.xy_max_m <= 0.0:
             raise ValueError(f"--xy-max-m 须 > 0，收到 {args.xy_max_m}")
@@ -1201,6 +1285,8 @@ def main() -> None:
             dropout=args.dropout,
             pool_mode=args.pool_mode,
             multiscale_bins=args.multiscale_bins,
+            fusion_mode=args.fusion_mode,
+            aux_range=bool(args.aux_range),
         ).to(device)
 
     criterion = TargetPositionRmseLoss()
@@ -1249,7 +1335,9 @@ def main() -> None:
         f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}\n"
         f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
         f"dropout={args.dropout}, pool_mode={args.pool_mode}, "
-        f"multiscale_bins={args.multiscale_bins}, lr={lr}\n"
+        f"multiscale_bins={args.multiscale_bins}, fusion_mode={args.fusion_mode}, "
+        f"aux_range={args.aux_range}, aux_range_weight={args.aux_range_weight}, "
+        f"lr={lr}\n"
         f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
     )
     if norm_stats_path is not None:
@@ -1285,6 +1373,9 @@ def main() -> None:
             device,
             outer_ring_weight=args.outer_ring_weight,
             session_aggregated_loss=args.session_aggregated_loss,
+            aux_range_weight=float(args.aux_range_weight) if args.aux_range else 0.0,
+            dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),
+            dev1_xy=(float(args.dev1_xy[0]), float(args.dev1_xy[1])),
         )
         eval_loss, eval_mean_euclidean = _evaluate(
             eval_loader,
@@ -1293,6 +1384,9 @@ def main() -> None:
             device,
             outer_ring_weight=args.outer_ring_weight,
             session_aggregated_loss=args.session_aggregated_loss,
+            aux_range_weight=float(args.aux_range_weight) if args.aux_range else 0.0,
+            dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),
+            dev1_xy=(float(args.dev1_xy[0]), float(args.dev1_xy[1])),
         )
 
         history["epoch"].append(float(epoch))

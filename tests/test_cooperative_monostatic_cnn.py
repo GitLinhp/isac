@@ -144,6 +144,108 @@ def test_cooperative_monostatic_cnn_soft_argmax_checkpoint_roundtrip(tmp_path):
         assert loaded(batch).shape == (2, 2)
 
 
+@pytest.mark.parametrize("fusion_mode", ["early", "late"])
+@pytest.mark.parametrize("pool_mode", ["gap", "attention", "soft_argmax"])
+def test_cooperative_monostatic_cnn_fusion_modes(fusion_mode: str, pool_mode: str):
+    model = CooperativeMonostaticCNN(
+        in_channels=4,
+        base_channels=16,
+        num_layers=2,
+        pool_mode=pool_mode,
+        fusion_mode=fusion_mode,
+    )
+    model.eval()
+    batch = torch.randn(3, 2, 48, dtype=torch.complex64)
+    with torch.no_grad():
+        xy = model(batch)
+    assert xy.shape == (3, 2)
+    assert torch.isfinite(xy).all()
+    assert model.fusion_mode == fusion_mode
+
+
+def test_cooperative_monostatic_cnn_late_fusion_odd_channels_invalid():
+    with pytest.raises(ValueError, match="偶数"):
+        CooperativeMonostaticCNN(in_channels=3, fusion_mode="late")
+
+
+def test_cooperative_monostatic_cnn_fusion_mode_invalid():
+    with pytest.raises(ValueError, match="fusion_mode"):
+        CooperativeMonostaticCNN(fusion_mode="mid")
+
+
+@pytest.mark.parametrize("fusion_mode", ["early", "late"])
+def test_cooperative_monostatic_cnn_aux_range(fusion_mode: str):
+    model = CooperativeMonostaticCNN(
+        in_channels=4,
+        base_channels=16,
+        num_layers=2,
+        fusion_mode=fusion_mode,
+        aux_range=True,
+        pool_mode="gap",
+    )
+    model.eval()
+    batch = torch.randn(4, 4, 40)
+    with torch.no_grad():
+        xy, ranges = model.forward_with_aux(batch)
+        xy_only = model(batch)
+    assert xy.shape == (4, 2)
+    assert ranges is not None and ranges.shape == (4, 2)
+    assert torch.allclose(xy, xy_only)
+
+
+def test_cooperative_monostatic_cnn_late_aux_checkpoint_roundtrip(tmp_path):
+    from isac.models.model_design import load_cooperative_monostatic_cnn_checkpoint
+
+    model = CooperativeMonostaticCNN(
+        in_channels=4,
+        base_channels=16,
+        num_layers=2,
+        fusion_mode="late",
+        aux_range=True,
+        pool_mode="attention",
+    )
+    ckpt_path = tmp_path / "late_aux.pth"
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "in_channels": 4,
+            "base_channels": 16,
+            "num_layers": 2,
+            "dropout": 0.2,
+            "model_type": "1d",
+            "pool_mode": "attention",
+            "multiscale_bins": 8,
+            "soft_argmax_temp": 1.0,
+            "fusion_mode": "late",
+            "aux_range": True,
+        },
+        ckpt_path,
+    )
+    loaded = load_cooperative_monostatic_cnn_checkpoint(ckpt_path, "cpu")
+    assert loaded.fusion_mode == "late"
+    assert loaded.aux_range is True
+    batch = torch.randn(2, 4, 40)
+    with torch.no_grad():
+        xy, ranges = loaded.forward_with_aux(batch)
+    assert xy.shape == (2, 2)
+    assert ranges is not None and ranges.shape == (2, 2)
+
+
+def test_monostatic_ranges_from_xy_and_aux_loss():
+    from isac.models import aux_range_rmse_loss, monostatic_ranges_from_xy
+
+    xy = torch.tensor([[0.0, 0.0], [1.0, -1.0]], dtype=torch.float32)
+    ranges = monostatic_ranges_from_xy(
+        xy, dev0_xy=(0.0, -2.0), dev1_xy=(-2.0, 0.0)
+    )
+    assert ranges.shape == (2, 2)
+    # (0,0) → r0=2, r1=2
+    assert float(ranges[0, 0]) == pytest.approx(2.0, abs=1e-5)
+    assert float(ranges[0, 1]) == pytest.approx(2.0, abs=1e-5)
+    loss = aux_range_rmse_loss(ranges, ranges.clone())
+    assert float(loss) == pytest.approx(0.0, abs=1e-6)
+
+
 def test_conv1d_residual_block_forward():
     block = Conv1dResidualBlock(32, 32)
     x = torch.randn(2, 32, 17)
