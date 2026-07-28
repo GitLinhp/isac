@@ -97,3 +97,69 @@ def test_cooperative_frame_cpi_energy_shape() -> None:
     assert e.shape == (4,)
     assert np.all(np.isfinite(e))
     assert e[0] == pytest.approx(np.log1p(1.0 + 2.0))
+
+
+def _load_cnn_rmse_eval_module():
+    import importlib.util
+    from pathlib import Path
+
+    eval_path = (
+        Path(__file__).resolve().parents[1]
+        / "script"
+        / "experiment"
+        / "run_cooperative_monostatic_cnn_rmse.py"
+    )
+    spec = importlib.util.spec_from_file_location("cnn_rmse_eval_filter", eval_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_apply_eval_outlier_filters_drops_oob_and_energy_outlier(tmp_path) -> None:
+    """评估侧硬+软过滤：越界标签与 session 内极端能量帧被剔除。"""
+    from isac_imp.data_collection.cooperative_monostatic_dataset import (
+        DATASET_KEY_FEATURES,
+        DATASET_KEY_FRAME_ENERGY,
+        DATASET_KEY_FRAME_INDEX,
+        DATASET_KEY_SESSION_INDEX,
+        DATASET_KEY_TARGET_POSITION,
+        META_KEY_DATA_KIND,
+    )
+
+    import h5py
+
+    n = 20
+    rng = np.random.default_rng(2)
+    target = np.zeros((n, 3), dtype=np.float64)
+    target[:, 0] = 0.1
+    target[:, 1] = 0.1
+    target[0, 0] = 2.0  # oob
+    energy = 1.0 + 0.02 * rng.standard_normal(n)
+    energy[7] = 12.0  # MAD outlier
+    session = np.zeros(n, dtype=np.int64)
+    frame_index = np.arange(n, dtype=np.int32)
+
+    h5_path = tmp_path / "eval_features.h5"
+    with h5py.File(h5_path, "w") as f:
+        f.attrs[META_KEY_DATA_KIND] = "cooperative_monostatic_features"
+        f.create_dataset(DATASET_KEY_TARGET_POSITION, data=target)
+        f.create_dataset(DATASET_KEY_SESSION_INDEX, data=session)
+        f.create_dataset(DATASET_KEY_FRAME_INDEX, data=frame_index)
+        f.create_dataset(DATASET_KEY_FRAME_ENERGY, data=energy.astype(np.float64))
+        f.create_dataset(
+            DATASET_KEY_FEATURES, data=np.zeros((n, 4, 8), dtype=np.float32)
+        )
+
+    mod = _load_cnn_rmse_eval_module()
+    cand = list(range(n))
+    kept = mod._apply_eval_outlier_filters(
+        h5_path,
+        cand,
+        xy_max_m=1.0,
+        energy_eps=1e-8,
+        energy_mad_z=5.0,
+    )
+    assert 0 not in kept
+    assert 7 not in kept
+    assert len(kept) <= n - 2

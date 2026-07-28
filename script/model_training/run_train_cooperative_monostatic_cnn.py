@@ -4,7 +4,8 @@
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py
 
-默认已对齐部署配置（ROI 0–4 m、batch 128、增强与 outlier 过滤等）。
+默认对齐 S2 最优配置（late + attention、outer_w=3、session loss、
+ROI 0–4 m、lr 5e-4、dropout 0.3、batch 128 等）。
 覆盖示例::
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py \\
@@ -79,9 +80,15 @@ DEFAULT_OUTPUT_DIR = Path("models/cnn_deploy_strict_roi4")
 # 训练脚本默认 ROI（部署配置）；pipeline 全局 DEFAULT_RANGE_ROI 仍为 (0, 3.5)
 TRAIN_DEFAULT_RANGE_ROI = (0.0, 4.0)
 TRAIN_DEFAULT_LABEL_JITTER_M = 0.05
-TRAIN_DEFAULT_OUTER_RING_WEIGHT = 2.0
+# S2 矩阵最优：late_attn_outer3_session
+TRAIN_DEFAULT_OUTER_RING_WEIGHT = 3.0
 TRAIN_DEFAULT_FEATURE_NOISE_STD = 0.02
 TRAIN_DEFAULT_SPEC_AUGMENT_PROB = 0.3
+TRAIN_DEFAULT_LR = 5e-4
+TRAIN_DEFAULT_DROPOUT = 0.3
+TRAIN_DEFAULT_POOL_MODE = "attention"
+TRAIN_DEFAULT_FUSION_MODE = "late"
+TRAIN_DEFAULT_EPOCHS = 100
 EVAL_SCRIPT = PROJECT_ROOT / "script/experiment/run_cooperative_monostatic_cnn_rmse.py"
 
 
@@ -200,9 +207,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="override --lr when --resume is set",
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=TRAIN_DEFAULT_EPOCHS)
     parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=TRAIN_DEFAULT_LR)
     parser.add_argument(
         "--weight-decay",
         type=float,
@@ -250,15 +257,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--base-channels", type=int, default=32)
     parser.add_argument("--num-layers", type=int, default=3)
-    parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--dropout", type=float, default=TRAIN_DEFAULT_DROPOUT)
     parser.add_argument(
         "--pool-mode",
         type=str,
         choices=list(COOPERATIVE_POOL_MODES),
-        default="gap",
+        default=TRAIN_DEFAULT_POOL_MODE,
         help=(
             "1D CNN range pooling (S1): gap | attention | multiscale | "
-            "gap_gmp | soft_argmax (default: gap)"
+            f"gap_gmp | soft_argmax (default: {TRAIN_DEFAULT_POOL_MODE})"
         ),
     )
     parser.add_argument(
@@ -271,10 +278,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--fusion-mode",
         type=str,
         choices=list(COOPERATIVE_FUSION_MODES),
-        default="early",
+        default=TRAIN_DEFAULT_FUSION_MODE,
         help=(
             "1D CNN station fusion (S2): early | late "
-            "(late = shared-weight per-station backbone + concat; default: early)"
+            f"(late = shared-weight per-station backbone + concat; "
+            f"default: {TRAIN_DEFAULT_FUSION_MODE})"
         ),
     )
     parser.add_argument(
@@ -375,7 +383,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--outer-ring-weight",
         type=float,
         default=TRAIN_DEFAULT_OUTER_RING_WEIGHT,
-        help="loss weight for outer-ring targets (|x|>0.6 or |y|>0.6); default 2.0",
+        help=(
+            "loss weight for outer-ring targets (|x|>0.6 or |y|>0.6); "
+            f"default {TRAIN_DEFAULT_OUTER_RING_WEIGHT}"
+        ),
     )
     parser.add_argument(
         "--feature-noise-std",
@@ -397,8 +408,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--session-aggregated-loss",
-        action="store_true",
-        help="train with session-level aggregated RMSE loss instead of frame-level",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "train with session-level aggregated RMSE loss "
+            "(default on; --no-session-aggregated-loss 关闭)"
+        ),
     )
     parser.add_argument(
         "--eval-h5-path",
@@ -887,6 +902,10 @@ def _run_post_train_eval(
     output_dir: Path,
     device: str | None = None,
     features_h5: Path | None = None,
+    filter_outliers: bool = True,
+    xy_max_m: float = 1.0,
+    outlier_energy_eps: float = 1e-8,
+    outlier_energy_mad_z: float = 5.0,
 ) -> None:
     """训练结束后调用 cnn_rmse 评估脚本（Run2 等外部集）。"""
     if not checkpoint.is_file():
@@ -926,7 +945,17 @@ def _run_post_train_eval(
         str(heatmap_path),
         "--output-cdf",
         str(cdf_path),
+        "--xy-max-m",
+        str(xy_max_m),
+        "--outlier-energy-eps",
+        str(outlier_energy_eps),
+        "--outlier-energy-mad-z",
+        str(outlier_energy_mad_z),
     ]
+    if filter_outliers:
+        cmd.append("--filter-outliers")
+    else:
+        cmd.append("--no-filter-outliers")
     if features_h5 is not None:
         cmd.extend(["--features-h5", str(features_h5)])
     if device:
@@ -1480,6 +1509,10 @@ def main() -> None:
             output_dir=eval_out,
             device=args.device,
             features_h5=post_eval_features,
+            filter_outliers=bool(args.filter_outliers),
+            xy_max_m=float(args.xy_max_m),
+            outlier_energy_eps=float(args.outlier_energy_eps),
+            outlier_energy_mad_z=float(args.outlier_energy_mad_z),
         )
 
 

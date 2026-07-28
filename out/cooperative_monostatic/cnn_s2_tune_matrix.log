@@ -1,0 +1,735 @@
+
+=== late_attn_baseline: late+attention baseline (no aux, outer_w=2) ===
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:30,  5.54batch/s]
+CNN RMSE:  43%|████▎     | 72/168 [00:00<00:00, 315.13batch/s]
+CNN RMSE:  85%|████████▌ | 143/168 [00:00<00:00, 466.21batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 402.12batch/s]
+
+[skip train] late_attn_baseline: using existing checkpoint
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_deploy_strict_roi4/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_baseline/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.5905 │    0.3686 │       0.5160 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3691 │    0.2073 │       0.3322 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8689 │    0.3370 │       0.8829 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_baseline/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_baseline/cnn_rmse_cdf.png
+
+
+Summary written (1 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_attn_aux05: late+attention + aux_range_weight=0.5 ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_aux05 --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode attention --outer-ring-weight 2.0 --base-channels 32 --lr 0.0005 --dropout 0.3 --aux-range --aux-range-weight 0.5
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=2.0, session_aggregated_loss=False, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=32, num_layers=3, dropout=0.3, pool_mode=attention, multiscale_bins=8, fusion_mode=late, aux_range=True, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_aux05/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_aux05/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:18,  2.66batch/s]train:  30%|███       | 15/50 [00:00<00:00, 40.11batch/s]train:  58%|█████▊    | 29/50 [00:00<00:00, 67.97batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 88.44batch/s]                                                         epoch 001/100 | train_loss=1.0978 | val_loss=0.9812 | val_mean_euclidean=0.5832 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.90batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 119.13batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 127.58batch/s]                                                          epoch 002/100 | train_loss=0.5981 | val_loss=0.9303 | val_mean_euclidean=0.5615 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.89batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 118.66batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 127.21batch/s]                                                          epoch 003/100 | train_loss=0.5215 | val_loss=0.8653 | val_mean_euclidean=0.5148 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.09batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.19batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.86batch/s]                                                          epoch 004/100 | train_loss=0.4840 | val_loss=0.8841 | val_mean_euclidean=0.5265 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.93batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.80batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.95batch/s]                                                          epoch 005/100 | train_loss=0.4616 | val_loss=0.8615 | val_mean_euclidean=0.5157 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.97batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.51batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.80batch/s]                                                          epoch 006/100 | train_loss=0.4458 | val_loss=0.8383 | val_mean_euclidean=0.4995 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 102.85batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 123.66batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 130.81batch/s]                                                          epoch 007/100 | train_loss=0.4312 | val_loss=0.8411 | val_mean_euclidean=0.5047 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.17batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.13batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.92batch/s]                                                          epoch 008/100 | train_loss=0.4278 | val_loss=0.8341 | val_mean_euclidean=0.5024 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.99batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.49batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.24batch/s]                                                          epoch 009/100 | train_loss=0.4007 | val_loss=0.8269 | val_mean_euclidean=0.4964 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.99batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.33batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.94batch/s]                                                          epoch 010/100 | train_loss=0.4011 | val_loss=0.8297 | val_mean_euclidean=0.5030 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.89batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.26batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.75batch/s]                                                          epoch 011/100 | train_loss=0.3907 | val_loss=0.7934 | val_mean_euclidean=0.4785 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.24batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 121.03batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 130.23batch/s]                                                          epoch 012/100 | train_loss=0.3815 | val_loss=0.8007 | val_mean_euclidean=0.4812 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.96batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 123.13batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 130.41batch/s]                                                          epoch 013/100 | train_loss=0.3760 | val_loss=0.7936 | val_mean_euclidean=0.4775 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.86batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.75batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.52batch/s]                                                          epoch 014/100 | train_loss=0.3675 | val_loss=0.8008 | val_mean_euclidean=0.4777 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.41batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 122.51batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 130.41batch/s]                                                          epoch 015/100 | train_loss=0.3650 | val_loss=0.7713 | val_mean_euclidean=0.4592 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.33batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 119.57batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.66batch/s]                                                          epoch 016/100 | train_loss=0.3648 | val_loss=0.7800 | val_mean_euclidean=0.4681 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.77batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 121.87batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 130.50batch/s]                                                          epoch 017/100 | train_loss=0.3513 | val_loss=0.7593 | val_mean_euclidean=0.4561 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  16%|█▌        | 8/50 [00:00<00:00, 77.03batch/s]train:  44%|████▍     | 22/50 [00:00<00:00, 112.44batch/s]train:  74%|███████▍  | 37/50 [00:00<00:00, 125.51batch/s]                                                          epoch 018/100 | train_loss=0.3549 | val_loss=0.7644 | val_mean_euclidean=0.4500 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.49batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.16batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 130.75batch/s]                                                          epoch 019/100 | train_loss=0.3520 | val_loss=0.7655 | val_mean_euclidean=0.4552 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 87.56batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 117.68batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.32batch/s]                                                          epoch 020/100 | train_loss=0.3451 | val_loss=0.7781 | val_mean_euclidean=0.4631 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.14batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 121.87batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 130.24batch/s]                                                          epoch 021/100 | train_loss=0.3401 | val_loss=0.7317 | val_mean_euclidean=0.4343 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.30batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 118.89batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.05batch/s]                                                          epoch 022/100 | train_loss=0.3429 | val_loss=0.7522 | val_mean_euclidean=0.4491 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.11batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.65batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.91batch/s]                                                          epoch 023/100 | train_loss=0.3406 | val_loss=0.7526 | val_mean_euclidean=0.4509 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 89.20batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 117.85batch/s]train:  74%|███████▍  | 37/50 [00:00<00:00, 127.25batch/s]                                                          epoch 024/100 | train_loss=0.3359 | val_loss=0.7219 | val_mean_euclidean=0.4267 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.29batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 121.46batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 128.45batch/s]                                                          epoch 025/100 | train_loss=0.3460 | val_loss=0.7390 | val_mean_euclidean=0.4344 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.89batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 121.37batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.70batch/s]                                                          epoch 026/100 | train_loss=0.3398 | val_loss=0.7351 | val_mean_euclidean=0.4348 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 86.38batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 116.53batch/s]train:  74%|███████▍  | 37/50 [00:00<00:00, 126.71batch/s]                                                          epoch 027/100 | train_loss=0.3357 | val_loss=0.7348 | val_mean_euclidean=0.4338 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 89.80batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.27batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.77batch/s]                                                          epoch 028/100 | train_loss=0.3385 | val_loss=0.7502 | val_mean_euclidean=0.4308 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 89.64batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 118.72batch/s]train:  74%|███████▍  | 37/50 [00:00<00:00, 128.28batch/s]                                                          epoch 029/100 | train_loss=0.3309 | val_loss=0.7361 | val_mean_euclidean=0.4335 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.61batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.60batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.07batch/s]                                                          epoch 030/100 | train_loss=0.3201 | val_loss=0.7182 | val_mean_euclidean=0.4158 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 87.91batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 117.64batch/s]train:  74%|███████▍  | 37/50 [00:00<00:00, 127.70batch/s]                                                          epoch 031/100 | train_loss=0.3251 | val_loss=0.7272 | val_mean_euclidean=0.4305 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 97.81batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 121.69batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.63batch/s]                                                          epoch 032/100 | train_loss=0.3270 | val_loss=0.7401 | val_mean_euclidean=0.4335 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.23batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 119.70batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.50batch/s]                                                          epoch 033/100 | train_loss=0.3171 | val_loss=0.7087 | val_mean_euclidean=0.4182 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 85.95batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 117.09batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 127.84batch/s]                                                          epoch 034/100 | train_loss=0.3206 | val_loss=0.7030 | val_mean_euclidean=0.4108 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.13batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.08batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.83batch/s]                                                          epoch 035/100 | train_loss=0.3231 | val_loss=0.7086 | val_mean_euclidean=0.4163 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.37batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 121.70batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 128.97batch/s]                                                          epoch 036/100 | train_loss=0.3218 | val_loss=0.7171 | val_mean_euclidean=0.4275 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.93batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 121.87batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.79batch/s]                                                          epoch 037/100 | train_loss=0.3186 | val_loss=0.7448 | val_mean_euclidean=0.4423 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.62batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 119.93batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.51batch/s]                                                          epoch 038/100 | train_loss=0.3183 | val_loss=0.7410 | val_mean_euclidean=0.4380 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.29batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.17batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.67batch/s]                                                          epoch 039/100 | train_loss=0.3087 | val_loss=0.7086 | val_mean_euclidean=0.4181 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.83batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 119.04batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.24batch/s]                                                          epoch 040/100 | train_loss=0.3059 | val_loss=0.6954 | val_mean_euclidean=0.4103 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.36batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.52batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.15batch/s]                                                          epoch 041/100 | train_loss=0.3079 | val_loss=0.7181 | val_mean_euclidean=0.4212 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.17batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.19batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.58batch/s]                                                          epoch 042/100 | train_loss=0.3025 | val_loss=0.6895 | val_mean_euclidean=0.4087 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.13batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 119.17batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.16batch/s]                                                          epoch 043/100 | train_loss=0.2973 | val_loss=0.7104 | val_mean_euclidean=0.4170 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.80batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 123.36batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.94batch/s]                                                          epoch 044/100 | train_loss=0.2981 | val_loss=0.7329 | val_mean_euclidean=0.4265 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 89.61batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 118.77batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.84batch/s]                                                          epoch 045/100 | train_loss=0.3022 | val_loss=0.7200 | val_mean_euclidean=0.4235 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.51batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.19batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 130.68batch/s]                                                          epoch 046/100 | train_loss=0.3020 | val_loss=0.7179 | val_mean_euclidean=0.4133 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.49batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.07batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.35batch/s]                                                          epoch 047/100 | train_loss=0.3006 | val_loss=0.7031 | val_mean_euclidean=0.4116 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.49batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.52batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.89batch/s]                                                          epoch 048/100 | train_loss=0.2982 | val_loss=0.7223 | val_mean_euclidean=0.4226 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.69batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.90batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 131.24batch/s]                                                          epoch 049/100 | train_loss=0.2882 | val_loss=0.6934 | val_mean_euclidean=0.4084 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 89.26batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.81batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 130.18batch/s]                                                          epoch 050/100 | train_loss=0.2816 | val_loss=0.7033 | val_mean_euclidean=0.4120 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 95.34batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.21batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 127.63batch/s]                                                          epoch 051/100 | train_loss=0.2819 | val_loss=0.6892 | val_mean_euclidean=0.4054 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.21batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.11batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.04batch/s]                                                          epoch 052/100 | train_loss=0.2829 | val_loss=0.7019 | val_mean_euclidean=0.4125 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.15batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.34batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 130.79batch/s]                                                          epoch 053/100 | train_loss=0.2802 | val_loss=0.6908 | val_mean_euclidean=0.4089 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.43batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.33batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 130.24batch/s]                                                          epoch 054/100 | train_loss=0.2827 | val_loss=0.7043 | val_mean_euclidean=0.4143 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 87.97batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 118.19batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 128.46batch/s]                                                          epoch 055/100 | train_loss=0.2764 | val_loss=0.7056 | val_mean_euclidean=0.4132 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 88.48batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.01batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.91batch/s]                                                          epoch 056/100 | train_loss=0.2782 | val_loss=0.7054 | val_mean_euclidean=0.4133 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.74batch/s]train:  50%|█████     | 25/50 [00:00<00:00, 122.02batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 131.18batch/s]                                                          epoch 057/100 | train_loss=0.2748 | val_loss=0.7012 | val_mean_euclidean=0.4115 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.31batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.11batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.03batch/s]                                                          epoch 058/100 | train_loss=0.2759 | val_loss=0.6962 | val_mean_euclidean=0.4095 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.35batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 122.81batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 129.60batch/s]                                                          epoch 059/100 | train_loss=0.2734 | val_loss=0.7119 | val_mean_euclidean=0.4201 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.54batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.04batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.59batch/s]                                                          epoch 060/100 | train_loss=0.2763 | val_loss=0.6945 | val_mean_euclidean=0.4079 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 93.90batch/s]train:  48%|████▊     | 24/50 [00:00<00:00, 120.22batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 129.96batch/s]                                                          epoch 061/100 | train_loss=0.2746 | val_loss=0.6996 | val_mean_euclidean=0.4121 m | lr=1.25e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  -----------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.6892
+Final val mean Euclidean (m)  0.4121
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_aux05/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_aux05/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:30,  5.54batch/s]
+CNN RMSE:  40%|████      | 68/168 [00:00<00:00, 298.81batch/s]
+CNN RMSE:  81%|████████  | 136/168 [00:00<00:00, 444.48batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 391.36batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_aux05/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_aux05/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.6063 │    0.3910 │       0.5139 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3757 │    0.2163 │       0.3337 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8964 │    0.3678 │       0.8860 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_aux05/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_aux05/cnn_rmse_cdf.png
+
+
+Summary written (2 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_attn_outer25: late+attention outer_ring_weight=2.5 ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer25 --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode attention --outer-ring-weight 2.5 --base-channels 32 --lr 0.0005 --dropout 0.3 --no-aux-range
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=2.5, session_aggregated_loss=False, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=32, num_layers=3, dropout=0.3, pool_mode=attention, multiscale_bins=8, fusion_mode=late, aux_range=False, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer25/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer25/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:17,  2.74batch/s]train:  34%|███▍      | 17/50 [00:00<00:00, 46.19batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 77.10batch/s]train: 100%|██████████| 50/50 [00:00<00:00, 101.83batch/s]                                                          epoch 001/100 | train_loss=0.4838 | val_loss=0.6602 | val_mean_euclidean=0.6001 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.71batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.37batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.39batch/s]                                                          epoch 002/100 | train_loss=0.3176 | val_loss=0.6284 | val_mean_euclidean=0.5694 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.01batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.12batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 147.93batch/s]                                                          epoch 003/100 | train_loss=0.2895 | val_loss=0.6304 | val_mean_euclidean=0.5655 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 114.76batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 139.73batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 148.04batch/s]                                                          epoch 004/100 | train_loss=0.2570 | val_loss=0.5983 | val_mean_euclidean=0.5386 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.98batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.15batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.69batch/s]                                                          epoch 005/100 | train_loss=0.2461 | val_loss=0.6149 | val_mean_euclidean=0.5484 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.33batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.62batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.68batch/s]                                                          epoch 006/100 | train_loss=0.2366 | val_loss=0.5718 | val_mean_euclidean=0.5108 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 97.98batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 133.87batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 145.12batch/s]                                                          epoch 007/100 | train_loss=0.2305 | val_loss=0.5968 | val_mean_euclidean=0.5332 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.22batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.14batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.70batch/s]                                                          epoch 008/100 | train_loss=0.2238 | val_loss=0.5956 | val_mean_euclidean=0.5314 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.90batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.90batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 147.07batch/s]                                                          epoch 009/100 | train_loss=0.2140 | val_loss=0.5880 | val_mean_euclidean=0.5201 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.80batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.11batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.71batch/s]                                                          epoch 010/100 | train_loss=0.2099 | val_loss=0.5635 | val_mean_euclidean=0.5019 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 113.42batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 139.63batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 148.41batch/s]                                                          epoch 011/100 | train_loss=0.2068 | val_loss=0.5966 | val_mean_euclidean=0.5289 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.13batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.40batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.54batch/s]                                                          epoch 012/100 | train_loss=0.2036 | val_loss=0.5730 | val_mean_euclidean=0.5082 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.00batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.49batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.00batch/s]                                                          epoch 013/100 | train_loss=0.1930 | val_loss=0.5714 | val_mean_euclidean=0.5069 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.09batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.90batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.62batch/s]                                                          epoch 014/100 | train_loss=0.1960 | val_loss=0.5827 | val_mean_euclidean=0.5124 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.77batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.81batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.02batch/s]                                                          epoch 015/100 | train_loss=0.1976 | val_loss=0.5509 | val_mean_euclidean=0.4901 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.60batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 133.19batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 145.17batch/s]                                                          epoch 016/100 | train_loss=0.1960 | val_loss=0.5681 | val_mean_euclidean=0.5036 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.46batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.66batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.53batch/s]                                                          epoch 017/100 | train_loss=0.1904 | val_loss=0.5719 | val_mean_euclidean=0.5068 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.65batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.05batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.17batch/s]                                                          epoch 018/100 | train_loss=0.1900 | val_loss=0.5513 | val_mean_euclidean=0.4868 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 86.67batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 112.36batch/s]train:  72%|███████▏  | 36/50 [00:00<00:00, 119.71batch/s]train: 100%|██████████| 50/50 [00:00<00:00, 124.47batch/s]                                                          epoch 019/100 | train_loss=0.1858 | val_loss=0.5698 | val_mean_euclidean=0.4975 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.40batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.15batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.97batch/s]                                                          epoch 020/100 | train_loss=0.1836 | val_loss=0.5612 | val_mean_euclidean=0.4941 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.53batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.83batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.71batch/s]                                                          epoch 021/100 | train_loss=0.1822 | val_loss=0.5831 | val_mean_euclidean=0.5123 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.45batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.00batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.13batch/s]                                                          epoch 022/100 | train_loss=0.1737 | val_loss=0.5736 | val_mean_euclidean=0.5031 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.85batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.34batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.53batch/s]                                                          epoch 023/100 | train_loss=0.1730 | val_loss=0.5568 | val_mean_euclidean=0.4905 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.94batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.23batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.51batch/s]                                                          epoch 024/100 | train_loss=0.1718 | val_loss=0.5522 | val_mean_euclidean=0.4884 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.54batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.73batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.90batch/s]                                                          epoch 025/100 | train_loss=0.1755 | val_loss=0.5708 | val_mean_euclidean=0.5030 m | lr=2.50e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  -------------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.5509
+Final val mean Euclidean (m)  0.5030
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer25/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer25/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:30,  5.54batch/s]
+CNN RMSE:  42%|████▏     | 71/168 [00:00<00:00, 310.30batch/s]
+CNN RMSE:  84%|████████▍ | 141/168 [00:00<00:00, 460.20batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 399.22batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer25/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer25/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.6023 │    0.3771 │       0.5344 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3713 │    0.2103 │       0.3231 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8927 │    0.3375 │       0.8845 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer25/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer25/cnn_rmse_cdf.png
+
+
+Summary written (3 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_attn_outer3: late+attention outer_ring_weight=3.0 ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3 --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode attention --outer-ring-weight 3.0 --base-channels 32 --lr 0.0005 --dropout 0.3 --no-aux-range
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=3.0, session_aggregated_loss=False, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=32, num_layers=3, dropout=0.3, pool_mode=attention, multiscale_bins=8, fusion_mode=late, aux_range=False, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:18,  2.70batch/s]train:  38%|███▊      | 19/50 [00:00<00:00, 51.32batch/s]train:  70%|███████   | 35/50 [00:00<00:00, 80.47batch/s]                                                         epoch 001/100 | train_loss=0.4918 | val_loss=0.6698 | val_mean_euclidean=0.6121 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.33batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.39batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.43batch/s]                                                          epoch 002/100 | train_loss=0.3237 | val_loss=0.6336 | val_mean_euclidean=0.5788 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 113.40batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 138.16batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 147.39batch/s]                                                          epoch 003/100 | train_loss=0.2928 | val_loss=0.6217 | val_mean_euclidean=0.5621 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.28batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.96batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.91batch/s]                                                          epoch 004/100 | train_loss=0.2608 | val_loss=0.6208 | val_mean_euclidean=0.5604 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.63batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.92batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.39batch/s]                                                          epoch 005/100 | train_loss=0.2525 | val_loss=0.6124 | val_mean_euclidean=0.5492 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.52batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.36batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.05batch/s]                                                          epoch 006/100 | train_loss=0.2396 | val_loss=0.5815 | val_mean_euclidean=0.5205 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.61batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.67batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.98batch/s]                                                          epoch 007/100 | train_loss=0.2344 | val_loss=0.5930 | val_mean_euclidean=0.5323 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.05batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.05batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.80batch/s]                                                          epoch 008/100 | train_loss=0.2262 | val_loss=0.5878 | val_mean_euclidean=0.5237 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.60batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.48batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 148.16batch/s]                                                          epoch 009/100 | train_loss=0.2169 | val_loss=0.6060 | val_mean_euclidean=0.5361 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 109.22batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 138.02batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 147.05batch/s]                                                          epoch 010/100 | train_loss=0.2149 | val_loss=0.5838 | val_mean_euclidean=0.5182 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 109.25batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.81batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 147.77batch/s]                                                          epoch 011/100 | train_loss=0.2120 | val_loss=0.6028 | val_mean_euclidean=0.5370 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.26batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.52batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.84batch/s]                                                          epoch 012/100 | train_loss=0.2104 | val_loss=0.5985 | val_mean_euclidean=0.5349 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.30batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.11batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 147.25batch/s]                                                          epoch 013/100 | train_loss=0.1907 | val_loss=0.5918 | val_mean_euclidean=0.5251 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.88batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.15batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 147.93batch/s]                                                          epoch 014/100 | train_loss=0.1934 | val_loss=0.5863 | val_mean_euclidean=0.5227 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.93batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.77batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 148.44batch/s]                                                          epoch 015/100 | train_loss=0.1948 | val_loss=0.5792 | val_mean_euclidean=0.5156 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.22batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.30batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.93batch/s]                                                          epoch 016/100 | train_loss=0.1892 | val_loss=0.5826 | val_mean_euclidean=0.5190 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.87batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.60batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 148.48batch/s]                                                          epoch 017/100 | train_loss=0.1878 | val_loss=0.5895 | val_mean_euclidean=0.5243 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.98batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.70batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 147.15batch/s]                                                          epoch 018/100 | train_loss=0.1875 | val_loss=0.5842 | val_mean_euclidean=0.5175 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.49batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.13batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 147.41batch/s]                                                          epoch 019/100 | train_loss=0.1842 | val_loss=0.5994 | val_mean_euclidean=0.5293 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.14batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.54batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.72batch/s]                                                          epoch 020/100 | train_loss=0.1836 | val_loss=0.5834 | val_mean_euclidean=0.5177 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.51batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.45batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.88batch/s]                                                          epoch 021/100 | train_loss=0.1826 | val_loss=0.5911 | val_mean_euclidean=0.5247 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.97batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.64batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 147.23batch/s]                                                          epoch 022/100 | train_loss=0.1800 | val_loss=0.5885 | val_mean_euclidean=0.5213 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.41batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.98batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.79batch/s]                                                          epoch 023/100 | train_loss=0.1778 | val_loss=0.5850 | val_mean_euclidean=0.5199 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.17batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 133.13batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 143.33batch/s]                                                          epoch 024/100 | train_loss=0.1769 | val_loss=0.5834 | val_mean_euclidean=0.5189 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.92batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.91batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.81batch/s]                                                          epoch 025/100 | train_loss=0.1778 | val_loss=0.5874 | val_mean_euclidean=0.5211 m | lr=1.25e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  ------------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.5792
+Final val mean Euclidean (m)  0.5211
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:30,  5.54batch/s]
+CNN RMSE:  42%|████▏     | 71/168 [00:00<00:00, 311.09batch/s]
+CNN RMSE:  84%|████████▍ | 141/168 [00:00<00:00, 460.63batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 399.72batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer3/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.5917 │    0.3696 │       0.5253 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3669 │    0.2085 │       0.3193 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8743 │    0.3321 │       0.9011 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer3/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer3/cnn_rmse_cdf.png
+
+
+Summary written (4 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_attn_outer3_session: late+attention outer_w=3 + session aggregated loss ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode attention --outer-ring-weight 3.0 --base-channels 32 --lr 0.0005 --dropout 0.3 --no-aux-range --session-aggregated-loss
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=3.0, session_aggregated_loss=True, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=32, num_layers=3, dropout=0.3, pool_mode=attention, multiscale_bins=8, fusion_mode=late, aux_range=False, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:22,  2.16batch/s]train:  12%|█▏        | 6/50 [00:00<00:03, 13.28batch/s]train:  22%|██▏       | 11/50 [00:00<00:01, 22.37batch/s]train:  32%|███▏      | 16/50 [00:00<00:01, 29.54batch/s]train:  44%|████▍     | 22/50 [00:00<00:00, 36.06batch/s]train:  56%|█████▌    | 28/50 [00:01<00:00, 40.63batch/s]train:  68%|██████▊   | 34/50 [00:01<00:00, 43.86batch/s]train:  80%|████████  | 40/50 [00:01<00:00, 46.17batch/s]train:  92%|█████████▏| 46/50 [00:01<00:00, 48.27batch/s]                                                         epoch 001/100 | train_loss=0.4867 | val_loss=0.6533 | val_mean_euclidean=0.5955 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.61batch/s]train:  20%|██        | 10/50 [00:00<00:00, 44.17batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.37batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.44batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.39batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.20batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 50.20batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 50.61batch/s]                                                         epoch 002/100 | train_loss=0.3075 | val_loss=0.6185 | val_mean_euclidean=0.5708 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.64batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.49batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.24batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.59batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 50.04batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.20batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.17batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.23batch/s]                                                         epoch 003/100 | train_loss=0.2704 | val_loss=0.6027 | val_mean_euclidean=0.5524 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.41batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.41batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.29batch/s]train:  40%|████      | 20/50 [00:00<00:00, 47.64batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 48.97batch/s]train:  64%|██████▍   | 32/50 [00:00<00:00, 49.65batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 50.23batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 49.97batch/s]train: 100%|██████████| 50/50 [00:01<00:00, 50.61batch/s]                                                         epoch 004/100 | train_loss=0.2583 | val_loss=0.6126 | val_mean_euclidean=0.5582 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 28.39batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 41.76batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.66batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.57batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.13batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 49.77batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 50.49batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 50.97batch/s]                                                         epoch 005/100 | train_loss=0.2460 | val_loss=0.5824 | val_mean_euclidean=0.5332 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.05batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.54batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.35batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.84batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.62batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.53batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.25batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.71batch/s]                                                         epoch 006/100 | train_loss=0.2356 | val_loss=0.5879 | val_mean_euclidean=0.5311 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.18batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 43.44batch/s]train:  28%|██▊       | 14/50 [00:00<00:00, 46.12batch/s]train:  40%|████      | 20/50 [00:00<00:00, 48.17batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 49.07batch/s]train:  64%|██████▍   | 32/50 [00:00<00:00, 49.71batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 50.23batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 50.30batch/s]train: 100%|██████████| 50/50 [00:01<00:00, 51.19batch/s]                                                         epoch 007/100 | train_loss=0.2219 | val_loss=0.6083 | val_mean_euclidean=0.5491 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 28.84batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.41batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.56batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.53batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 50.08batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.72batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.29batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.33batch/s]                                                         epoch 008/100 | train_loss=0.2182 | val_loss=0.6211 | val_mean_euclidean=0.5571 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.73batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 43.30batch/s]train:  30%|███       | 15/50 [00:00<00:00, 47.00batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 49.38batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.97batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 51.24batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.81batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 52.10batch/s]                                                         epoch 009/100 | train_loss=0.2082 | val_loss=0.5992 | val_mean_euclidean=0.5356 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.02batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.25batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.85batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 49.03batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 50.36batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 51.05batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.58batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.09batch/s]                                                         epoch 010/100 | train_loss=0.2050 | val_loss=0.5865 | val_mean_euclidean=0.5331 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.81batch/s]train:  20%|██        | 10/50 [00:00<00:00, 44.29batch/s]train:  32%|███▏      | 16/50 [00:00<00:00, 47.78batch/s]train:  44%|████▍     | 22/50 [00:00<00:00, 49.14batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 50.05batch/s]train:  68%|██████▊   | 34/50 [00:00<00:00, 51.09batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 51.41batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 51.78batch/s]                                                         epoch 011/100 | train_loss=0.1974 | val_loss=0.5962 | val_mean_euclidean=0.5374 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.31batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.42batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.79batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 49.18batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 50.16batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.93batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.39batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.43batch/s]                                                         epoch 012/100 | train_loss=0.1863 | val_loss=0.5821 | val_mean_euclidean=0.5222 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.47batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.82batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.81batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.79batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.46batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 49.99batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 50.63batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 50.97batch/s]                                                         epoch 013/100 | train_loss=0.1783 | val_loss=0.5756 | val_mean_euclidean=0.5156 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.31batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.81batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.65batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.45batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.74batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.81batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.09batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.48batch/s]                                                         epoch 014/100 | train_loss=0.1837 | val_loss=0.5730 | val_mean_euclidean=0.5140 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 28.86batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.19batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.13batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.47batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.24batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.10batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 50.75batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.06batch/s]                                                         epoch 015/100 | train_loss=0.1796 | val_loss=0.5605 | val_mean_euclidean=0.5032 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.46batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 43.23batch/s]train:  30%|███       | 15/50 [00:00<00:00, 47.50batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 49.82batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 50.92batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 51.27batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.95batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 52.30batch/s]                                                         epoch 016/100 | train_loss=0.1771 | val_loss=0.5734 | val_mean_euclidean=0.5137 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.90batch/s]train:  20%|██        | 10/50 [00:00<00:00, 43.97batch/s]train:  32%|███▏      | 16/50 [00:00<00:00, 47.32batch/s]train:  44%|████▍     | 22/50 [00:00<00:00, 49.48batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 50.36batch/s]train:  68%|██████▊   | 34/50 [00:00<00:00, 50.53batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 50.98batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 51.22batch/s]                                                         epoch 017/100 | train_loss=0.1758 | val_loss=0.5765 | val_mean_euclidean=0.5172 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.77batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.59batch/s]train:  30%|███       | 15/50 [00:00<00:00, 47.18batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 49.06batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 50.26batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.86batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.29batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.58batch/s]                                                         epoch 018/100 | train_loss=0.1728 | val_loss=0.5795 | val_mean_euclidean=0.5186 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.25batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 43.18batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.97batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.37batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.04batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 49.78batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 50.38batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 50.84batch/s]                                                         epoch 019/100 | train_loss=0.1710 | val_loss=0.5829 | val_mean_euclidean=0.5209 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 34.00batch/s]train:  20%|██        | 10/50 [00:00<00:00, 44.22batch/s]train:  32%|███▏      | 16/50 [00:00<00:00, 47.25batch/s]train:  44%|████▍     | 22/50 [00:00<00:00, 48.62batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 49.65batch/s]train:  68%|██████▊   | 34/50 [00:00<00:00, 49.94batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 50.31batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 50.69batch/s]                                                         epoch 020/100 | train_loss=0.1696 | val_loss=0.5735 | val_mean_euclidean=0.5154 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.69batch/s]train:  20%|██        | 10/50 [00:00<00:00, 43.26batch/s]train:  32%|███▏      | 16/50 [00:00<00:00, 47.04batch/s]train:  44%|████▍     | 22/50 [00:00<00:00, 48.99batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 50.07batch/s]train:  68%|██████▊   | 34/50 [00:00<00:00, 50.72batch/s]train:  80%|████████  | 40/50 [00:00<00:00, 50.94batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 51.63batch/s]                                                         epoch 021/100 | train_loss=0.1696 | val_loss=0.5884 | val_mean_euclidean=0.5267 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.62batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.55batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.52batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.28batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.37batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.13batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 50.95batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 50.90batch/s]                                                         epoch 022/100 | train_loss=0.1691 | val_loss=0.5795 | val_mean_euclidean=0.5167 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.62batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.89batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.49batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 48.61batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 49.81batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 50.54batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 51.13batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 51.33batch/s]                                                         epoch 023/100 | train_loss=0.1625 | val_loss=0.5745 | val_mean_euclidean=0.5123 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   6%|▌         | 3/50 [00:00<00:01, 29.70batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.72batch/s]train:  28%|██▊       | 14/50 [00:00<00:00, 45.61batch/s]train:  40%|████      | 20/50 [00:00<00:00, 48.19batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 49.68batch/s]train:  64%|██████▍   | 32/50 [00:00<00:00, 50.42batch/s]train:  76%|███████▌  | 38/50 [00:00<00:00, 50.84batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 50.86batch/s]train: 100%|██████████| 50/50 [00:01<00:00, 51.52batch/s]                                                         epoch 024/100 | train_loss=0.1626 | val_loss=0.5778 | val_mean_euclidean=0.5166 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   8%|▊         | 4/50 [00:00<00:01, 33.69batch/s]train:  18%|█▊        | 9/50 [00:00<00:00, 42.46batch/s]train:  30%|███       | 15/50 [00:00<00:00, 46.25batch/s]train:  42%|████▏     | 21/50 [00:00<00:00, 47.80batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 48.74batch/s]train:  66%|██████▌   | 33/50 [00:00<00:00, 49.43batch/s]train:  78%|███████▊  | 39/50 [00:00<00:00, 49.89batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 50.51batch/s]                                                         epoch 025/100 | train_loss=0.1647 | val_loss=0.5763 | val_mean_euclidean=0.5141 m | lr=1.25e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  --------------------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.5605
+Final val mean Euclidean (m)  0.5141
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:30,  5.51batch/s]
+CNN RMSE:  42%|████▏     | 71/168 [00:00<00:00, 310.99batch/s]
+CNN RMSE:  85%|████████▍ | 142/168 [00:00<00:00, 463.35batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 400.31batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer3_session/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.5874 │    0.3785 │       0.5101 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3649 │    0.2181 │       0.3369 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8672 │    0.3508 │       0.8844 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer3_session/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_outer3_session/cnn_rmse_cdf.png
+
+
+Summary written (5 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_softargmax: late + soft_argmax pooling (no aux) ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_softargmax --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode soft_argmax --outer-ring-weight 2.0 --base-channels 32 --lr 0.0005 --dropout 0.3 --no-aux-range
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=2.0, session_aggregated_loss=False, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=32, num_layers=3, dropout=0.3, pool_mode=soft_argmax, multiscale_bins=8, fusion_mode=late, aux_range=False, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_softargmax/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_softargmax/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:17,  2.77batch/s]train:  32%|███▏      | 16/50 [00:00<00:00, 44.47batch/s]train:  64%|██████▍   | 32/50 [00:00<00:00, 76.78batch/s]train:  96%|█████████▌| 48/50 [00:00<00:00, 99.90batch/s]                                                         epoch 001/100 | train_loss=0.4700 | val_loss=0.6324 | val_mean_euclidean=0.5690 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.64batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 130.72batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 140.88batch/s]                                                          epoch 002/100 | train_loss=0.3072 | val_loss=0.6109 | val_mean_euclidean=0.5461 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.16batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.26batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 139.94batch/s]                                                          epoch 003/100 | train_loss=0.2769 | val_loss=0.5943 | val_mean_euclidean=0.5259 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.89batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 132.50batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.07batch/s]                                                          epoch 004/100 | train_loss=0.2533 | val_loss=0.5787 | val_mean_euclidean=0.5124 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.58batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.57batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.78batch/s]                                                          epoch 005/100 | train_loss=0.2456 | val_loss=0.5668 | val_mean_euclidean=0.5014 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.70batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 132.39batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 141.82batch/s]                                                          epoch 006/100 | train_loss=0.2310 | val_loss=0.5431 | val_mean_euclidean=0.4830 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.50batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.46batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.25batch/s]                                                          epoch 007/100 | train_loss=0.2206 | val_loss=0.5548 | val_mean_euclidean=0.4883 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.02batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 131.47batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 141.12batch/s]                                                          epoch 008/100 | train_loss=0.2206 | val_loss=0.5382 | val_mean_euclidean=0.4754 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.34batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 130.78batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 141.07batch/s]                                                          epoch 009/100 | train_loss=0.2103 | val_loss=0.5396 | val_mean_euclidean=0.4769 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.49batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.04batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 141.88batch/s]                                                          epoch 010/100 | train_loss=0.2075 | val_loss=0.5488 | val_mean_euclidean=0.4815 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.03batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 130.09batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 140.87batch/s]                                                          epoch 011/100 | train_loss=0.2059 | val_loss=0.5626 | val_mean_euclidean=0.4939 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.62batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.33batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 141.79batch/s]                                                          epoch 012/100 | train_loss=0.2076 | val_loss=0.5659 | val_mean_euclidean=0.5009 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 97.17batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 129.38batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 139.61batch/s]                                                          epoch 013/100 | train_loss=0.1958 | val_loss=0.5327 | val_mean_euclidean=0.4655 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.51batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 132.32batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.03batch/s]                                                          epoch 014/100 | train_loss=0.1966 | val_loss=0.5629 | val_mean_euclidean=0.4920 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.36batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.96batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.07batch/s]                                                          epoch 015/100 | train_loss=0.1958 | val_loss=0.5412 | val_mean_euclidean=0.4733 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.96batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 132.95batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.31batch/s]                                                          epoch 016/100 | train_loss=0.1938 | val_loss=0.5369 | val_mean_euclidean=0.4735 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.29batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.38batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.24batch/s]                                                          epoch 017/100 | train_loss=0.1890 | val_loss=0.5392 | val_mean_euclidean=0.4712 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.61batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 131.08batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 141.76batch/s]                                                          epoch 018/100 | train_loss=0.1864 | val_loss=0.5405 | val_mean_euclidean=0.4723 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.31batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.09batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.86batch/s]                                                          epoch 019/100 | train_loss=0.1848 | val_loss=0.5463 | val_mean_euclidean=0.4802 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 113.00batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 136.06batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 144.22batch/s]                                                          epoch 020/100 | train_loss=0.1823 | val_loss=0.5364 | val_mean_euclidean=0.4713 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.40batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.31batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.91batch/s]                                                          epoch 021/100 | train_loss=0.1764 | val_loss=0.5408 | val_mean_euclidean=0.4704 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.33batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 132.17batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 141.03batch/s]                                                          epoch 022/100 | train_loss=0.1744 | val_loss=0.5377 | val_mean_euclidean=0.4703 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.64batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.41batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.91batch/s]                                                          epoch 023/100 | train_loss=0.1761 | val_loss=0.5446 | val_mean_euclidean=0.4779 m | lr=2.50e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  -----------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.5327
+Final val mean Euclidean (m)  0.4779
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_softargmax/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_softargmax/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:31,  5.29batch/s]
+CNN RMSE:  40%|███▉      | 67/168 [00:00<00:00, 285.67batch/s]
+CNN RMSE:  79%|███████▊  | 132/168 [00:00<00:00, 423.21batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 376.90batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_softargmax/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_softargmax/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.6190 │    0.3894 │       0.5448 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3854 │    0.2227 │       0.3256 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.9127 │    0.3536 │       0.8753 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_softargmax/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_softargmax/cnn_rmse_cdf.png
+
+
+Summary written (6 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_attn_bc48: late+attention base_channels=48 ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc48 --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode attention --outer-ring-weight 2.0 --base-channels 48 --lr 0.0005 --dropout 0.3 --no-aux-range
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=2.0, session_aggregated_loss=False, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=48, num_layers=3, dropout=0.3, pool_mode=attention, multiscale_bins=8, fusion_mode=late, aux_range=False, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc48/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc48/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:17,  2.80batch/s]train:  36%|███▌      | 18/50 [00:00<00:00, 50.10batch/s]train:  70%|███████   | 35/50 [00:00<00:00, 84.13batch/s]                                                         epoch 001/100 | train_loss=0.4351 | val_loss=0.6092 | val_mean_euclidean=0.5511 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 113.53batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 138.80batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 151.79batch/s]                                                          epoch 002/100 | train_loss=0.2753 | val_loss=0.5727 | val_mean_euclidean=0.5155 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.84batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.38batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.47batch/s]                                                          epoch 003/100 | train_loss=0.2457 | val_loss=0.5576 | val_mean_euclidean=0.4995 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.65batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.13batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.92batch/s]                                                          epoch 004/100 | train_loss=0.2285 | val_loss=0.5526 | val_mean_euclidean=0.4919 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.73batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.86batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.83batch/s]                                                          epoch 005/100 | train_loss=0.2146 | val_loss=0.5547 | val_mean_euclidean=0.4907 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.96batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.79batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.49batch/s]                                                          epoch 006/100 | train_loss=0.2132 | val_loss=0.5404 | val_mean_euclidean=0.4793 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.38batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 132.31batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.27batch/s]                                                          epoch 007/100 | train_loss=0.1916 | val_loss=0.5533 | val_mean_euclidean=0.4920 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.79batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.16batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.06batch/s]                                                          epoch 008/100 | train_loss=0.1887 | val_loss=0.5218 | val_mean_euclidean=0.4599 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.56batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.23batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.70batch/s]                                                          epoch 009/100 | train_loss=0.1847 | val_loss=0.5317 | val_mean_euclidean=0.4718 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.51batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.75batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.42batch/s]                                                          epoch 010/100 | train_loss=0.1827 | val_loss=0.5357 | val_mean_euclidean=0.4735 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.88batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.23batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.24batch/s]                                                          epoch 011/100 | train_loss=0.1835 | val_loss=0.5405 | val_mean_euclidean=0.4762 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.88batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.77batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.24batch/s]                                                          epoch 012/100 | train_loss=0.1748 | val_loss=0.5383 | val_mean_euclidean=0.4752 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.77batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 132.44batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 143.26batch/s]                                                          epoch 013/100 | train_loss=0.1735 | val_loss=0.5168 | val_mean_euclidean=0.4585 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 94.90batch/s]train:  46%|████▌     | 23/50 [00:00<00:00, 113.94batch/s]train:  72%|███████▏  | 36/50 [00:00<00:00, 120.31batch/s]train:  98%|█████████▊| 49/50 [00:00<00:00, 123.11batch/s]                                                          epoch 014/100 | train_loss=0.1679 | val_loss=0.5278 | val_mean_euclidean=0.4684 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.89batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 133.38batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 143.73batch/s]                                                          epoch 015/100 | train_loss=0.1672 | val_loss=0.5026 | val_mean_euclidean=0.4434 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.87batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 132.92batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 143.09batch/s]                                                          epoch 016/100 | train_loss=0.1676 | val_loss=0.5243 | val_mean_euclidean=0.4628 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.87batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.74batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.65batch/s]                                                          epoch 017/100 | train_loss=0.1635 | val_loss=0.5313 | val_mean_euclidean=0.4648 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.99batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.78batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.71batch/s]                                                          epoch 018/100 | train_loss=0.1600 | val_loss=0.5264 | val_mean_euclidean=0.4642 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.63batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.12batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.50batch/s]                                                          epoch 019/100 | train_loss=0.1659 | val_loss=0.5226 | val_mean_euclidean=0.4588 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.30batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.01batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.26batch/s]                                                          epoch 020/100 | train_loss=0.1620 | val_loss=0.5299 | val_mean_euclidean=0.4690 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.06batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.61batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.48batch/s]                                                          epoch 021/100 | train_loss=0.1588 | val_loss=0.5180 | val_mean_euclidean=0.4560 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.90batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.85batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.20batch/s]                                                          epoch 022/100 | train_loss=0.1504 | val_loss=0.5215 | val_mean_euclidean=0.4583 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.20batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 133.02batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.92batch/s]                                                          epoch 023/100 | train_loss=0.1500 | val_loss=0.5210 | val_mean_euclidean=0.4587 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.94batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 133.19batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 143.63batch/s]                                                          epoch 024/100 | train_loss=0.1451 | val_loss=0.5112 | val_mean_euclidean=0.4503 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.88batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 132.06batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.71batch/s]                                                          epoch 025/100 | train_loss=0.1543 | val_loss=0.5211 | val_mean_euclidean=0.4603 m | lr=2.50e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  ----------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.5026
+Final val mean Euclidean (m)  0.4603
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc48/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc48/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:28,  5.79batch/s]
+CNN RMSE:  43%|████▎     | 73/168 [00:00<00:00, 327.13batch/s]
+CNN RMSE:  86%|████████▋ | 145/168 [00:00<00:00, 479.39batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 412.78batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc48/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_bc48/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.5925 │    0.3904 │       0.5170 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3552 │    0.2151 │       0.3097 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8909 │    0.3550 │       0.8886 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_bc48/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_bc48/cnn_rmse_cdf.png
+
+
+Summary written (7 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+=== late_attn_bc64: late+attention base_channels=64 ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --output-dir /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc64 --epochs 100 --batch-size 128 --label-jitter-m 0.05 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --early-stop-patience 10 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --num-layers 3 --dropout 0.3 --lr 0.0005 --no-eval-after-train --pool-mode attention --outer-ring-weight 2.0 --base-channels 64 --lr 0.0005 --dropout 0.3 --no-aux-range
+Using features sidecar for train: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+
+Train/val split: region-stratified (9 regions), val_ratio=0.40, seed=42
+Region      Train sessions    Val sessions
+--------  ----------------  --------------
+SW                       5               4
+W                        9               6
+NW                       5               4
+S                        9               6
+C                       73              48
+N                        9               6
+SE                       5               4
+E                        9               6
+NE                       5               4
+Outlier filter: hard dropped 0 (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 50 from train, 51 from val; train 6400 / eval 4349
+部署验证训练: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+训练 6400 / 验证 4349 帧 | checkpoint 依据 val_loss
+feature_mode=real_imag, model_type=1d, in_channels=4
+ROI 0.0–4.0 m | label_jitter_m=0.050 (train only)
+weight_decay=0.0001, outer_ring_weight=2.0, session_aggregated_loss=False, feature_noise_std=0.02, spec_augment_prob=0.3
+模型 base_channels=64, num_layers=3, dropout=0.3, pool_mode=attention, multiscale_bins=8, fusion_mode=late, aux_range=False, aux_range_weight=0.5, lr=0.0005
+检查点: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc64/best_model.pth | 曲线: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc64/training_curve.png | device=cuda:0
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:   2%|▏         | 1/50 [00:00<00:17,  2.82batch/s]train:  36%|███▌      | 18/50 [00:00<00:00, 50.34batch/s]train:  70%|███████   | 35/50 [00:00<00:00, 84.60batch/s]                                                         epoch 001/100 | train_loss=0.3874 | val_loss=0.6351 | val_mean_euclidean=0.5698 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.40batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 139.53batch/s]train:  90%|█████████ | 45/50 [00:00<00:00, 152.87batch/s]                                                          epoch 002/100 | train_loss=0.2530 | val_loss=0.5884 | val_mean_euclidean=0.5235 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.33batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 142.93batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 156.71batch/s]                                                          epoch 003/100 | train_loss=0.2333 | val_loss=0.5730 | val_mean_euclidean=0.5099 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 117.57batch/s]train:  58%|█████▊    | 29/50 [00:00<00:00, 144.68batch/s]train:  94%|█████████▍| 47/50 [00:00<00:00, 157.13batch/s]                                                          epoch 004/100 | train_loss=0.2078 | val_loss=0.5757 | val_mean_euclidean=0.5120 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.63batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 142.06batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 155.75batch/s]                                                          epoch 005/100 | train_loss=0.1976 | val_loss=0.5408 | val_mean_euclidean=0.4744 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 114.78batch/s]train:  58%|█████▊    | 29/50 [00:00<00:00, 145.08batch/s]train:  94%|█████████▍| 47/50 [00:00<00:00, 157.80batch/s]                                                          epoch 006/100 | train_loss=0.1948 | val_loss=0.5587 | val_mean_euclidean=0.4987 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 118.32batch/s]train:  58%|█████▊    | 29/50 [00:00<00:00, 147.44batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 156.81batch/s]                                                          epoch 007/100 | train_loss=0.1855 | val_loss=0.5243 | val_mean_euclidean=0.4660 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.96batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 143.55batch/s]train:  92%|█████████▏| 46/50 [00:00<00:00, 156.73batch/s]                                                          epoch 008/100 | train_loss=0.1757 | val_loss=0.5336 | val_mean_euclidean=0.4736 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  24%|██▍       | 12/50 [00:00<00:00, 113.81batch/s]train:  56%|█████▌    | 28/50 [00:00<00:00, 139.20batch/s]train:  88%|████████▊ | 44/50 [00:00<00:00, 146.50batch/s]                                                          epoch 009/100 | train_loss=0.1695 | val_loss=0.5388 | val_mean_euclidean=0.4715 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.33batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.05batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.28batch/s]                                                          epoch 010/100 | train_loss=0.1654 | val_loss=0.5193 | val_mean_euclidean=0.4610 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.31batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.40batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.59batch/s]                                                          epoch 011/100 | train_loss=0.1592 | val_loss=0.5173 | val_mean_euclidean=0.4527 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.08batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.96batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.87batch/s]                                                          epoch 012/100 | train_loss=0.1625 | val_loss=0.5369 | val_mean_euclidean=0.4708 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.66batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 132.81batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.98batch/s]                                                          epoch 013/100 | train_loss=0.1526 | val_loss=0.5107 | val_mean_euclidean=0.4484 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.40batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.29batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.35batch/s]                                                          epoch 014/100 | train_loss=0.1623 | val_loss=0.5334 | val_mean_euclidean=0.4698 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.51batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.08batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.91batch/s]                                                          epoch 015/100 | train_loss=0.1603 | val_loss=0.5200 | val_mean_euclidean=0.4563 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 98.14batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 132.39batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.91batch/s]                                                          epoch 016/100 | train_loss=0.1515 | val_loss=0.5374 | val_mean_euclidean=0.4716 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.76batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.14batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.66batch/s]                                                          epoch 017/100 | train_loss=0.1602 | val_loss=0.5159 | val_mean_euclidean=0.4520 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 96.35batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 130.25batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.15batch/s]                                                          epoch 018/100 | train_loss=0.1560 | val_loss=0.5072 | val_mean_euclidean=0.4419 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.75batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 137.27batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.48batch/s]                                                          epoch 019/100 | train_loss=0.1481 | val_loss=0.5097 | val_mean_euclidean=0.4476 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.59batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.33batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.98batch/s]                                                          epoch 020/100 | train_loss=0.1455 | val_loss=0.5205 | val_mean_euclidean=0.4567 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.17batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.75batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.78batch/s]                                                          epoch 021/100 | train_loss=0.1427 | val_loss=0.5050 | val_mean_euclidean=0.4438 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.02batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.56batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 146.09batch/s]                                                          epoch 022/100 | train_loss=0.1477 | val_loss=0.5265 | val_mean_euclidean=0.4555 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.04batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.86batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.17batch/s]                                                          epoch 023/100 | train_loss=0.1452 | val_loss=0.5253 | val_mean_euclidean=0.4563 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.96batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.70batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.04batch/s]                                                          epoch 024/100 | train_loss=0.1438 | val_loss=0.5384 | val_mean_euclidean=0.4676 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.09batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.33batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.03batch/s]                                                          epoch 025/100 | train_loss=0.1665 | val_loss=0.5250 | val_mean_euclidean=0.4602 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.24batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.35batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.78batch/s]                                                          epoch 026/100 | train_loss=0.1450 | val_loss=0.5208 | val_mean_euclidean=0.4509 m | lr=5.00e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.28batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.85batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.51batch/s]                                                          epoch 027/100 | train_loss=0.1454 | val_loss=0.5057 | val_mean_euclidean=0.4385 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.85batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.48batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.84batch/s]                                                          epoch 028/100 | train_loss=0.1359 | val_loss=0.5111 | val_mean_euclidean=0.4420 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.49batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.19batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 142.70batch/s]                                                          epoch 029/100 | train_loss=0.1308 | val_loss=0.5022 | val_mean_euclidean=0.4359 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 104.65batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.47batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.00batch/s]                                                          epoch 030/100 | train_loss=0.1330 | val_loss=0.5021 | val_mean_euclidean=0.4341 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 103.69batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.31batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.51batch/s]                                                          epoch 031/100 | train_loss=0.1332 | val_loss=0.5062 | val_mean_euclidean=0.4377 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.45batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 133.64batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.53batch/s]                                                          epoch 032/100 | train_loss=0.1319 | val_loss=0.5058 | val_mean_euclidean=0.4368 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.40batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.05batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.36batch/s]                                                          epoch 033/100 | train_loss=0.1301 | val_loss=0.5099 | val_mean_euclidean=0.4378 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.23batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.89batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.43batch/s]                                                          epoch 034/100 | train_loss=0.1308 | val_loss=0.5007 | val_mean_euclidean=0.4334 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.94batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.59batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.50batch/s]                                                          epoch 035/100 | train_loss=0.1282 | val_loss=0.5131 | val_mean_euclidean=0.4438 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.24batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.09batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.32batch/s]                                                          epoch 036/100 | train_loss=0.1290 | val_loss=0.5074 | val_mean_euclidean=0.4395 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.53batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.26batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 143.63batch/s]                                                          epoch 037/100 | train_loss=0.1286 | val_loss=0.5056 | val_mean_euclidean=0.4403 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.55batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.40batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.75batch/s]                                                          epoch 038/100 | train_loss=0.1278 | val_loss=0.4886 | val_mean_euclidean=0.4234 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.53batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.06batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.82batch/s]                                                          epoch 039/100 | train_loss=0.1281 | val_loss=0.4962 | val_mean_euclidean=0.4290 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.70batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.15batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.82batch/s]                                                          epoch 040/100 | train_loss=0.1266 | val_loss=0.5045 | val_mean_euclidean=0.4386 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.69batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.74batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.91batch/s]                                                          epoch 041/100 | train_loss=0.1290 | val_loss=0.4967 | val_mean_euclidean=0.4293 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 107.28batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.16batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.51batch/s]                                                          epoch 042/100 | train_loss=0.1284 | val_loss=0.4962 | val_mean_euclidean=0.4291 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.16batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.23batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.23batch/s]                                                          epoch 043/100 | train_loss=0.1264 | val_loss=0.4994 | val_mean_euclidean=0.4319 m | lr=2.50e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 106.35batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 135.71batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.70batch/s]                                                          epoch 044/100 | train_loss=0.1276 | val_loss=0.5009 | val_mean_euclidean=0.4351 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.09batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.66batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.72batch/s]                                                          epoch 045/100 | train_loss=0.1229 | val_loss=0.4973 | val_mean_euclidean=0.4291 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  20%|██        | 10/50 [00:00<00:00, 99.34batch/s]train:  52%|█████▏    | 26/50 [00:00<00:00, 131.93batch/s]train:  84%|████████▍ | 42/50 [00:00<00:00, 142.76batch/s]                                                          epoch 046/100 | train_loss=0.1241 | val_loss=0.5016 | val_mean_euclidean=0.4338 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 108.07batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 136.11batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 145.58batch/s]                                                          epoch 047/100 | train_loss=0.1242 | val_loss=0.4981 | val_mean_euclidean=0.4300 m | lr=1.25e-04
+train:   0%|          | 0/50 [00:00<?, ?batch/s]train:  22%|██▏       | 11/50 [00:00<00:00, 105.32batch/s]train:  54%|█████▍    | 27/50 [00:00<00:00, 134.78batch/s]train:  86%|████████▌ | 43/50 [00:00<00:00, 144.63batch/s]                                                          epoch 048/100 | train_loss=0.1228 | val_loss=0.5025 | val_mean_euclidean=0.4363 m | lr=1.25e-04
+Early stop: no val improvement for 10 epochs.
+
+Metric                        Value
+----------------------------  ----------------------------------------------------------------------------
+Train frames                  6400
+Val frames                    4349
+Feature mode                  real_imag
+Train label jitter (m)        0.050
+Best val RMSE (m)             0.4886
+Final val mean Euclidean (m)  0.4363
+Checkpoint                    /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc64/best_model.pth
+Training curve                /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc64/training_curve.png
+
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]
+CNN RMSE:   1%|          | 1/168 [00:00<00:28,  5.81batch/s]
+CNN RMSE:  43%|████▎     | 72/168 [00:00<00:00, 325.16batch/s]
+CNN RMSE:  86%|████████▌ | 144/168 [00:00<00:00, 479.42batch/s]
+CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 413.75batch/s]
+
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_bc64/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_bc64/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.5960 │    0.3945 │       0.4884 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3631 │    0.2251 │       0.3211 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8889 │    0.3655 │       0.8881 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_bc64/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune/late_attn_bc64/cnn_rmse_cdf.png
+
+
+Summary written (8 rows): /home/lhp/projects/isac/out/cooperative_monostatic/cnn_s2_tune_summary.csv
+
+Done.

@@ -463,11 +463,11 @@ class CooperativeMonostaticCNN(nn.Module):
         in_channels: int = 4,
         base_channels: int = 32,
         num_layers: int = 3,
-        dropout: float = 0.2,
-        pool_mode: str = "gap",
+        dropout: float = 0.3,
+        pool_mode: str = "attention",
         multiscale_bins: int = 8,
         soft_argmax_temp: float = 1.0,
-        fusion_mode: str = "early",
+        fusion_mode: str = "late",
         aux_range: bool = False,
     ) -> None:
         super().__init__()

@@ -93,7 +93,13 @@ def test_cooperative_monostatic_cnn_gap_checkpoint_compat(tmp_path):
     """默认 gap head 的 state_dict 键与旧 Sequential 布局兼容。"""
     from isac.models.model_design import load_cooperative_monostatic_cnn_checkpoint
 
-    model = CooperativeMonostaticCNN(in_channels=4, base_channels=16, num_layers=2)
+    model = CooperativeMonostaticCNN(
+        in_channels=4,
+        base_channels=16,
+        num_layers=2,
+        pool_mode="gap",
+        fusion_mode="early",
+    )
     ckpt_path = tmp_path / "gap.pth"
     torch.save(
         {
@@ -121,6 +127,7 @@ def test_cooperative_monostatic_cnn_soft_argmax_checkpoint_roundtrip(tmp_path):
         base_channels=16,
         num_layers=2,
         pool_mode="soft_argmax",
+        fusion_mode="early",
     )
     ckpt_path = tmp_path / "soft.pth"
     torch.save(
@@ -134,6 +141,8 @@ def test_cooperative_monostatic_cnn_soft_argmax_checkpoint_roundtrip(tmp_path):
             "pool_mode": "soft_argmax",
             "multiscale_bins": 8,
             "soft_argmax_temp": 1.0,
+            "fusion_mode": "early",
+            "aux_range": False,
         },
         ckpt_path,
     )

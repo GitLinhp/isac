@@ -45,7 +45,11 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
     DATASET_KEY_PROFILES_DEV1,
     DATASET_KEY_SESSION_INDEX,
     DATASET_KEY_TARGET_POSITION,
+    cooperative_frame_cpi_energy,
+    filter_cooperative_frames_energy_mad,
+    filter_cooperative_frames_hard,
     is_cooperative_monostatic_features_h5,
+    load_cooperative_frame_energy,
     resolve_cooperative_features_h5,
     session_train_val_split_by_region,
 )
@@ -64,6 +68,9 @@ CSV_COLUMNS = (
 
 DEFAULT_VAL_RATIO = 0.2
 DEFAULT_VAL_SEED = 42
+DEFAULT_XY_MAX_M = 1.0
+DEFAULT_OUTLIER_ENERGY_EPS = 1e-8
+DEFAULT_OUTLIER_ENERGY_MAD_Z = 5.0
 
 
 def _default_h5_path() -> Path:
@@ -227,6 +234,30 @@ def argument_parser() -> argparse.Namespace:
         default=_default_output_cdf(),
         help="output CDF PNG path (default: under out/cooperative_monostatic/)",
     )
+    parser.add_argument(
+        "--filter-outliers",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="硬过滤 + session 能量 MAD 软剔除（默认开启；--no-filter-outliers 关闭）",
+    )
+    parser.add_argument(
+        "--xy-max-m",
+        type=float,
+        default=DEFAULT_XY_MAX_M,
+        help=f"硬过滤：|x|,|y| 超过该值视为越界 (m)，默认 {DEFAULT_XY_MAX_M}",
+    )
+    parser.add_argument(
+        "--outlier-energy-eps",
+        type=float,
+        default=DEFAULT_OUTLIER_ENERGY_EPS,
+        help="硬过滤：任一站 CPI 平均幅度 <= eps 视为近零",
+    )
+    parser.add_argument(
+        "--outlier-energy-mad-z",
+        type=float,
+        default=DEFAULT_OUTLIER_ENERGY_MAD_Z,
+        help=f"软剔除：session 内能量 MAD z-score 阈值，默认 {DEFAULT_OUTLIER_ENERGY_MAD_Z}",
+    )
     return parser.parse_args()
 
 
@@ -268,6 +299,95 @@ def _resolve_frame_indices(
         indices_list = indices_list[: max_samples]
     return indices_list
 
+
+def _apply_eval_outlier_filters(
+    h5_path: Path,
+    frame_indices: list[int],
+    *,
+    xy_max_m: float = DEFAULT_XY_MAX_M,
+    energy_eps: float = DEFAULT_OUTLIER_ENERGY_EPS,
+    energy_mad_z: float = DEFAULT_OUTLIER_ENERGY_MAD_Z,
+) -> list[int]:
+    """对评估候选帧做硬过滤 + session 能量 MAD 软剔除（与训练口径一致）。"""
+    cand = np.asarray(frame_indices, dtype=np.int64).reshape(-1)
+    n_before = int(cand.size)
+    if n_before == 0:
+        return []
+
+    with h5py.File(h5_path, "r") as f:
+        n_frames = (
+            int(f[DATASET_KEY_FEATURES].shape[0])
+            if DATASET_KEY_FEATURES in f
+            else int(f[DATASET_KEY_PROFILES_DEV0].shape[0])
+        )
+        session_indices = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
+        target_position = np.asarray(
+            f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
+        )
+
+    if session_indices.shape[0] != n_frames or target_position.shape[0] != n_frames:
+        raise ValueError(
+            "session_index / target_position 与帧数不一致: "
+            f"{session_indices.shape[0]}, {target_position.shape[0]} vs {n_frames}"
+        )
+    if np.any(cand < 0) or np.any(cand >= n_frames):
+        raise ValueError("frame_indices 超出 HDF5 帧范围")
+
+    energy = load_cooperative_frame_energy(h5_path)
+    profiles_dev0: np.ndarray | None = None
+    profiles_dev1: np.ndarray | None = None
+    if energy is not None:
+        energy = np.asarray(energy[:n_frames], dtype=np.float64)
+        if energy.shape[0] != n_frames:
+            raise ValueError(
+                f"frame_energy 长度 {energy.shape[0]} 与 n_frames={n_frames} 不一致"
+            )
+        keep_hard, drop_counts = filter_cooperative_frames_hard(
+            target_position[:, :2],
+            xy_max_m=xy_max_m,
+            energy_eps=energy_eps,
+        )
+    else:
+        if is_cooperative_monostatic_features_h5(h5_path):
+            raise RuntimeError(
+                f"features sidecar 缺少 frame_energy，无法做 outlier 过滤: {h5_path}"
+            )
+        with h5py.File(h5_path, "r") as f:
+            profiles_dev0 = np.asarray(f[DATASET_KEY_PROFILES_DEV0][:n_frames])
+            profiles_dev1 = np.asarray(f[DATASET_KEY_PROFILES_DEV1][:n_frames])
+        energy = cooperative_frame_cpi_energy(profiles_dev0, profiles_dev1)
+        keep_hard, drop_counts = filter_cooperative_frames_hard(
+            target_position[:, :2],
+            profiles_dev0=profiles_dev0,
+            profiles_dev1=profiles_dev1,
+            xy_max_m=xy_max_m,
+            energy_eps=energy_eps,
+        )
+
+    hard_set = {int(i) for i in keep_hard}
+    after_hard = np.asarray([i for i in cand if int(i) in hard_set], dtype=np.int64)
+    hard_dropped_from_cand = n_before - int(after_hard.size)
+
+    soft_dropped = 0
+    kept = after_hard
+    if after_hard.size > 0:
+        kept, soft_dropped = filter_cooperative_frames_energy_mad(
+            after_hard,
+            session_indices,
+            energy,
+            z_thresh=energy_mad_z,
+        )
+
+    print(
+        f"Outlier filter [eval]: hard dropped {hard_dropped_from_cand} from candidates "
+        f"(nan_label={drop_counts['nan_label']}, oob_xy={drop_counts['oob_xy']}, "
+        f"nan_cpi={drop_counts['nan_cpi']}, near_zero={drop_counts['near_zero']}); "
+        f"soft dropped {soft_dropped}; kept {kept.size} / {n_before}",
+        flush=True,
+    )
+    if kept.size == 0:
+        raise RuntimeError("outlier 过滤后评估集为空")
+    return [int(i) for i in kept]
 
 def _predict_xy_batch(
     model: torch.nn.Module,
@@ -634,17 +754,43 @@ def main() -> None:
         val_ratio=float(args.val_ratio),
         seed=int(args.seed),
     )
+    n_before_filter = len(frame_indices)
+    if args.filter_outliers:
+        if args.xy_max_m <= 0.0:
+            raise ValueError(f"--xy-max-m 须 > 0，收到 {args.xy_max_m}")
+        if args.outlier_energy_eps < 0.0:
+            raise ValueError(
+                f"--outlier-energy-eps 须 >= 0，收到 {args.outlier_energy_eps}"
+            )
+        if args.outlier_energy_mad_z <= 0.0:
+            raise ValueError(
+                f"--outlier-energy-mad-z 须 > 0，收到 {args.outlier_energy_mad_z}"
+            )
+        frame_indices = _apply_eval_outlier_filters(
+            h5_path,
+            frame_indices,
+            xy_max_m=float(args.xy_max_m),
+            energy_eps=float(args.outlier_energy_eps),
+            energy_mad_z=float(args.outlier_energy_mad_z),
+        )
 
     split_label = (
         f"val-only region-stratified (9 regions, ratio={args.val_ratio}, seed={args.seed})"
         if args.val_only
         else "all frames"
     )
+    if args.filter_outliers:
+        frames_msg = (
+            f"{n_before_filter} -> {len(frame_indices)} after outlier filter "
+            f"({split_label})"
+        )
+    else:
+        frames_msg = f"{len(frame_indices)} ({split_label})"
     print(
         f"HDF5: {h5_path}\n"
         f"Checkpoint: {checkpoint}\n"
         f"Feature mode: {feature_mode}\n"
-        f"Frames: {len(frame_indices)} ({split_label}) | "
+        f"Frames: {frames_msg} | "
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"batch_size={batch_size} | device={device}"
     )
