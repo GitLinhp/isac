@@ -31,12 +31,18 @@ _DEFAULT_RDCC_NBYTES = 32 * 1024 * 1024
 
 DATASET_KEY_PROFILES_DEV0 = "profiles_dev0"
 DATASET_KEY_PROFILES_DEV1 = "profiles_dev1"
+DATASET_KEY_FEATURES = "features"
 DATASET_KEY_TARGET_POSITION = "target_position"
 DATASET_KEY_SESSION_INDEX = "session_index"
 DATASET_KEY_FRAME_INDEX = "frame_index"
 
 META_KEY_DESCRIPTION = "description"
 META_KEY_DATA_KIND = "data_kind"
+META_KEY_SOURCE_H5 = "source_h5"
+META_KEY_RANGE_ROI_MIN_M = "range_roi_min_m"
+META_KEY_RANGE_ROI_MAX_M = "range_roi_max_m"
+META_KEY_FEATURE_CHANNELS = "feature_channels"
+META_KEY_ROI_LEN = "roi_len"
 META_KEY_VLEN = "vlen"
 META_KEY_FFT_LEN = "fft_len"
 META_KEY_ZEROPADDING_FAC = "zeropadding_fac"
@@ -48,6 +54,9 @@ META_KEY_COORDINATE_UNIT = "coordinate_unit"
 META_KEY_LABEL_AXES = "label_axes"
 
 _COMPLEX_DTYPE = np.complex64
+_FEATURE_DTYPE = np.float32
+_DATA_KIND_DIVIDE_CPI = "divide_cpi"
+_DATA_KIND_FEATURES = "cooperative_monostatic_features"
 
 
 def _iter_divide_cpi_frames(
@@ -334,12 +343,30 @@ def summarize_cooperative_monostatic_h5(filepath: str | Path) -> dict[str, Any]:
     """轻量读取 HDF5 shape 与根属性，不加载数组到内存。"""
     filepath = Path(filepath)
     with h5py.File(filepath, "r") as f:
+        data_kind = str(f.attrs.get(META_KEY_DATA_KIND, _DATA_KIND_DIVIDE_CPI))
+        if data_kind == _DATA_KIND_FEATURES:
+            features = _require_dataset(f, DATASET_KEY_FEATURES)
+            target_position = _require_dataset(f, DATASET_KEY_TARGET_POSITION)
+            return {
+                "path": filepath,
+                "file_size_bytes": filepath.stat().st_size,
+                "data_kind": data_kind,
+                "features_shape": tuple(features.shape),
+                "target_position_shape": tuple(target_position.shape),
+                "num_sessions": int(f.attrs.get("num_sessions", 0)),
+                "frames_per_session": int(f.attrs.get("frames_per_session", 0)),
+                "total_frames": int(features.shape[0]),
+                "roi_len": int(f.attrs.get(META_KEY_ROI_LEN, features.shape[-1])),
+                "attrs": dict(f.attrs),
+            }
+
         profiles_dev0 = _require_dataset(f, DATASET_KEY_PROFILES_DEV0)
         profiles_dev1 = _require_dataset(f, DATASET_KEY_PROFILES_DEV1)
         target_position = _require_dataset(f, DATASET_KEY_TARGET_POSITION)
         return {
             "path": filepath,
             "file_size_bytes": filepath.stat().st_size,
+            "data_kind": data_kind,
             "profiles_dev0_shape": tuple(profiles_dev0.shape),
             "profiles_dev1_shape": tuple(profiles_dev1.shape),
             "target_position_shape": tuple(target_position.shape),
@@ -348,6 +375,126 @@ def summarize_cooperative_monostatic_h5(filepath: str | Path) -> dict[str, Any]:
             "total_frames": int(profiles_dev0.shape[0]),
             "attrs": dict(f.attrs),
         }
+
+
+def is_cooperative_monostatic_features_h5(filepath: str | Path) -> bool:
+    filepath = Path(filepath)
+    with h5py.File(filepath, "r") as f:
+        return str(f.attrs.get(META_KEY_DATA_KIND, "")) == _DATA_KIND_FEATURES
+
+
+def default_features_h5_path(source_h5: str | Path) -> Path:
+    source_h5 = Path(source_h5)
+    return source_h5.with_name(f"{source_h5.stem}_features{source_h5.suffix}")
+
+
+def build_cooperative_monostatic_features_h5(
+    source_h5: str | Path,
+    output_path: str | Path,
+    *,
+    range_roi: tuple[float, float] = (0.0, 5.0),
+    proc_params: dict[str, Any] | None = None,
+    show_progress: bool = True,
+) -> Path:
+    """从 raw CPI HDF5 离线构建 4 通道 ROI float 特征 sidecar。"""
+    if torch is None:
+        raise ImportError("torch is required for build_cooperative_monostatic_features_h5")
+
+    from isac.models.preprocess import (
+        divide_cpi_dual_to_roi_range_profiles_np,
+        dual_range_profile_to_features,
+    )
+    from isac_imp.cooperative_monostatic_pipeline import (
+        DEFAULT_RANGE_ROI,
+        grc_cooperative_processing_params,
+    )
+
+    source_h5 = Path(source_h5).resolve()
+    output_path = Path(output_path)
+    if not source_h5.is_file():
+        raise FileNotFoundError(source_h5)
+
+    proc_params = proc_params or grc_cooperative_processing_params()
+    range_roi = (float(range_roi[0]), float(range_roi[1]))
+
+    with h5py.File(source_h5, "r") as src:
+        if str(src.attrs.get(META_KEY_DATA_KIND, _DATA_KIND_DIVIDE_CPI)) == _DATA_KIND_FEATURES:
+            raise ValueError(f"source HDF5 is already features sidecar: {source_h5}")
+
+        profiles_dev0 = _require_dataset(src, DATASET_KEY_PROFILES_DEV0)
+        profiles_dev1 = _require_dataset(src, DATASET_KEY_PROFILES_DEV1)
+        target_position = _require_dataset(src, DATASET_KEY_TARGET_POSITION)
+        session_index = _require_dataset(src, DATASET_KEY_SESSION_INDEX)
+        frame_index = _require_dataset(src, DATASET_KEY_FRAME_INDEX)
+        total_frames = int(profiles_dev0.shape[0])
+
+        roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
+            profiles_dev0[0],
+            profiles_dev1[0],
+            proc_params=proc_params,
+            range_roi=range_roi,
+        )
+        sample_feat = dual_range_profile_to_features(
+            torch.from_numpy(roi0),
+            torch.from_numpy(roi1),
+        )
+        feature_channels = int(sample_feat.shape[0])
+        roi_len = int(sample_feat.shape[1])
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with h5py.File(output_path, "w") as dst:
+            features_ds = dst.create_dataset(
+                DATASET_KEY_FEATURES,
+                shape=(total_frames, feature_channels, roi_len),
+                dtype=_FEATURE_DTYPE,
+                chunks=(min(256, total_frames), feature_channels, roi_len),
+            )
+            dst.create_dataset(
+                DATASET_KEY_TARGET_POSITION,
+                data=target_position[:],
+                dtype=np.float64,
+            )
+            dst.create_dataset(
+                DATASET_KEY_SESSION_INDEX,
+                data=session_index[:],
+                dtype=np.int32,
+            )
+            dst.create_dataset(
+                DATASET_KEY_FRAME_INDEX,
+                data=frame_index[:],
+                dtype=np.int32,
+            )
+
+            frame_iter = range(total_frames)
+            if show_progress:
+                frame_iter = tqdm(frame_iter, desc="features", unit="frame")
+
+            for frame_idx in frame_iter:
+                roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
+                    profiles_dev0[frame_idx],
+                    profiles_dev1[frame_idx],
+                    proc_params=proc_params,
+                    range_roi=range_roi,
+                )
+                feat = dual_range_profile_to_features(
+                    torch.from_numpy(roi0),
+                    torch.from_numpy(roi1),
+                ).numpy().astype(_FEATURE_DTYPE, copy=False)
+                features_ds[frame_idx] = feat
+
+            for key, value in src.attrs.items():
+                dst.attrs[key] = value
+            dst.attrs[META_KEY_DATA_KIND] = _DATA_KIND_FEATURES
+            dst.attrs[META_KEY_SOURCE_H5] = str(source_h5)
+            dst.attrs[META_KEY_RANGE_ROI_MIN_M] = range_roi[0]
+            dst.attrs[META_KEY_RANGE_ROI_MAX_M] = range_roi[1]
+            dst.attrs[META_KEY_FEATURE_CHANNELS] = feature_channels
+            dst.attrs[META_KEY_ROI_LEN] = roi_len
+            dst.attrs[META_KEY_DESCRIPTION] = (
+                f"Cooperative monostatic CNN features sidecar ({total_frames} frames)"
+            )
+
+    return output_path.resolve()
 
 
 def _require_dataset(f: h5py.File, key: str) -> h5py.Dataset:
@@ -612,21 +759,40 @@ class CooperativeMonostaticRangeProfileDataset(
         range_roi: tuple[float, float] = (0.0, 5.0),
         transform_on_load: bool = True,
         label_jitter_m: float = 0.0,
+        feature_mode: str = "real_imag",
+        norm_means: np.ndarray | None = None,
+        norm_stds: np.ndarray | None = None,
+        feature_noise_std: float = 0.0,
+        spec_augment_prob: float = 0.0,
+        spec_augment_max_bins: int = 3,
+        augment: bool = False,
     ) -> None:
         if torch is None:
             raise ImportError("torch is required for CooperativeMonostaticRangeProfileDataset")
 
+        from isac.models.preprocess import COOPERATIVE_FEATURE_MODES
         from isac_imp.cooperative_monostatic_pipeline import grc_cooperative_processing_params
+
+        if feature_mode not in COOPERATIVE_FEATURE_MODES:
+            raise ValueError(f"feature_mode 无效: {feature_mode!r}")
 
         self.h5_path = Path(h5_path)
         self.frame_indices = np.asarray(frame_indices, dtype=np.int64)
         self.proc_params = proc_params or grc_cooperative_processing_params()
         self.range_roi = (float(range_roi[0]), float(range_roi[1]))
         self.transform_on_load = transform_on_load
+        self.feature_mode = feature_mode
+        self.norm_means = None if norm_means is None else np.asarray(norm_means, dtype=np.float64)
+        self.norm_stds = None if norm_stds is None else np.asarray(norm_stds, dtype=np.float64)
+        self.feature_noise_std = float(feature_noise_std)
+        self.spec_augment_prob = float(spec_augment_prob)
+        self.spec_augment_max_bins = int(spec_augment_max_bins)
+        self.augment = bool(augment)
         self.label_jitter_m = float(label_jitter_m)
         if self.label_jitter_m < 0.0:
             raise ValueError(f"label_jitter_m 须 >= 0，收到 {label_jitter_m}")
         self._label_rng = np.random.default_rng()
+        self._aug_rng = np.random.default_rng()
         self._h5: h5py.File | None = None
 
     def __len__(self) -> int:
@@ -688,8 +854,155 @@ class CooperativeMonostaticRangeProfileDataset(
             ).astype(np.float32)
             xy = xy + jitter
 
+        from isac.models.preprocess import (
+            apply_cooperative_feature_augmentation,
+            cooperative_input_is_complex,
+            dual_roi_to_model_input,
+        )
+
+        if self.transform_on_load:
+            model_input = dual_roi_to_model_input(
+                dual_profiles,
+                mode=self.feature_mode,  # type: ignore[arg-type]
+                norm_means=self.norm_means,
+                norm_stds=self.norm_stds,
+            )
+            if (
+                self.augment
+                and not cooperative_input_is_complex(self.feature_mode)  # type: ignore[arg-type]
+            ):
+                model_input = apply_cooperative_feature_augmentation(
+                    model_input,
+                    noise_std=self.feature_noise_std,
+                    spec_augment_prob=self.spec_augment_prob,
+                    spec_augment_max_bins=self.spec_augment_max_bins,
+                    rng=self._aug_rng,
+                )
+        else:
+            model_input = dual_profiles
+
         return {
-            "dual_profiles": dual_profiles.to(dtype=torch.complex64),
+            "dual_profiles": model_input,
             "target_xy": torch.from_numpy(xy),
             "session_index": torch.tensor(session_idx, dtype=torch.int64),
         }
+
+
+class CooperativeMonostaticFeaturesDataset(
+    Dataset if torch is not None else object  # type: ignore[misc]
+):
+    """Cooperative monostatic 预计算 4 通道 ROI 特征 HDF5 Dataset。"""
+
+    def __init__(
+        self,
+        h5_path: str | Path,
+        frame_indices: np.ndarray | Sequence[int],
+        *,
+        label_jitter_m: float = 0.0,
+    ) -> None:
+        if torch is None:
+            raise ImportError("torch is required for CooperativeMonostaticFeaturesDataset")
+
+        self.h5_path = Path(h5_path)
+        self.frame_indices = np.asarray(frame_indices, dtype=np.int64)
+        self.label_jitter_m = float(label_jitter_m)
+        if self.label_jitter_m < 0.0:
+            raise ValueError(f"label_jitter_m 须 >= 0，收到 {label_jitter_m}")
+        self._label_rng = np.random.default_rng()
+        self._h5: h5py.File | None = None
+
+    def __len__(self) -> int:
+        return int(self.frame_indices.size)
+
+    def _get_h5(self) -> h5py.File:
+        if self._h5 is None:
+            self._h5 = h5py.File(self.h5_path, "r")
+        return self._h5
+
+    def close(self) -> None:
+        if self._h5 is not None:
+            self._h5.close()
+            self._h5 = None
+
+    def __del__(self) -> None:
+        self.close()
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        if torch is None:
+            raise ImportError(
+                "torch is required for CooperativeMonostaticFeaturesDataset.__getitem__"
+            )
+        if idx < 0 or idx >= len(self):
+            raise IndexError(f"index {idx} out of range for {len(self)} frames")
+
+        global_idx = int(self.frame_indices[idx])
+        f = self._get_h5()
+        features = f[DATASET_KEY_FEATURES][global_idx]
+        target_pos = f[DATASET_KEY_TARGET_POSITION][global_idx]
+        session_idx = int(f[DATASET_KEY_SESSION_INDEX][global_idx])
+
+        xy = np.array([float(target_pos[0]), float(target_pos[1])], dtype=np.float32)
+        if self.label_jitter_m > 0.0:
+            jitter = self._label_rng.uniform(
+                -self.label_jitter_m,
+                self.label_jitter_m,
+                size=2,
+            ).astype(np.float32)
+            xy = xy + jitter
+
+        return {
+            "dual_profiles": torch.from_numpy(np.asarray(features, dtype=_FEATURE_DTYPE)),
+            "target_xy": torch.from_numpy(xy),
+            "session_index": torch.tensor(session_idx, dtype=torch.int64),
+        }
+
+
+def open_cooperative_monostatic_training_dataset(
+    h5_path: str | Path,
+    frame_indices: np.ndarray | Sequence[int],
+    *,
+    proc_params: dict[str, Any] | None = None,
+    range_roi: tuple[float, float] = (0.0, 5.0),
+    transform_on_load: bool = True,
+    label_jitter_m: float = 0.0,
+    feature_mode: str = "real_imag",
+    norm_means: np.ndarray | None = None,
+    norm_stds: np.ndarray | None = None,
+    feature_noise_std: float = 0.0,
+    spec_augment_prob: float = 0.0,
+    spec_augment_max_bins: int = 3,
+    augment: bool = False,
+) -> CooperativeMonostaticFeaturesDataset | CooperativeMonostaticRangeProfileDataset:
+    """按 HDF5 data_kind 打开训练 Dataset（features sidecar 或 raw CPI）。"""
+    from isac.models.preprocess import COOPERATIVE_FEATURE_MODES
+
+    if feature_mode not in COOPERATIVE_FEATURE_MODES:
+        raise ValueError(f"feature_mode 无效: {feature_mode!r}")
+
+    h5_path = Path(h5_path)
+    if is_cooperative_monostatic_features_h5(h5_path):
+        if feature_mode != "legacy_4ch":
+            raise ValueError(
+                "features sidecar 仅支持 feature_mode='legacy_4ch'；"
+                "跨域训练请使用 raw cooperative_monostatic_dataset.h5"
+            )
+        return CooperativeMonostaticFeaturesDataset(
+            h5_path,
+            frame_indices,
+            label_jitter_m=label_jitter_m,
+        )
+    return CooperativeMonostaticRangeProfileDataset(
+        h5_path,
+        frame_indices,
+        proc_params=proc_params,
+        range_roi=range_roi,
+        transform_on_load=transform_on_load,
+        label_jitter_m=label_jitter_m,
+        feature_mode=feature_mode,
+        norm_means=norm_means,
+        norm_stds=norm_stds,
+        feature_noise_std=feature_noise_std,
+        spec_augment_prob=spec_augment_prob,
+        spec_augment_max_bins=spec_augment_max_bins,
+        augment=augment,
+    )

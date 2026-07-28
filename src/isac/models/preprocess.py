@@ -6,6 +6,10 @@ CNN / MUSIC 共用 ``spectrum_tensor``（复数裁切谱）作为估计器输入
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
+from pathlib import Path
+from typing import Literal
+
 import numpy as np
 import torch
 
@@ -289,3 +293,271 @@ def divide_cpi_dual_to_roi_range_profiles_np(
         cpi_dev1, proc_params=proc_params, range_roi=range_roi
     )
     return roi0, roi1
+
+
+CooperativeFeatureMode = Literal[
+    "complex_roi", "real_imag", "logmag_fixed_norm", "legacy_4ch"
+]
+COOPERATIVE_FEATURE_MODES: tuple[CooperativeFeatureMode, ...] = (
+    "complex_roi",
+    "real_imag",
+    "logmag_fixed_norm",
+    "legacy_4ch",
+)
+
+
+def cooperative_feature_in_channels(mode: CooperativeFeatureMode) -> int:
+    """CNN ``in_channels`` for a cooperative monostatic feature mode."""
+    if mode == "logmag_fixed_norm":
+        return 2
+    return 4
+
+
+def cooperative_input_is_complex(mode: CooperativeFeatureMode) -> bool:
+    return mode == "complex_roi"
+
+
+def _dual_roi_to_batch(dual_roi: torch.Tensor) -> torch.Tensor:
+    """规范为 ``(B, 2, L)`` complex。"""
+    if dual_roi.ndim == 2:
+        if dual_roi.shape[0] != 2:
+            raise ValueError(
+                "dual_roi 单样本须为 (2, L) complex，"
+                f"收到 {tuple(dual_roi.shape)}"
+            )
+        return dual_roi.unsqueeze(0)
+    if dual_roi.ndim == 3 and dual_roi.shape[1] == 2:
+        return dual_roi
+    raise ValueError(
+        "dual_roi complex 须为 (2, L) 或 (B, 2, L)，"
+        f"收到 {tuple(dual_roi.shape)}"
+    )
+
+
+def range_profile_to_real_imag_features(profile_complex: torch.Tensor) -> torch.Tensor:
+    """单设备 ROI 复数距离谱 → ``(2, L)`` real+imag float。"""
+    real = profile_complex.real.to(dtype=torch.float32)
+    imag = profile_complex.imag.to(dtype=torch.float32)
+    return torch.stack([real, imag], dim=0)
+
+
+def dual_roi_to_real_imag_features(dual_roi: torch.Tensor) -> torch.Tensor:
+    """双设备 ROI 复数距离谱 → ``(4, L)`` 或 ``(B, 4, L)`` real+imag float。"""
+    batch = _dual_roi_to_batch(dual_roi)
+    feats = []
+    for i in range(batch.shape[0]):
+        feat0 = range_profile_to_real_imag_features(batch[i, 0])
+        feat1 = range_profile_to_real_imag_features(batch[i, 1])
+        feats.append(torch.cat([feat0, feat1], dim=0))
+    if dual_roi.ndim == 2:
+        return feats[0]
+    return torch.stack(feats, dim=0)
+
+
+def _normalize_logmag_with_stats(
+    mag_db: torch.Tensor,
+    *,
+    mean: float,
+    std: float,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    return (mag_db - mean) / (std + eps)
+
+
+def range_profile_to_logmag_fixed_norm(
+    profile_complex: torch.Tensor,
+    *,
+    mean: float,
+    std: float,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """单设备 ROI → ``(1, L)`` 固定统计量归一化 log-mag。"""
+    mag = torch.abs(profile_complex).clamp_min(eps)
+    mag_db = 20.0 * torch.log10(mag)
+    return _normalize_logmag_with_stats(mag_db, mean=mean, std=std, eps=eps).unsqueeze(0)
+
+
+def dual_roi_to_logmag_fixed_norm(
+    dual_roi: torch.Tensor,
+    *,
+    norm_means: np.ndarray | torch.Tensor,
+    norm_stds: np.ndarray | torch.Tensor,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """双设备 ROI → ``(2, L)`` 或 ``(B, 2, L)`` 固定统计量 log-mag float。"""
+    batch = _dual_roi_to_batch(dual_roi)
+    means = torch.as_tensor(norm_means, dtype=torch.float32).reshape(-1)
+    stds = torch.as_tensor(norm_stds, dtype=torch.float32).reshape(-1)
+    if means.numel() != 2 or stds.numel() != 2:
+        raise ValueError("logmag_fixed_norm 须提供 2 个 mean/std（dev0, dev1）")
+    feats = []
+    for i in range(batch.shape[0]):
+        ch0 = range_profile_to_logmag_fixed_norm(
+            batch[i, 0], mean=float(means[0]), std=float(stds[0]), eps=eps
+        )
+        ch1 = range_profile_to_logmag_fixed_norm(
+            batch[i, 1], mean=float(means[1]), std=float(stds[1]), eps=eps
+        )
+        feats.append(torch.cat([ch0, ch1], dim=0))
+    if dual_roi.ndim == 2:
+        return feats[0]
+    return torch.stack(feats, dim=0)
+
+
+def dual_roi_to_model_input(
+    dual_roi: torch.Tensor,
+    *,
+    mode: CooperativeFeatureMode = "real_imag",
+    norm_means: np.ndarray | torch.Tensor | None = None,
+    norm_stds: np.ndarray | torch.Tensor | None = None,
+    eps: float = 1e-12,
+    use_phase: bool = True,
+) -> torch.Tensor:
+    """双设备 ROI 复数距离谱 → 模型输入 tensor。"""
+    if mode == "complex_roi":
+        if dual_roi.ndim == 2:
+            return dual_roi
+        if dual_roi.ndim == 3 and dual_roi.shape[1] == 2:
+            return dual_roi
+        raise ValueError(
+            "complex_roi 须为 (2, L) 或 (B, 2, L) complex，"
+            f"收到 {tuple(dual_roi.shape)}"
+        )
+    if mode == "real_imag":
+        return dual_roi_to_real_imag_features(dual_roi)
+    if mode == "logmag_fixed_norm":
+        if norm_means is None or norm_stds is None:
+            raise ValueError("logmag_fixed_norm 须提供 norm_means / norm_stds")
+        return dual_roi_to_logmag_fixed_norm(
+            dual_roi,
+            norm_means=norm_means,
+            norm_stds=norm_stds,
+            eps=eps,
+        )
+    if mode == "legacy_4ch":
+        out = dual_range_profiles_to_features(dual_roi, eps=eps, use_phase=use_phase)
+        if dual_roi.ndim == 2:
+            return out[0]
+        return out
+    raise ValueError(f"未知 feature mode: {mode!r}")
+
+
+def apply_cooperative_feature_augmentation(
+    features: torch.Tensor,
+    *,
+    noise_std: float = 0.0,
+    spec_augment_prob: float = 0.0,
+    spec_augment_max_bins: int = 3,
+    rng: np.random.Generator | None = None,
+) -> torch.Tensor:
+    """训练时对 float 特征做噪声 / SpecAugment。"""
+    out = features.clone()
+    if noise_std > 0.0:
+        out = out + torch.randn_like(out) * float(noise_std)
+    if spec_augment_prob > 0.0:
+        gen = rng or np.random.default_rng()
+        if gen.random() < spec_augment_prob:
+            length = int(out.shape[-1])
+            width = int(gen.integers(1, max(2, spec_augment_max_bins + 1)))
+            start = int(gen.integers(0, max(1, length - width + 1)))
+            out[..., start : start + width] = 0.0
+    return out
+
+
+def save_cooperative_norm_stats(
+    path: str | Path,
+    *,
+    means: np.ndarray,
+    stds: np.ndarray,
+    feature_mode: CooperativeFeatureMode = "logmag_fixed_norm",
+) -> Path:
+    """保存 Run1-only 固定归一化统计量。"""
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        out,
+        means=np.asarray(means, dtype=np.float64),
+        stds=np.asarray(stds, dtype=np.float64),
+        feature_mode=np.array(feature_mode),
+    )
+    return out
+
+
+def load_cooperative_norm_stats(
+    path: str | Path,
+) -> tuple[np.ndarray, np.ndarray, CooperativeFeatureMode]:
+    """加载固定归一化统计量 npz。"""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"norm stats 不存在: {p}")
+    data = np.load(p, allow_pickle=False)
+    means = np.asarray(data["means"], dtype=np.float64)
+    stds = np.asarray(data["stds"], dtype=np.float64)
+    mode_raw = str(np.asarray(data.get("feature_mode", "logmag_fixed_norm")).item())
+    if mode_raw not in COOPERATIVE_FEATURE_MODES:
+        raise ValueError(f"norm stats feature_mode 无效: {mode_raw!r}")
+    return means, stds, mode_raw  # type: ignore[return-value]
+
+
+def compute_logmag_norm_stats_from_dual_rois(
+    dual_rois: list[np.ndarray],
+    *,
+    eps: float = 1e-12,
+) -> tuple[np.ndarray, np.ndarray]:
+    """从 ROI 复数谱列表估计 dev0/dev1 log-mag 全局 mean/std。"""
+    if not dual_rois:
+        raise ValueError("dual_rois 不能为空")
+    dev_mags: list[list[np.ndarray]] = [[], []]
+    for dual in dual_rois:
+        arr = np.asarray(dual, dtype=np.complex64)
+        if arr.shape[0] != 2:
+            raise ValueError(f"dual ROI 须为 (2, L)，收到 {arr.shape}")
+        for dev in range(2):
+            mag = np.abs(arr[dev]).clip(min=eps)
+            dev_mags[dev].append(20.0 * np.log10(mag))
+    means = np.array(
+        [float(np.mean(np.concatenate(dev_mags[dev]))) for dev in range(2)],
+        dtype=np.float64,
+    )
+    stds = np.array(
+        [float(np.std(np.concatenate(dev_mags[dev]))) for dev in range(2)],
+        dtype=np.float64,
+    )
+    stds = np.maximum(stds, eps)
+    return means, stds
+
+
+def compute_logmag_norm_stats_from_h5(
+    h5_path: str | Path,
+    frame_indices: np.ndarray | Sequence[int],
+    *,
+    proc_params: dict,
+    range_roi: tuple[float, float],
+    max_samples: int | None = None,
+    show_progress: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """从 raw cooperative H5 帧索引估计 log-mag 固定归一化统计量。"""
+    import h5py
+
+    indices = np.asarray(frame_indices, dtype=np.int64)
+    if max_samples is not None:
+        indices = indices[: int(max_samples)]
+    dual_rois: list[np.ndarray] = []
+    iterator: Iterable[int] = indices.tolist()
+    if show_progress:
+        from tqdm import tqdm
+
+        iterator = tqdm(iterator, desc="norm stats", unit="frame")
+
+    with h5py.File(h5_path, "r") as f:
+        dev0_ds = f["profiles_dev0"]
+        dev1_ds = f["profiles_dev1"]
+        for idx in iterator:
+            roi0, roi1 = divide_cpi_dual_to_roi_range_profiles_np(
+                dev0_ds[int(idx)],
+                dev1_ds[int(idx)],
+                proc_params=proc_params,
+                range_roi=range_roi,
+            )
+            dual_rois.append(np.stack([roi0, roi1], axis=0))
+    return compute_logmag_norm_stats_from_dual_rois(dual_rois)

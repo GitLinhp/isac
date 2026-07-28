@@ -77,6 +77,7 @@ def test_lazy_dataset_roi_transform(tmp_path: Path):
         proc_params=grc_cooperative_processing_params(),
         range_roi=(0.0, 5.0),
         transform_on_load=True,
+        feature_mode="complex_roi",
     )
     item = ds[0]
     assert item["dual_profiles"].shape[0] == 2

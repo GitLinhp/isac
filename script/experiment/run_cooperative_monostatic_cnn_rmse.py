@@ -25,7 +25,11 @@ from tqdm import tqdm
 
 from isac import PROJECT_ROOT
 from isac.models import load_cooperative_monostatic_cnn_checkpoint
-from isac.models.preprocess import divide_cpi_dual_to_roi_range_profiles_np
+from isac.models.preprocess import (
+    divide_cpi_dual_to_roi_range_profiles_np,
+    dual_roi_to_model_input,
+    load_cooperative_norm_stats,
+)
 from isac.sensing.localization import position_rmse_xy
 from isac_imp.cooperative_monostatic_pipeline import (
     DEFAULT_RANGE_ROI,
@@ -255,6 +259,25 @@ def _predict_xy_batch(
     return pred.detach().cpu().numpy()
 
 
+def _load_checkpoint_inference_config(
+    checkpoint: Path,
+) -> tuple[str, np.ndarray | None, np.ndarray | None]:
+    ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    feature_mode = str(ckpt.get("feature_mode", "legacy_4ch"))
+    norm_means: np.ndarray | None = None
+    norm_stds: np.ndarray | None = None
+    norm_stats_path = ckpt.get("norm_stats_path")
+    if norm_stats_path is not None:
+        stats_path = Path(norm_stats_path)
+        if not stats_path.is_file():
+            stats_path = checkpoint.parent / norm_stats_path
+        if stats_path.is_file():
+            norm_means, norm_stds, stats_mode = load_cooperative_norm_stats(stats_path)
+            if stats_mode != feature_mode and feature_mode == "logmag_fixed_norm":
+                pass
+    return feature_mode, norm_means, norm_stds
+
+
 def _evaluate_per_frame(
     h5_path: Path,
     model: torch.nn.Module,
@@ -265,6 +288,9 @@ def _evaluate_per_frame(
     frame_indices: list[int],
     batch_size: int,
     show_progress: bool,
+    feature_mode: str = "legacy_4ch",
+    norm_means: np.ndarray | None = None,
+    norm_stds: np.ndarray | None = None,
 ) -> list[dict[str, float | int]]:
     rows: list[dict[str, float | int]] = []
     if not frame_indices:
@@ -312,7 +338,13 @@ def _evaluate_per_frame(
 
             dual_np = np.stack(dual_list, axis=0).astype(np.complex64, copy=False)
             dual_tensor = torch.from_numpy(dual_np)
-            pred_xy = _predict_xy_batch(model, device, dual_tensor)
+            model_input = dual_roi_to_model_input(
+                dual_tensor,
+                mode=feature_mode,  # type: ignore[arg-type]
+                norm_means=norm_means,
+                norm_stds=norm_stds,
+            )
+            pred_xy = _predict_xy_batch(model, device, model_input)
 
             for i, (sample_idx, sess, frame_idx, true_x, true_y) in enumerate(meta):
                 est_x = float(pred_xy[i, 0])
@@ -490,6 +522,7 @@ def main() -> None:
     )
 
     model = load_cooperative_monostatic_cnn_checkpoint(checkpoint, device)
+    feature_mode, norm_means, norm_stds = _load_checkpoint_inference_config(checkpoint)
     split_label = (
         f"val-only region-stratified (9 regions, ratio={args.val_ratio}, seed={args.seed})"
         if args.val_only
@@ -498,6 +531,7 @@ def main() -> None:
     print(
         f"HDF5: {h5_path}\n"
         f"Checkpoint: {checkpoint}\n"
+        f"Feature mode: {feature_mode}\n"
         f"Frames: {len(frame_indices)} ({split_label}) | "
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"batch_size={batch_size} | device={device}"
@@ -512,6 +546,9 @@ def main() -> None:
         frame_indices=frame_indices,
         batch_size=batch_size,
         show_progress=not args.no_progress,
+        feature_mode=feature_mode,
+        norm_means=norm_means,
+        norm_stds=norm_stds,
     )
 
     if args.aggregate_session:

@@ -108,15 +108,33 @@ class TargetPositionRmseLoss(nn.Module):
                 f"收到 {tuple(pred_xy.shape)}",
             )
 
-    def forward(self, pred_xy: torch.Tensor, target_xy: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        pred_xy: torch.Tensor,
+        target_xy: torch.Tensor,
+        sample_weight: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         self._validate_inputs(pred_xy, target_xy)
         sq_dist = ((pred_xy - target_xy) ** 2).sum(dim=-1)
+        if sample_weight is not None:
+            if sample_weight.shape != sq_dist.shape:
+                raise ValueError(
+                    "sample_weight 形状须为 (B,)，"
+                    f"收到 {tuple(sample_weight.shape)}"
+                )
+            weight_sum = sample_weight.sum().clamp_min(self.eps)
+            return torch.sqrt((sq_dist * sample_weight).sum() / weight_sum + self.eps)
         return torch.sqrt(sq_dist.mean() + self.eps)
 
     @staticmethod
     def mean_euclidean_error_m(
         pred_xy: torch.Tensor,
         target_xy: torch.Tensor,
+        sample_weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """batch 内平均欧氏距离 (m)。"""
-        return torch.linalg.vector_norm(pred_xy - target_xy, dim=-1).mean()
+        """batch 内（可选加权）平均欧氏距离 (m)。"""
+        dist = torch.linalg.vector_norm(pred_xy - target_xy, dim=-1)
+        if sample_weight is None:
+            return dist.mean()
+        weight_sum = sample_weight.sum().clamp_min(1e-12)
+        return (dist * sample_weight).sum() / weight_sum
