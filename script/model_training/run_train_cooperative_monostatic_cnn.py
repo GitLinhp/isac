@@ -4,8 +4,9 @@
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py
 
-默认对齐 S2 最优配置（late + attention、outer_w=3、session loss、
-ROI 0–4 m、lr 3e-4、jitter 0.02、dropout 0.3、batch 128 等）。
+默认对齐历史最优配方（late + attention、中心/侧边/角权重 1/3/3、
+无 geom-residual、session loss、ROI 0–4 m、lr 5e-4、jitter 0.05、
+dropout 0.3、batch 128、early-stop 10 等）。
 覆盖示例::
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py \\
@@ -66,8 +67,8 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
 )
 from isac_imp.record_target_metadata import (
     REGION_COUNT,
-    is_inner_target_xy_m,
     target_region_name,
+    target_zone_name_xy_m,
 )
 
 DEFAULT_H5 = Path(
@@ -79,16 +80,20 @@ DEFAULT_TEST_H5 = Path(
 DEFAULT_OUTPUT_DIR = Path("models/cnn_deploy_strict_roi4")
 # 训练脚本默认 ROI（部署配置）；pipeline 全局 DEFAULT_RANGE_ROI 仍为 (0, 3.5)
 TRAIN_DEFAULT_RANGE_ROI = (0.0, 4.0)
-TRAIN_DEFAULT_LABEL_JITTER_M = 0.02
-# S2 矩阵最优：late_attn_outer3_session
-TRAIN_DEFAULT_OUTER_RING_WEIGHT = 3.0
+TRAIN_DEFAULT_LABEL_JITTER_M = 0.05
+# 损失加权三区默认：中心 / 侧边 / 角（hist catch-up BEST2）
+TRAIN_DEFAULT_CENTER_WEIGHT = 1.0
+TRAIN_DEFAULT_SIDE_WEIGHT = 3.0
+TRAIN_DEFAULT_CORNER_WEIGHT = 3.0
+TRAIN_DEFAULT_GEOM_RESIDUAL = False
 TRAIN_DEFAULT_FEATURE_NOISE_STD = 0.02
 TRAIN_DEFAULT_SPEC_AUGMENT_PROB = 0.3
-TRAIN_DEFAULT_LR = 3e-4
+TRAIN_DEFAULT_LR = 5e-4
 TRAIN_DEFAULT_DROPOUT = 0.3
 TRAIN_DEFAULT_POOL_MODE = "attention"
 TRAIN_DEFAULT_FUSION_MODE = "late"
 TRAIN_DEFAULT_EPOCHS = 100
+TRAIN_DEFAULT_EARLY_STOP_PATIENCE = 10
 EVAL_SCRIPT = PROJECT_ROOT / "script/experiment/run_cooperative_monostatic_cnn_rmse.py"
 
 
@@ -225,8 +230,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--early-stop-patience",
         type=int,
-        default=15,
-        help="stop if val loss does not improve for N epochs (0 to disable)",
+        default=TRAIN_DEFAULT_EARLY_STOP_PATIENCE,
+        help=(
+            "stop if val loss does not improve for N epochs (0 to disable; "
+            f"default: {TRAIN_DEFAULT_EARLY_STOP_PATIENCE})"
+        ),
     )
     parser.add_argument(
         "--val-ratio",
@@ -300,10 +308,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--geom-residual",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=TRAIN_DEFAULT_GEOM_RESIDUAL,
         help=(
             "late fusion: shared range head + differentiable two-circle "
-            "geometry + xy residual head (S2-geom; default off)"
+            "geometry + xy residual head (S2-geom; "
+            f"default {'on' if TRAIN_DEFAULT_GEOM_RESIDUAL else 'off'})"
         ),
     )
     parser.add_argument(
@@ -417,12 +426,30 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="禁用训练标签抖动（等价于 --label-jitter-m 0）",
     )
     parser.add_argument(
-        "--outer-ring-weight",
+        "--center-weight",
         type=float,
-        default=TRAIN_DEFAULT_OUTER_RING_WEIGHT,
+        default=TRAIN_DEFAULT_CENTER_WEIGHT,
         help=(
-            "loss weight for outer-ring targets (|x|>0.6 or |y|>0.6); "
-            f"default {TRAIN_DEFAULT_OUTER_RING_WEIGHT}"
+            "loss weight for center-zone targets (|x|,|y| <= 0.5 m); "
+            f"default {TRAIN_DEFAULT_CENTER_WEIGHT}"
+        ),
+    )
+    parser.add_argument(
+        "--side-weight",
+        type=float,
+        default=TRAIN_DEFAULT_SIDE_WEIGHT,
+        help=(
+            "loss weight for side-zone targets (N/S/E/W); "
+            f"default {TRAIN_DEFAULT_SIDE_WEIGHT}"
+        ),
+    )
+    parser.add_argument(
+        "--corner-weight",
+        type=float,
+        default=TRAIN_DEFAULT_CORNER_WEIGHT,
+        help=(
+            "loss weight for corner-zone targets (NE/NW/SE/SW); "
+            f"default {TRAIN_DEFAULT_CORNER_WEIGHT}"
         ),
     )
     parser.add_argument(
@@ -532,21 +559,32 @@ def _checkpoint_payload(
     return payload
 
 
-def _outer_ring_sample_weights(
+def _region_zone_sample_weights(
     target_xy: torch.Tensor,
     *,
-    outer_weight: float,
+    center_weight: float,
+    side_weight: float,
+    corner_weight: float,
 ) -> torch.Tensor | None:
-    if outer_weight == 1.0:
+    """按中心 / 侧边 / 角三区赋样本权重；三权重均为 1 时返回 None。"""
+    if (
+        center_weight == 1.0
+        and side_weight == 1.0
+        and corner_weight == 1.0
+    ):
         return None
-    weights = torch.ones(
+    zone_to_weight = {
+        "center": float(center_weight),
+        "side": float(side_weight),
+        "corner": float(corner_weight),
+    }
+    weights = torch.empty(
         target_xy.shape[0], dtype=target_xy.dtype, device=target_xy.device
     )
     for i in range(target_xy.shape[0]):
         x = float(target_xy[i, 0])
         y = float(target_xy[i, 1])
-        if not is_inner_target_xy_m(x, y):
-            weights[i] = outer_weight
+        weights[i] = zone_to_weight[target_zone_name_xy_m(x, y)]
     return weights
 
 
@@ -642,7 +680,9 @@ def _evaluate(
     criterion: TargetPositionRmseLoss,
     device: torch.device | str,
     *,
-    outer_ring_weight: float = 1.0,
+    center_weight: float = 1.0,
+    side_weight: float = 1.0,
+    corner_weight: float = 1.0,
     session_aggregated_loss: bool = False,
     aux_range_weight: float = 0.0,
     dev0_xy: tuple[float, float] = (0.0, -2.0),
@@ -657,8 +697,11 @@ def _evaluate(
         target_xy = batch["target_xy"].to(device, non_blocking=True)
         session_index = batch["session_index"].to(device, non_blocking=True)
         pred_xy, pred_ranges = _model_forward_xy_and_ranges(model, dual_profiles)
-        sample_weight = _outer_ring_sample_weights(
-            target_xy, outer_weight=outer_ring_weight
+        sample_weight = _region_zone_sample_weights(
+            target_xy,
+            center_weight=center_weight,
+            side_weight=side_weight,
+            corner_weight=corner_weight,
         )
         loss = _compute_batch_loss(
             criterion,
@@ -691,7 +734,9 @@ def _train_one_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device | str,
     *,
-    outer_ring_weight: float = 1.0,
+    center_weight: float = 1.0,
+    side_weight: float = 1.0,
+    corner_weight: float = 1.0,
     session_aggregated_loss: bool = False,
     aux_range_weight: float = 0.0,
     dev0_xy: tuple[float, float] = (0.0, -2.0),
@@ -704,8 +749,11 @@ def _train_one_epoch(
         dual_profiles = batch["dual_profiles"].to(device, non_blocking=True)
         target_xy = batch["target_xy"].to(device, non_blocking=True)
         session_index = batch["session_index"].to(device, non_blocking=True)
-        sample_weight = _outer_ring_sample_weights(
-            target_xy, outer_weight=outer_ring_weight
+        sample_weight = _region_zone_sample_weights(
+            target_xy,
+            center_weight=center_weight,
+            side_weight=side_weight,
+            corner_weight=corner_weight,
         )
         optimizer.zero_grad(set_to_none=True)
         pred_xy, pred_ranges = _model_forward_xy_and_ranges(model, dual_profiles)
@@ -1029,8 +1077,12 @@ def main() -> None:
         )
     if not h5_path.is_file():
         raise FileNotFoundError(f"HDF5 不存在: {h5_path}")
-    if args.outer_ring_weight <= 0.0:
-        raise ValueError(f"--outer-ring-weight 须 > 0，收到 {args.outer_ring_weight}")
+    if args.center_weight <= 0.0:
+        raise ValueError(f"--center-weight 须 > 0，收到 {args.center_weight}")
+    if args.side_weight <= 0.0:
+        raise ValueError(f"--side-weight 须 > 0，收到 {args.side_weight}")
+    if args.corner_weight <= 0.0:
+        raise ValueError(f"--corner-weight 须 > 0，收到 {args.corner_weight}")
     if args.aux_range and args.aux_range_weight < 0.0:
         raise ValueError(
             f"--aux-range-weight 须 >= 0，收到 {args.aux_range_weight}"
@@ -1427,7 +1479,9 @@ def main() -> None:
         f"feature_mode={feature_mode}, model_type={model_type}, in_channels={in_channels}\n"
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"label_jitter_m={label_jitter_m:.3f} (train only)\n"
-        f"weight_decay={args.weight_decay}, outer_ring_weight={args.outer_ring_weight}, "
+        f"weight_decay={args.weight_decay}, "
+        f"center_weight={args.center_weight}, side_weight={args.side_weight}, "
+        f"corner_weight={args.corner_weight}, "
         f"session_aggregated_loss={args.session_aggregated_loss}, "
         f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}\n"
         f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
@@ -1472,7 +1526,9 @@ def main() -> None:
             criterion,
             optimizer,
             device,
-            outer_ring_weight=args.outer_ring_weight,
+            center_weight=args.center_weight,
+            side_weight=args.side_weight,
+            corner_weight=args.corner_weight,
             session_aggregated_loss=args.session_aggregated_loss,
             aux_range_weight=float(args.aux_range_weight) if args.aux_range else 0.0,
             dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),
@@ -1483,7 +1539,9 @@ def main() -> None:
             model,
             criterion,
             device,
-            outer_ring_weight=args.outer_ring_weight,
+            center_weight=args.center_weight,
+            side_weight=args.side_weight,
+            corner_weight=args.corner_weight,
             session_aggregated_loss=args.session_aggregated_loss,
             aux_range_weight=float(args.aux_range_weight) if args.aux_range else 0.0,
             dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),

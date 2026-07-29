@@ -40,14 +40,14 @@ SUMMARY_CSV = PROJECT_ROOT / "out/cooperative_monostatic/cnn_geom_residual_summa
 MATRIX_ROOT = PROJECT_ROOT / "models/cnn_geom_ab"
 EVAL_ROOT = PROJECT_ROOT / "out/cooperative_monostatic/cnn_geom_ab"
 
-# 与当前训练默认对齐（几何残差对照公共超参）
+# 与当前训练默认对齐（历史最优配方底座；本矩阵再扫 ±geom）
 COMMON_TRAIN = [
     "--epochs",
     "100",
     "--batch-size",
     "128",
     "--label-jitter-m",
-    "0.02",
+    "0.05",
     "--weight-decay",
     "1e-4",
     "--feature-noise-std",
@@ -55,7 +55,7 @@ COMMON_TRAIN = [
     "--spec-augment-prob",
     "0.3",
     "--early-stop-patience",
-    "15",
+    "10",
     "--lr-scheduler-patience",
     "5",
     "--feature-mode",
@@ -69,10 +69,14 @@ COMMON_TRAIN = [
     "--dropout",
     "0.3",
     "--lr",
-    "0.0003",
+    "0.0005",
     "--base-channels",
     "32",
-    "--outer-ring-weight",
+    "--center-weight",
+    "1.0",
+    "--side-weight",
+    "3.0",
+    "--corner-weight",
     "3.0",
     "--session-aggregated-loss",
     "--no-filter-outliers",

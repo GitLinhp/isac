@@ -1,0 +1,21 @@
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Outlier filter [eval]: hard dropped 0 from candidates (nan_label=0, oob_xy=0, nan_cpi=0, near_zero=0); soft dropped 205; kept 10547 / 10752
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/best_model.pth
+Feature mode: real_imag
+Frames: 10752 -> 10547 after outlier filter (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+CNN RMSE:   0%|          | 0/165 [00:00<?, ?batch/s]CNN RMSE:   1%|          | 1/165 [00:00<00:23,  6.92batch/s]CNN RMSE:  51%|█████     | 84/165 [00:00<00:00, 414.47batch/s]CNN RMSE: 100%|██████████| 165/165 [00:00<00:00, 538.60batch/s]CNN RMSE: 100%|██████████| 165/165 [00:00<00:00, 454.24batch/s]
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_hist_repro/with_filter/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10547 │   10547 │     0 │     0.5897 │    0.3793 │       0.5120 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5871 │    5871 │     0 │     0.3650 │    0.2178 │       0.3369 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4676 │    4676 │     0 │     0.8719 │    0.3492 │       0.8916 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_hist_repro/with_filter/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_hist_repro/with_filter/cnn_rmse_cdf.png

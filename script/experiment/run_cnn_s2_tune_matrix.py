@@ -7,7 +7,7 @@
 示例::
 
     python script/experiment/run_cnn_s2_tune_matrix.py
-    python script/experiment/run_cnn_s2_tune_matrix.py --only late_attn_outer3,late_attn_bc48
+    python script/experiment/run_cnn_s2_tune_matrix.py --only late_attn_side3,late_attn_bc48
     python script/experiment/run_cnn_s2_tune_matrix.py --skip-train
 """
 
@@ -78,7 +78,9 @@ SUMMARY_FIELDS = [
     "fusion_mode",
     "pool_mode",
     "aux_range",
-    "outer_ring_weight",
+    "center_weight",
+    "side_weight",
+    "corner_weight",
     "aux_range_weight",
     "session_aggregated_loss",
     "base_channels",
@@ -98,7 +100,9 @@ class Experiment:
     description: str
     pool_mode: str = "attention"
     aux_range: bool = False
-    outer_ring_weight: float = 2.0
+    center_weight: float = 1.0
+    side_weight: float = 2.0
+    corner_weight: float = 2.0
     aux_range_weight: float = 0.5
     session_aggregated_loss: bool = False
     base_channels: int = 32
@@ -123,8 +127,12 @@ class Experiment:
             *COMMON_TRAIN,
             "--pool-mode",
             self.pool_mode,
-            "--outer-ring-weight",
-            str(self.outer_ring_weight),
+            "--center-weight",
+            str(self.center_weight),
+            "--side-weight",
+            str(self.side_weight),
+            "--corner-weight",
+            str(self.corner_weight),
             "--base-channels",
             str(self.base_channels),
             "--lr",
@@ -154,7 +162,9 @@ class Experiment:
             "fusion_mode": "late",
             "pool_mode": self.pool_mode,
             "aux_range": int(self.aux_range),
-            "outer_ring_weight": self.outer_ring_weight,
+            "center_weight": self.center_weight,
+            "side_weight": self.side_weight,
+            "corner_weight": self.corner_weight,
             "aux_range_weight": self.aux_range_weight if self.aux_range else 0.0,
             "session_aggregated_loss": int(self.session_aggregated_loss),
             "base_channels": self.base_channels,
@@ -166,7 +176,7 @@ class Experiment:
 EXPERIMENTS: tuple[Experiment, ...] = (
     Experiment(
         exp_id="late_attn_baseline",
-        description="late+attention baseline (no aux, outer_w=2)",
+        description="late+attention baseline (no aux, side=corner=2)",
         train=False,
         checkpoint=DEPLOY_LATE_ATTN_BASELINE,
     ),
@@ -177,19 +187,22 @@ EXPERIMENTS: tuple[Experiment, ...] = (
         aux_range_weight=0.5,
     ),
     Experiment(
-        exp_id="late_attn_outer25",
-        description="late+attention outer_ring_weight=2.5",
-        outer_ring_weight=2.5,
+        exp_id="late_attn_side25",
+        description="late+attention side=corner=2.5",
+        side_weight=2.5,
+        corner_weight=2.5,
     ),
     Experiment(
-        exp_id="late_attn_outer3",
-        description="late+attention outer_ring_weight=3.0",
-        outer_ring_weight=3.0,
+        exp_id="late_attn_side3",
+        description="late+attention side=corner=3.0",
+        side_weight=3.0,
+        corner_weight=3.0,
     ),
     Experiment(
-        exp_id="late_attn_outer3_session",
-        description="late+attention outer_w=3 + session aggregated loss",
-        outer_ring_weight=3.0,
+        exp_id="late_attn_side3_session",
+        description="late+attention side=corner=3 + session aggregated loss",
+        side_weight=3.0,
+        corner_weight=3.0,
         session_aggregated_loss=True,
     ),
     Experiment(

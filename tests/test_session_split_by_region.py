@@ -19,6 +19,7 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
 from isac_imp.record_target_metadata import (
     target_region_index_xy_m,
     target_region_name,
+    target_zone_name_xy_m,
 )
 
 _VLEN = 32768
@@ -37,11 +38,30 @@ _REGION_CASES = [
     ((0.8, -0.8), "SE"),
 ]
 
+# (x_m, y_m) -> zone name (center / side / corner)
+_ZONE_CASES = [
+    ((0.0, 0.0), "center"),
+    ((0.5, 0.5), "center"),
+    ((0.8, 0.0), "side"),
+    ((-0.8, 0.0), "side"),
+    ((0.0, 0.8), "side"),
+    ((0.0, -0.8), "side"),
+    ((-0.8, 0.8), "corner"),
+    ((0.8, 0.8), "corner"),
+    ((-0.8, -0.8), "corner"),
+    ((0.8, -0.8), "corner"),
+]
+
 
 @pytest.mark.parametrize(("xy", "name"), _REGION_CASES)
 def test_target_region_index_xy_m(xy: tuple[float, float], name: str) -> None:
     region_id = target_region_index_xy_m(xy[0], xy[1])
     assert target_region_name(region_id) == name
+
+
+@pytest.mark.parametrize(("xy", "zone"), _ZONE_CASES)
+def test_target_zone_name_xy_m(xy: tuple[float, float], zone: str) -> None:
+    assert target_zone_name_xy_m(xy[0], xy[1]) == zone
 
 
 def _region_xy_m(region_name: str) -> tuple[float, float]:

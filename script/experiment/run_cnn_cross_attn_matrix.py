@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""晚融合交叉注意力（S2-xattn）对照：叠加几何残差。
+"""晚融合交叉注意力（S2-xattn）对照：叠在历史最优 plain 底座上。
 
-在新默认超参下训练两组：geom 端到端 / geom+cross-attn，
+在 hist 默认超参下训练两组：plain / plain+cross-attn，
 逐项 Run2 全帧评测，汇总 Global/Inner/Outer RMSE 到 CSV。
 
 示例::
 
     python script/experiment/run_cnn_cross_attn_matrix.py
-    python script/experiment/run_cnn_cross_attn_matrix.py --only geom_cross_attn
+    python script/experiment/run_cnn_cross_attn_matrix.py --only plain_cross_attn
     python script/experiment/run_cnn_cross_attn_matrix.py --skip-train
 """
 
@@ -40,13 +40,14 @@ SUMMARY_CSV = PROJECT_ROOT / "out/cooperative_monostatic/cnn_cross_attn_summary.
 MATRIX_ROOT = PROJECT_ROOT / "models/cnn_xattn_ab"
 EVAL_ROOT = PROJECT_ROOT / "out/cooperative_monostatic/cnn_xattn_ab"
 
+# 底座对齐历史最优配方；本矩阵在 no-geom 上叠加 ±cross-attn
 COMMON_TRAIN = [
     "--epochs",
     "100",
     "--batch-size",
     "128",
     "--label-jitter-m",
-    "0.02",
+    "0.05",
     "--weight-decay",
     "1e-4",
     "--feature-noise-std",
@@ -54,7 +55,7 @@ COMMON_TRAIN = [
     "--spec-augment-prob",
     "0.3",
     "--early-stop-patience",
-    "15",
+    "10",
     "--lr-scheduler-patience",
     "5",
     "--feature-mode",
@@ -68,16 +69,20 @@ COMMON_TRAIN = [
     "--dropout",
     "0.3",
     "--lr",
-    "0.0003",
+    "0.0005",
     "--base-channels",
     "32",
-    "--outer-ring-weight",
+    "--center-weight",
+    "1.0",
+    "--side-weight",
+    "3.0",
+    "--corner-weight",
     "3.0",
     "--session-aggregated-loss",
     "--no-filter-outliers",
     "--no-aux-range",
     "--no-eval-after-train",
-    "--geom-residual",
+    "--no-geom-residual",
     "--no-stopgrad-geom",
 ]
 
@@ -121,20 +126,20 @@ class Experiment:
         return {
             "exp_id": self.exp_id,
             "description": self.description,
-            "geom_residual": 1,
+            "geom_residual": 0,
             "cross_attn": int(self.cross_attn),
         }
 
 
 EXPERIMENTS: tuple[Experiment, ...] = (
     Experiment(
-        exp_id="geom_only",
-        description="geom residual (no cross-attn)",
+        exp_id="plain_only",
+        description="hist best base (no cross-attn)",
         cross_attn=False,
     ),
     Experiment(
-        exp_id="geom_cross_attn",
-        description="geom residual + late bidirectional cross-attn",
+        exp_id="plain_cross_attn",
+        description="hist best base + late bidirectional cross-attn",
         cross_attn=True,
     ),
 )

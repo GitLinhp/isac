@@ -134,6 +134,11 @@ TARGET_REGION_NAMES: tuple[str, ...] = (
     "NE",
 )
 
+# 九宫格归并的损失加权三区：中心 / 侧边 / 角
+TARGET_ZONE_NAMES: tuple[str, ...] = ("center", "side", "corner")
+_SIDE_REGION_NAMES = frozenset({"N", "S", "E", "W"})
+_CORNER_REGION_NAMES = frozenset({"NE", "NW", "SE", "SW"})
+
 
 def _axis_band(coord_m: float, *, radius_m: float) -> int:
     """单轴分档：0=负侧，1=中间带，2=正侧。"""
@@ -163,6 +168,30 @@ def target_region_name(region_id: int) -> str:
     if not (0 <= region_id < REGION_COUNT):
         raise ValueError(f"region_id 须在 [0, {REGION_COUNT})，收到 {region_id}")
     return TARGET_REGION_NAMES[region_id]
+
+
+def target_zone_name_xy_m(
+    x_m: float,
+    y_m: float,
+    *,
+    radius_m: float = INNER_RADIUS_CM / 100.0,
+) -> str:
+    """目标 (x, y) 所属损失加权三区：``center`` / ``side`` / ``corner``。
+
+    - center：九宫格 ``C``（``|x|,|y| <= radius_m``）
+    - side：``N/S/E/W``（恰好一轴越界）
+    - corner：``NE/NW/SE/SW``（两轴均越界）
+    """
+    name = target_region_name(
+        target_region_index_xy_m(x_m, y_m, radius_m=radius_m)
+    )
+    if name == "C":
+        return "center"
+    if name in _SIDE_REGION_NAMES:
+        return "side"
+    if name in _CORNER_REGION_NAMES:
+        return "corner"
+    raise RuntimeError(f"未映射的九宫格区域: {name!r}")
 
 
 def _is_inner_coord(

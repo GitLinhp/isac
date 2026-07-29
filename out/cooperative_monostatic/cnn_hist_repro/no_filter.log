@@ -1,0 +1,20 @@
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/best_model.pth
+Feature mode: real_imag
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+CNN RMSE:   0%|          | 0/168 [00:00<?, ?batch/s]CNN RMSE:   1%|          | 1/168 [00:00<00:24,  6.88batch/s]CNN RMSE:  49%|████▉     | 82/168 [00:00<00:00, 403.38batch/s]CNN RMSE:  98%|█████████▊| 165/168 [00:00<00:00, 579.38batch/s]CNN RMSE: 100%|██████████| 168/168 [00:00<00:00, 479.87batch/s]
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_hist_repro/no_filter/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.5874 │    0.3785 │       0.5100 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3649 │    0.2181 │       0.3369 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.8672 │    0.3508 │       0.8845 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+output heatmap: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_hist_repro/no_filter/cnn_rmse_heatmap.png
+output cdf: /home/lhp/projects/isac/out/cooperative_monostatic/cnn_hist_repro/no_filter/cnn_rmse_cdf.png

@@ -1,0 +1,15 @@
+BEST2 exp_id=ref_hist_s2_ckpt
+description=reeval original S2 late_attn_outer3_session ckpt (no retrain)
+global_rmse_m=0.587407
+inner_rmse_m=0.364870
+outer_rmse_m=0.867226
+center_weight=1.0
+side_weight=3.0
+corner_weight=3.0
+geom_residual=0
+lr=0.0005
+label_jitter_m=0.05
+early_stop_patience=10
+checkpoint=/home/lhp/projects/isac/models/cnn_hist_catchup/ref_hist_s2_ckpt/best_model.pth
+train_cli_args=--epochs 100 --batch-size 128 --weight-decay 1e-4 --feature-noise-std 0.02 --spec-augment-prob 0.3 --lr-scheduler-patience 5 --feature-mode real_imag --fusion-mode late --pool-mode attention --num-layers 3 --dropout 0.3 --base-channels 32 --center-weight 1.0 --session-aggregated-loss --no-filter-outliers --no-aux-range --no-cross-attn --no-stopgrad-geom --no-eval-after-train --side-weight 3.0 --corner-weight 3.0 --lr 0.0005 --label-jitter-m 0.05 --early-stop-patience 10 --no-geom-residual
+eval_protocol=Run2_full_frame_no_filter_outliers

@@ -1,0 +1,16 @@
+BEST2 exp_id=ref_hist_s2_ckpt (trainable twin: hist_outer3_session G=0.5877)
+description=hist recipe side=corner=3 lr=5e-4 jitter=0.05 no-geom early-stop=10
+global_rmse_m=0.587407
+inner_rmse_m=0.364870
+outer_rmse_m=0.867226
+center_weight=1.0
+side_weight=3.0
+corner_weight=3.0
+geom_residual=0
+lr=0.0005
+label_jitter_m=0.05
+early_stop_patience=10
+checkpoint=/home/lhp/projects/isac/models/cnn_s2_tune/late_attn_outer3_session/best_model.pth
+retrain_checkpoint=/home/lhp/projects/isac/models/cnn_hist_catchup/hist_outer3_session/best_model.pth
+eval_protocol=Run2_full_frame_no_filter_outliers
+note=Supersedes cnn_best_ab geom 1/2/2 (G=0.5949). Defaults restored to this recipe.
