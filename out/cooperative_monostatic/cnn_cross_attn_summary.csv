@@ -1,0 +1,3 @@
+exp_id,description,geom_residual,cross_attn,checkpoint,global_rmse_m,inner_rmse_m,outer_rmse_m,output_csv
+geom_only,geom residual (no cross-attn),1,0,/home/lhp/projects/isac/models/cnn_xattn_ab/geom_only/best_model.pth,0.5883687375869332,0.3739460775140068,0.8579839614325675,/home/lhp/projects/isac/out/cooperative_monostatic/cnn_xattn_ab/geom_only/cnn_rmse.csv
+geom_cross_attn,geom residual + late bidirectional cross-attn,1,1,/home/lhp/projects/isac/models/cnn_xattn_ab/geom_cross_attn/best_model.pth,0.6038340806034534,0.38774835352053705,0.8755404462342715,/home/lhp/projects/isac/out/cooperative_monostatic/cnn_xattn_ab/geom_cross_attn/cnn_rmse.csv

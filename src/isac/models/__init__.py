@@ -44,6 +44,7 @@ from .model_design import (
     CooperativeMonostaticCNN,
     load_cooperative_monostatic_cnn_checkpoint,
     load_sensing_cnn_checkpoint,
+    localize_xy_two_monostatic_ranges_torch,
 )
 
 __all__ = [
@@ -71,6 +72,7 @@ __all__ = [
     "load_cooperative_norm_stats",
     "load_cooperative_monostatic_cnn_checkpoint",
     "load_sensing_cnn_checkpoint",
+    "localize_xy_two_monostatic_ranges_torch",
     "MonostaticSensingLoss",
     "MonostaticSensingLossConfig",
     "TargetPositionRmseLoss",

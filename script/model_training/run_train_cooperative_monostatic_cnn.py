@@ -298,12 +298,46 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="weight for aux range RMSE when --aux-range (default: 0.5)",
     )
     parser.add_argument(
+        "--geom-residual",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "late fusion: shared range head + differentiable two-circle "
+            "geometry + xy residual head (S2-geom; default off)"
+        ),
+    )
+    parser.add_argument(
+        "--stopgrad-geom",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "when --geom-residual, stop gradient through xy_geom "
+            "(default: end-to-end, no stopgrad)"
+        ),
+    )
+    parser.add_argument(
+        "--cross-attn",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "late fusion: 1-layer bidirectional station cross-attention "
+            "before xy/residual head (S2-xattn; default off; stackable "
+            "with --geom-residual)"
+        ),
+    )
+    parser.add_argument(
+        "--cross-attn-heads",
+        type=int,
+        default=4,
+        help="number of heads for --cross-attn (default: 4)",
+    )
+    parser.add_argument(
         "--dev0-xy",
         type=float,
         nargs=2,
         default=[0.0, -2.0],
         metavar=("X_M", "Y_M"),
-        help="dev0 sensor xy for aux range targets (default: 0 -2)",
+        help="dev0 sensor xy for geom residual / aux range (default: 0 -2)",
     )
     parser.add_argument(
         "--dev1-xy",
@@ -311,7 +345,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         nargs=2,
         default=[-2.0, 0.0],
         metavar=("X_M", "Y_M"),
-        help="dev1 sensor xy for aux range targets (default: -2 0)",
+        help="dev1 sensor xy for geom residual / aux range (default: -2 0)",
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -480,6 +514,19 @@ def _checkpoint_payload(
         payload["soft_argmax_temp"] = model.soft_argmax_temp
         payload["fusion_mode"] = model.fusion_mode
         payload["aux_range"] = model.aux_range
+        payload["geom_residual"] = model.geom_residual
+        payload["stopgrad_geom"] = model.stopgrad_geom
+        payload["cross_attn"] = model.cross_attn
+        payload["cross_attn_heads"] = model.cross_attn_heads
+        if model.geom_residual and model.dev0_xy is not None and model.dev1_xy is not None:
+            payload["dev0_xy"] = (
+                float(model.dev0_xy[0].item()),
+                float(model.dev0_xy[1].item()),
+            )
+            payload["dev1_xy"] = (
+                float(model.dev1_xy[0].item()),
+                float(model.dev1_xy[1].item()),
+            )
     if norm_stats_path is not None:
         payload["norm_stats_path"] = norm_stats_path
     return payload
@@ -581,7 +628,9 @@ def _model_forward_xy_and_ranges(
     model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
     dual_profiles: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
-    if isinstance(model, CooperativeMonostaticCNN) and model.aux_range:
+    if isinstance(model, CooperativeMonostaticCNN) and (
+        model.aux_range or model.geom_residual
+    ):
         return model.forward_with_aux(dual_profiles)
     return model(dual_profiles), None
 
@@ -986,6 +1035,16 @@ def main() -> None:
         raise ValueError(
             f"--aux-range-weight 须 >= 0，收到 {args.aux_range_weight}"
         )
+    if args.geom_residual and args.fusion_mode != "late":
+        raise ValueError("--geom-residual 仅支持 --fusion-mode late")
+    if args.stopgrad_geom and not args.geom_residual:
+        raise ValueError("--stopgrad-geom 须与 --geom-residual 同时使用")
+    if args.cross_attn and args.fusion_mode != "late":
+        raise ValueError("--cross-attn 仅支持 --fusion-mode late")
+    if args.cross_attn and args.cross_attn_heads < 1:
+        raise ValueError(
+            f"--cross-attn-heads 须 >= 1，收到 {args.cross_attn_heads}"
+        )
     if args.filter_outliers:
         if args.xy_max_m <= 0.0:
             raise ValueError(f"--xy-max-m 须 > 0，收到 {args.xy_max_m}")
@@ -1319,6 +1378,12 @@ def main() -> None:
             multiscale_bins=args.multiscale_bins,
             fusion_mode=args.fusion_mode,
             aux_range=bool(args.aux_range),
+            geom_residual=bool(args.geom_residual),
+            stopgrad_geom=bool(args.stopgrad_geom),
+            cross_attn=bool(args.cross_attn),
+            cross_attn_heads=int(args.cross_attn_heads),
+            dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),
+            dev1_xy=(float(args.dev1_xy[0]), float(args.dev1_xy[1])),
         ).to(device)
 
     criterion = TargetPositionRmseLoss()
@@ -1369,6 +1434,10 @@ def main() -> None:
         f"dropout={args.dropout}, pool_mode={args.pool_mode}, "
         f"multiscale_bins={args.multiscale_bins}, fusion_mode={args.fusion_mode}, "
         f"aux_range={args.aux_range}, aux_range_weight={args.aux_range_weight}, "
+        f"geom_residual={args.geom_residual}, stopgrad_geom={args.stopgrad_geom}, "
+        f"cross_attn={args.cross_attn}, cross_attn_heads={args.cross_attn_heads}, "
+        f"dev0_xy=({args.dev0_xy[0]:g},{args.dev0_xy[1]:g}), "
+        f"dev1_xy=({args.dev1_xy[0]:g},{args.dev1_xy[1]:g}), "
         f"lr={lr}\n"
         f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
     )

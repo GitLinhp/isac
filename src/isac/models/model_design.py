@@ -447,6 +447,104 @@ def _mlp_xy_head(in_features: int, hidden: int, *, dropout: float) -> nn.Sequent
     )
 
 
+class BidirectionalStationCrossAttention(nn.Module):
+    """晚融合：双站池化特征的一层双向交叉注意力。
+
+    本站为 query、对站为 key/value。单 key 时 softmax 平凡，故用 query–key
+    点积经 sigmoid 得到门控，使融合依赖 query；残差 + LayerNorm。
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        *,
+        num_heads: int = 4,
+        dropout: float = 0.0,
+    ) -> None:
+        super().__init__()
+        if dim <= 0:
+            raise ValueError(f"dim 须 > 0，收到 {dim}")
+        heads = int(num_heads)
+        if heads < 1:
+            raise ValueError(f"num_heads 须 >= 1，收到 {num_heads}")
+        while heads > 1 and dim % heads != 0:
+            heads //= 2
+        self.dim = int(dim)
+        self.num_heads = heads
+        self.head_dim = dim // heads
+        self.scale = self.head_dim**-0.5
+        self.q_proj = nn.Linear(dim, dim)
+        self.k_proj = nn.Linear(dim, dim)
+        self.v_proj = nn.Linear(dim, dim)
+        self.out_proj = nn.Linear(dim, dim)
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.LayerNorm(dim)
+
+    def _attend(
+        self, query: torch.Tensor, key_value: torch.Tensor
+    ) -> torch.Tensor:
+        # query/key_value: (B, D)
+        batch = query.shape[0]
+        q = self.q_proj(query).view(batch, self.num_heads, self.head_dim)
+        k = self.k_proj(key_value).view(batch, self.num_heads, self.head_dim)
+        v = self.v_proj(key_value).view(batch, self.num_heads, self.head_dim)
+        score = (q * k).sum(dim=-1) * self.scale
+        gate = torch.sigmoid(score).unsqueeze(-1)
+        mixed = (gate * v).reshape(batch, self.dim)
+        return self.out_proj(mixed)
+
+    def forward(
+        self, f0: torch.Tensor, f1: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        f0_out = self.norm(f0 + self.dropout(self._attend(f0, f1)))
+        f1_out = self.norm(f1 + self.dropout(self._attend(f1, f0)))
+        return f0_out, f1_out
+
+
+def localize_xy_two_monostatic_ranges_torch(
+    r0: torch.Tensor,
+    r1: torch.Tensor,
+    *,
+    pos0_xy: torch.Tensor,
+    pos1_xy: torch.Tensor,
+    y_hint: float | None = None,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """可微双圆交会：两单基地斜距 → 目标 ``(B, 2)`` xy。
+
+    解析交点公式与 ``isac.sensing.localization.localize_xy_two_monostatic_ranges``
+    一致；无实交点时 ``h`` 置 0（落在根轴上），仍可反传。镜像歧义按 ``y_hint``
+    （默认偏好 ``|y|`` 更小）硬选择一支。
+    """
+    r0_b = r0.reshape(-1)
+    r1_b = r1.reshape(-1)
+    if r0_b.shape != r1_b.shape:
+        raise ValueError(
+            f"r0/r1 批大小须一致，收到 {tuple(r0.shape)} 与 {tuple(r1.shape)}"
+        )
+    c0 = pos0_xy.reshape(2).to(dtype=r0_b.dtype, device=r0_b.device)
+    c1 = pos1_xy.reshape(2).to(dtype=r0_b.dtype, device=r0_b.device)
+    dx = c1[0] - c0[0]
+    dy = c1[1] - c0[1]
+    d = torch.sqrt(dx * dx + dy * dy + eps)
+    r0_sq = r0_b * r0_b
+    r1_sq = r1_b * r1_b
+    a = (r0_sq - r1_sq + d * d) / (2.0 * d)
+    h_sq = r0_sq - a * a
+    h = torch.sqrt(torch.clamp(h_sq, min=0.0) + eps)
+    xm = c0[0] + a * dx / d
+    ym = c0[1] + a * dy / d
+    rx = -dy / d
+    ry = dx / d
+    p_plus = torch.stack([xm + h * rx, ym + h * ry], dim=-1)
+    p_minus = torch.stack([xm - h * rx, ym - h * ry], dim=-1)
+    hint = 0.0 if y_hint is None else float(y_hint)
+    score_plus = torch.abs(p_plus[:, 1] - hint)
+    score_minus = torch.abs(p_minus[:, 1] - hint)
+    use_plus = score_plus <= score_minus
+    return torch.where(use_plus.unsqueeze(-1), p_plus, p_minus)
+
+
 class CooperativeMonostaticCNN(nn.Module):
     """双站 cooperative monostatic ROI 距离谱 → 目标 (x, y) 回归 CNN。
 
@@ -455,6 +553,12 @@ class CooperativeMonostaticCNN(nn.Module):
         ``late``：两站共享权重骨干 → 池化特征拼接 → xy 头
     ``aux_range``
         额外预测 ``(r0, r1)`` 单站几何距离（训练用辅助头；推理仍只取 xy）
+    ``geom_residual``
+        仅 ``late``：共享 range 头 → 可微双圆交会 ``xy_geom``，``xy_head`` 预测残差
+        ``Δxy``，输出 ``xy = xy_geom + Δxy``
+    ``cross_attn``
+        仅 ``late``：池化后、xy/残差头前插入一层双向交叉注意力；可与
+        ``geom_residual`` 叠加（range 仍用池化后、交叉注意力前的局部分站特征）
     """
 
     def __init__(
@@ -469,6 +573,12 @@ class CooperativeMonostaticCNN(nn.Module):
         soft_argmax_temp: float = 1.0,
         fusion_mode: str = "late",
         aux_range: bool = False,
+        geom_residual: bool = False,
+        stopgrad_geom: bool = False,
+        cross_attn: bool = False,
+        cross_attn_heads: int = 4,
+        dev0_xy: tuple[float, float] = (0.0, -2.0),
+        dev1_xy: tuple[float, float] = (-2.0, 0.0),
     ) -> None:
         super().__init__()
         if num_layers < 1:
@@ -491,6 +601,14 @@ class CooperativeMonostaticCNN(nn.Module):
                 f"fusion_mode 须为 {COOPERATIVE_FUSION_MODES}，收到 {self.fusion_mode!r}"
             )
         self.aux_range = bool(aux_range)
+        self.geom_residual = bool(geom_residual)
+        self.stopgrad_geom = bool(stopgrad_geom)
+        self.cross_attn = bool(cross_attn)
+        self.cross_attn_heads = int(cross_attn_heads)
+        if self.geom_residual and self.fusion_mode != "late":
+            raise ValueError("geom_residual 仅支持 fusion_mode='late'")
+        if self.cross_attn and self.fusion_mode != "late":
+            raise ValueError("cross_attn 仅支持 fusion_mode='late'")
 
         if self.fusion_mode == "late":
             if in_channels % 2 != 0:
@@ -521,6 +639,7 @@ class CooperativeMonostaticCNN(nn.Module):
         self.pool: CooperativeRangePool | None = None
         self.xy_head: nn.Module | None = None
         self.head: nn.Module | None = None
+        self.station_cross_attn: BidirectionalStationCrossAttention | None = None
 
         if self._legacy_gap_head:
             self.head = nn.Sequential(
@@ -556,9 +675,15 @@ class CooperativeMonostaticCNN(nn.Module):
             self.xy_head = _mlp_xy_head(
                 pool_dim * 2, final_ch // 2, dropout=dropout
             )
+            if self.cross_attn:
+                self.station_cross_attn = BidirectionalStationCrossAttention(
+                    pool_dim,
+                    num_heads=self.cross_attn_heads,
+                    dropout=dropout,
+                )
 
         self.range_head: nn.Module | None = None
-        if self.aux_range:
+        if self.aux_range or self.geom_residual:
             # 晚融合：共享单站 head；早融合：联合特征一次出 (r0, r1)
             out_r = 1 if self.fusion_mode == "late" else 2
             self.range_head = nn.Sequential(
@@ -567,6 +692,23 @@ class CooperativeMonostaticCNN(nn.Module):
                 nn.Dropout(p=dropout),
                 nn.Linear(max(pool_dim // 2, 8), out_r),
             )
+
+        if self.geom_residual:
+            self.register_buffer(
+                "dev0_xy",
+                torch.tensor(
+                    [float(dev0_xy[0]), float(dev0_xy[1])], dtype=torch.float32
+                ),
+            )
+            self.register_buffer(
+                "dev1_xy",
+                torch.tensor(
+                    [float(dev1_xy[0]), float(dev1_xy[1])], dtype=torch.float32
+                ),
+            )
+        else:
+            self.dev0_xy = None
+            self.dev1_xy = None
 
     def _encode(self, features: torch.Tensor) -> torch.Tensor:
         x = self.stem(features)
@@ -599,6 +741,18 @@ class CooperativeMonostaticCNN(nn.Module):
             )
         return features
 
+    def _station_ranges_from_pooled(
+        self, f0: torch.Tensor, f1: torch.Tensor
+    ) -> torch.Tensor:
+        """共享 ``range_head`` → ``(B, 2)``；``geom_residual`` 时 softplus 保证正距。"""
+        assert self.range_head is not None
+        r0 = self.range_head(f0)
+        r1 = self.range_head(f1)
+        ranges = torch.cat([r0, r1], dim=1)
+        if self.geom_residual:
+            ranges = F.softplus(ranges) + 1e-3
+        return ranges
+
     def forward_with_aux(
         self, dual_profiles: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -611,14 +765,27 @@ class CooperativeMonostaticCNN(nn.Module):
             h1 = self._encode(features[:, c:])
             f0 = self._pool_features(h0)
             f1 = self._pool_features(h1)
-            assert self.xy_head is not None
-            xy = self.xy_head(torch.cat([f0, f1], dim=1))
+            # range 用局部分站特征；xy/残差头可用交叉注意力后的融合特征
             pred_r: torch.Tensor | None = None
             if self.range_head is not None:
-                r0 = self.range_head(f0)
-                r1 = self.range_head(f1)
-                pred_r = torch.cat([r0, r1], dim=1)
-            return xy, pred_r
+                pred_r = self._station_ranges_from_pooled(f0, f1)
+            if self.station_cross_attn is not None:
+                f0, f1 = self.station_cross_attn(f0, f1)
+            assert self.xy_head is not None
+            delta_or_xy = self.xy_head(torch.cat([f0, f1], dim=1))
+            if self.geom_residual:
+                assert pred_r is not None
+                assert self.dev0_xy is not None and self.dev1_xy is not None
+                xy_geom = localize_xy_two_monostatic_ranges_torch(
+                    pred_r[:, 0],
+                    pred_r[:, 1],
+                    pos0_xy=self.dev0_xy,
+                    pos1_xy=self.dev1_xy,
+                )
+                if self.stopgrad_geom:
+                    xy_geom = xy_geom.detach()
+                return xy_geom + delta_or_xy, pred_r
+            return delta_or_xy, pred_r
 
         # early fusion
         encoded = self._encode(features)
@@ -724,6 +891,10 @@ def _build_cooperative_localization_model_from_ckpt(
             num_layers=num_layers,
             dropout=dropout,
         )
+    geom_residual = bool(ckpt.get("geom_residual", False))
+    cross_attn = bool(ckpt.get("cross_attn", False))
+    dev0 = ckpt.get("dev0_xy", (0.0, -2.0))
+    dev1 = ckpt.get("dev1_xy", (-2.0, 0.0))
     return CooperativeMonostaticCNN(
         in_channels=in_channels,
         base_channels=base_channels,
@@ -734,6 +905,12 @@ def _build_cooperative_localization_model_from_ckpt(
         soft_argmax_temp=float(ckpt.get("soft_argmax_temp", 1.0)),
         fusion_mode=str(ckpt.get("fusion_mode", "early")),
         aux_range=bool(ckpt.get("aux_range", False)),
+        geom_residual=geom_residual,
+        stopgrad_geom=bool(ckpt.get("stopgrad_geom", False)),
+        cross_attn=cross_attn,
+        cross_attn_heads=int(ckpt.get("cross_attn_heads", 4)),
+        dev0_xy=(float(dev0[0]), float(dev0[1])),
+        dev1_xy=(float(dev1[0]), float(dev1[1])),
     )
 
 

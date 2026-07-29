@@ -1,0 +1,4 @@
+exp_id,description,geom_residual,stopgrad_geom,checkpoint,global_rmse_m,inner_rmse_m,outer_rmse_m,output_csv
+baseline_new_defaults,"new defaults, no geom residual",0,0,/home/lhp/projects/isac/models/cnn_geom_ab/baseline_new_defaults/best_model.pth,0.6005385488540019,0.3724585654062151,0.8873265020072236,/home/lhp/projects/isac/out/cooperative_monostatic/cnn_geom_ab/baseline_new_defaults/cnn_rmse.csv
+geom_residual,geom residual end-to-end (no stopgrad),1,0,/home/lhp/projects/isac/models/cnn_geom_ab/geom_residual/best_model.pth,0.5918973649411379,0.38430870214119045,0.8529195151634525,/home/lhp/projects/isac/out/cooperative_monostatic/cnn_geom_ab/geom_residual/cnn_rmse.csv
+geom_stopgrad,geom residual + stopgrad_geom,1,1,/home/lhp/projects/isac/models/cnn_geom_ab/geom_stopgrad/best_model.pth,0.6225703711156723,0.42118874292376435,0.8757877910697636,/home/lhp/projects/isac/out/cooperative_monostatic/cnn_geom_ab/geom_stopgrad/cnn_rmse.csv
