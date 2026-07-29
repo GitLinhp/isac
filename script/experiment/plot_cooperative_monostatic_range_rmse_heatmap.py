@@ -55,6 +55,7 @@ from isac_imp.cooperative_monostatic_pipeline import (
     DEFAULT_ESPRIT_SUBARRAY_SIZE,
     DEFAULT_ESPRIT_WINDOW_SIZE,
     DEFAULT_RANGE_ROI,
+    bs_display_name,
     default_range_cfar_detector,
     grc_cooperative_processing_params,
 )
@@ -371,10 +372,11 @@ def plot_range_mae_heatmap_dual_dev_from_df(
         vmax=vmax,
     )
 
-    for ax, dev_xy, marker, dev_label in (
+    for ax, dev_xy, marker, device_key in (
         (ax0, dev0_xy, "^", "dev0"),
         (ax1, dev1_xy, "s", "dev1"),
     ):
+        bs_label = bs_display_name(device_key)
         ax.scatter(
             [dev_xy[0]],
             [dev_xy[1]],
@@ -383,7 +385,7 @@ def plot_range_mae_heatmap_dual_dev_from_df(
             c="white",
             edgecolors="black",
             linewidths=0.8,
-            label=f"{dev_label} ({dev_xy[0]:.1f}, {dev_xy[1]:.1f}) m",
+            label=f"{bs_label} ({dev_xy[0]:.1f}, {dev_xy[1]:.1f}) m",
             zorder=3,
         )
         heatmap_mod._apply_axis_ticks(ax, xs, ys)
@@ -395,8 +397,8 @@ def plot_range_mae_heatmap_dual_dev_from_df(
     ax0.set_ylabel("Target y (m)")
     mean0_s = f"{mean0:.3f}" if np.isfinite(mean0) else "nan"
     mean1_s = f"{mean1:.3f}" if np.isfinite(mean1) else "nan"
-    ax0.set_title(f"dev0 Range MAE\ncells={filled0}, mean MAE={mean0_s} m")
-    ax1.set_title(f"dev1 Range MAE\ncells={filled1}, mean MAE={mean1_s} m")
+    ax0.set_title(f"{bs_display_name('dev0')} Range MAE\ncells={filled0}, mean MAE={mean0_s} m")
+    ax1.set_title(f"{bs_display_name('dev1')} Range MAE\ncells={filled1}, mean MAE={mean1_s} m")
 
     fig.subplots_adjust(right=0.88)
     cbar = fig.colorbar(mesh0, ax=[ax0, ax1], fraction=0.035, pad=0.02)
@@ -407,13 +409,13 @@ def plot_range_mae_heatmap_dual_dev_from_df(
     calib_line = ""
     if calib_result is not None:
         calib_line = (
-            f"\nbias_dev0={calib_result.bias_dev0_m:.3f} m, "
-            f"bias_dev1={calib_result.bias_dev1_m:.3f} m"
+            f"\nbias_{bs_display_name('dev0')}={calib_result.bias_dev0_m:.3f} m, "
+            f"bias_{bs_display_name('dev1')}={calib_result.bias_dev1_m:.3f} m"
         )
     fig.suptitle(
         f"{title_prefix} (uniform 10 cm grid, outer interpolated){source_line}{calib_line}\n"
-        f"dev0 mean={mean0_s} m, dev1 mean={mean1_s} m, "
-        f"interpolated cells dev0/dev1={interp0}/{interp1}",
+        f"{bs_display_name('dev0')} mean={mean0_s} m, {bs_display_name('dev1')} mean={mean1_s} m, "
+        f"interpolated cells {bs_display_name('dev0')}/{bs_display_name('dev1')}={interp0}/{interp1}",
         y=0.98,
         fontsize=11,
     )
@@ -501,7 +503,7 @@ def plot_range_abs_error_cdf_from_df(
         y_cdf,
         linestyle="-",
         linewidth=1.8,
-        label=str(device),
+        label=bs_display_name(device),
     )
     ax.set_xlabel("Range error (m)")
     ax.set_ylabel("CDF")
@@ -576,9 +578,9 @@ def plot_range_abs_error_cdf_dual_dev_from_csv(
         out_dir = input_csv.parent
     out_dir = out_dir.resolve()
     if output_dev0 is None:
-        output_dev0 = out_dir / f"{method}_range_dev0_cdf.png"
+        output_dev0 = out_dir / f"{method}_range_bs0_cdf.png"
     if output_dev1 is None:
-        output_dev1 = out_dir / f"{method}_range_dev1_cdf.png"
+        output_dev1 = out_dir / f"{method}_range_bs1_cdf.png"
 
     df = pd.read_csv(input_csv)
     common = {
@@ -678,7 +680,7 @@ def plot_range_abs_error_cdf_compare_from_csvs(
             linestyle=linestyle,
             linewidth=1.8,
             color=color,
-            label=f"{str(label).strip().upper()} {device_key}",
+            label=f"{str(label).strip().upper()} {bs_display_name(device_key)}",
         )
         curves_plotted += 1
 

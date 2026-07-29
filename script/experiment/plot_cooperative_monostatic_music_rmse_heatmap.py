@@ -20,6 +20,7 @@ from matplotlib.ticker import PercentFormatter
 from scipy.interpolate import griddata
 
 from isac import PROJECT_ROOT
+from isac_imp.cooperative_monostatic_pipeline import bs_display_name
 from isac_imp.record_target_metadata import (
     INNER_RADIUS_CM,
     is_inner_target_xy_m,
@@ -811,7 +812,7 @@ def plot_xy_estimate_scatter_from_csv(
         edgecolors="black",
         linewidths=0.8,
         zorder=3,
-        label="dev0",
+        label=bs_display_name("dev0"),
     )
     ax.scatter(
         [dev1_xy[0]],
@@ -822,7 +823,7 @@ def plot_xy_estimate_scatter_from_csv(
         edgecolors="black",
         linewidths=0.8,
         zorder=3,
-        label="dev1",
+        label=bs_display_name("dev1"),
     )
 
     _apply_axis_ticks(ax, xs, ys)

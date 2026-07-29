@@ -43,6 +43,23 @@ DEFAULT_DEV0_RX_XY = (-DEFAULT_ANTENNA_OFFSET_DEV0_M, -2.0)
 DEFAULT_DEV1_TX_XY = (-2.0, DEFAULT_ANTENNA_OFFSET_DEV1_M)
 DEFAULT_DEV1_RX_XY = (-2.0, -DEFAULT_ANTENNA_OFFSET_DEV1_M)
 
+# 论文 / 图表对外表述（内部仍用 dev0/dev1 索引与 HDF5 键名）
+BS_DISPLAY_NAMES: tuple[str, str] = ("BS-0", "BS-1")
+
+
+def bs_display_name(device: int | str) -> str:
+    """将 dev0/dev1 或 0/1 映射为对外 BS 标签（BS-0 / BS-1）。"""
+    if isinstance(device, int):
+        if device in (0, 1):
+            return BS_DISPLAY_NAMES[device]
+        raise ValueError(f"BS index must be 0 or 1, got {device}")
+    key = str(device).strip().lower()
+    if key in ("dev0", "0", "bs0", "bs-0"):
+        return BS_DISPLAY_NAMES[0]
+    if key in ("dev1", "1", "bs1", "bs-1"):
+        return BS_DISPLAY_NAMES[1]
+    raise ValueError(f"unknown device key {device!r}")
+
 
 def cooperative_range_bin_step_m(
     *,

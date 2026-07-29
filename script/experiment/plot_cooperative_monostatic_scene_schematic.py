@@ -131,7 +131,7 @@ def plot_scene_schematic(
     dpi: int = 150,
     show: bool = False,
 ) -> Path:
-    """绘制实验区域、三区划分、采集样点与 Dev0/Dev1 位置，保存 PNG。"""
+    """绘制实验区域、三区划分、采集样点与 BS-0/BS-1 位置，保存 PNG。"""
     grid_min = float(SUBREGION_GRID_MIN_M)
     grid_max = float(SUBREGION_GRID_MAX_M)
     r = float(INNER_RADIUS_M)
@@ -233,7 +233,7 @@ def plot_scene_schematic(
 
     # 仅标注站点名称；TX/RX 用颜色区分，不标具体收发名
     ax.annotate(
-        "Dev0",
+        "BS-0",
         xy=dev0,
         xytext=(10, 12),
         textcoords="offset points",
@@ -243,7 +243,7 @@ def plot_scene_schematic(
         zorder=6,
     )
     ax.annotate(
-        "Dev1",
+        "BS-1",
         xy=dev1,
         xytext=(10, 8),
         textcoords="offset points",

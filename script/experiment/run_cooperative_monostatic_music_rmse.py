@@ -119,7 +119,7 @@ def _default_output_range_cdf_dev0() -> Path:
         PROJECT_ROOT
         / "out"
         / "cooperative_monostatic"
-        / "music_range_dev0_cdf.png"
+        / "music_range_bs0_cdf.png"
     )
 
 
@@ -128,7 +128,7 @@ def _default_output_range_cdf_dev1() -> Path:
         PROJECT_ROOT
         / "out"
         / "cooperative_monostatic"
-        / "music_range_dev1_cdf.png"
+        / "music_range_bs1_cdf.png"
     )
 
 

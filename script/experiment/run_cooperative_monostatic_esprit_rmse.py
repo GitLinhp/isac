@@ -121,7 +121,7 @@ def _default_output_range_cdf_dev0() -> Path:
         PROJECT_ROOT
         / "out"
         / "cooperative_monostatic"
-        / "esprit_range_dev0_cdf.png"
+        / "esprit_range_bs0_cdf.png"
     )
 
 
@@ -130,7 +130,7 @@ def _default_output_range_cdf_dev1() -> Path:
         PROJECT_ROOT
         / "out"
         / "cooperative_monostatic"
-        / "esprit_range_dev1_cdf.png"
+        / "esprit_range_bs1_cdf.png"
     )
 
 
