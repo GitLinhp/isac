@@ -5,11 +5,11 @@
     python script/model_training/run_train_cooperative_monostatic_cnn.py
 
 默认对齐 S2 最优配置（late + attention、outer_w=3、session loss、
-ROI 0–4 m、lr 5e-4、dropout 0.3、batch 128 等）。
+ROI 0–4 m、lr 3e-4、jitter 0.02、dropout 0.3、batch 128 等）。
 覆盖示例::
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py \\
-        --epochs 2 --batch-size 32 --max-samples 512 --no-filter-outliers
+        --epochs 2 --batch-size 32 --max-samples 512 --filter-outliers
 """
 
 from __future__ import annotations
@@ -79,12 +79,12 @@ DEFAULT_TEST_H5 = Path(
 DEFAULT_OUTPUT_DIR = Path("models/cnn_deploy_strict_roi4")
 # 训练脚本默认 ROI（部署配置）；pipeline 全局 DEFAULT_RANGE_ROI 仍为 (0, 3.5)
 TRAIN_DEFAULT_RANGE_ROI = (0.0, 4.0)
-TRAIN_DEFAULT_LABEL_JITTER_M = 0.05
+TRAIN_DEFAULT_LABEL_JITTER_M = 0.02
 # S2 矩阵最优：late_attn_outer3_session
 TRAIN_DEFAULT_OUTER_RING_WEIGHT = 3.0
 TRAIN_DEFAULT_FEATURE_NOISE_STD = 0.02
 TRAIN_DEFAULT_SPEC_AUGMENT_PROB = 0.3
-TRAIN_DEFAULT_LR = 5e-4
+TRAIN_DEFAULT_LR = 3e-4
 TRAIN_DEFAULT_DROPOUT = 0.3
 TRAIN_DEFAULT_POOL_MODE = "attention"
 TRAIN_DEFAULT_FUSION_MODE = "late"
@@ -225,7 +225,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--early-stop-patience",
         type=int,
-        default=10,
+        default=15,
         help="stop if val loss does not improve for N epochs (0 to disable)",
     )
     parser.add_argument(
@@ -347,8 +347,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--filter-outliers",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="训练前剔除异常帧（默认开启；--no-filter-outliers 关闭）",
+        default=False,
+        help="训练前剔除异常帧（默认关闭；--filter-outliers 开启）",
     )
     parser.add_argument(
         "--xy-max-m",
@@ -372,7 +372,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--label-jitter-m",
         type=float,
         default=TRAIN_DEFAULT_LABEL_JITTER_M,
-        help="训练集 target_xy 各轴均匀抖动半幅 (m)，验证集始终为 0（default: 0.05）",
+        help=(
+            "训练集 target_xy 各轴均匀抖动半幅 (m)，验证集始终为 0"
+            f"（default: {TRAIN_DEFAULT_LABEL_JITTER_M}）"
+        ),
     )
     parser.add_argument(
         "--no-label-jitter",
@@ -902,7 +905,7 @@ def _run_post_train_eval(
     output_dir: Path,
     device: str | None = None,
     features_h5: Path | None = None,
-    filter_outliers: bool = True,
+    filter_outliers: bool = False,
     xy_max_m: float = 1.0,
     outlier_energy_eps: float = 1e-8,
     outlier_energy_mad_z: float = 5.0,

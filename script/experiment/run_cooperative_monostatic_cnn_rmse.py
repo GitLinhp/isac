@@ -237,8 +237,8 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--filter-outliers",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="硬过滤 + session 能量 MAD 软剔除（默认开启；--no-filter-outliers 关闭）",
+        default=False,
+        help="硬过滤 + session 能量 MAD 软剔除（默认关闭；--filter-outliers 开启）",
     )
     parser.add_argument(
         "--xy-max-m",
