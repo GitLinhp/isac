@@ -1,0 +1,5 @@
+method      global    inner    outer    n
+--------  --------  -------  -------  ---
+music       2.3041      nan   2.3041   64
+esprit      2.3041      nan   2.3041   64
+cnn         1.528       nan   1.528    64

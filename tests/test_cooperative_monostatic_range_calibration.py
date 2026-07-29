@@ -24,11 +24,25 @@ from isac_imp.cooperative_monostatic_range_calibration import (
     resolve_loaded_range_biases,
     save_range_bias_calib,
     target_in_calib_roi,
-    true_monostatic_range_m,
+    true_quasi_monostatic_range_m,
 )
 
 DEV0_XY = (0.0, -2.0)
 DEV1_XY = (-2.0, 0.0)
+# 测试用共址天线：path_sum/2 退化为中点距离
+TX0_XY = RX0_XY = DEV0_XY
+TX1_XY = RX1_XY = DEV1_XY
+
+
+def _fit_kwargs() -> dict:
+    return {
+        "tx0_xy": TX0_XY,
+        "rx0_xy": RX0_XY,
+        "tx1_xy": TX1_XY,
+        "rx1_xy": RX1_XY,
+        "dev0_xy": DEV0_XY,
+        "dev1_xy": DEV1_XY,
+    }
 
 
 def test_target_in_calib_roi_defaults() -> None:
@@ -62,7 +76,7 @@ def test_fit_range_bias_1d_recovers_injected_bias() -> None:
 def test_fit_ignores_samples_outside_roi() -> None:
     rows = []
     for x, y, r0_bias in ((0.0, 0.0, 0.10), (0.8, 0.8, 0.90)):
-        true_r0 = true_monostatic_range_m((x, y), DEV0_XY)
+        true_r0 = true_quasi_monostatic_range_m((x, y), TX0_XY, RX0_XY)
         rows.append(
             {
                 "true_x_m": x,
@@ -74,8 +88,7 @@ def test_fit_ignores_samples_outside_roi() -> None:
     df = pd.DataFrame(rows)
     result = fit_dual_dev_range_biases(
         df,
-        dev0_xy=DEV0_XY,
-        dev1_xy=DEV1_XY,
+        **_fit_kwargs(),
         roi_dev0=DEFAULT_CALIB_ROI_DEV0,
         roi_dev1=RangeBiasCalibRoi(-5, 5, -5, 5),
         search_min=-1.0,
@@ -92,15 +105,14 @@ def test_save_and_load_calib_json(tmp_path: Path) -> None:
         {
             "true_x_m": 0.0,
             "true_y_m": 0.0,
-            "r_dev0_m": true_monostatic_range_m((0.0, 0.0), DEV0_XY) - 0.05,
-            "r_dev1_m": true_monostatic_range_m((0.0, 0.0), DEV1_XY) - 0.03,
+            "r_dev0_m": true_quasi_monostatic_range_m((0.0, 0.0), TX0_XY, RX0_XY) - 0.05,
+            "r_dev1_m": true_quasi_monostatic_range_m((0.0, 0.0), TX1_XY, RX1_XY) - 0.03,
         }
     ]
     df = pd.DataFrame(rows)
     result = fit_dual_dev_range_biases(
         df,
-        dev0_xy=DEV0_XY,
-        dev1_xy=DEV1_XY,
+        **_fit_kwargs(),
         search_min=-1.0,
         search_max=1.0,
         step=0.01,
@@ -111,7 +123,49 @@ def test_save_and_load_calib_json(tmp_path: Path) -> None:
 
     assert loaded.bias_dev0_m == pytest.approx(result.bias_dev0_m)
     assert loaded.bias_dev1_m == pytest.approx(result.bias_dev1_m)
+    assert loaded.tx0_xy == result.tx0_xy
     assert json.loads(path.read_text(encoding="utf-8"))["n_dev0"] == result.n_dev0
+
+
+def test_fit_path_sum_truth_differs_from_colocated() -> None:
+    """±5 cm TX/RX 时 path_sum/2 与中点距离不同，偏置应相对前者拟合。"""
+    from isac_imp.cooperative_monostatic_pipeline import (
+        DEFAULT_DEV0_RX_XY,
+        DEFAULT_DEV0_TX_XY,
+        DEFAULT_DEV1_RX_XY,
+        DEFAULT_DEV1_TX_XY,
+    )
+
+    target = (0.0, 0.0)
+    r_true = true_quasi_monostatic_range_m(
+        target, DEFAULT_DEV0_TX_XY, DEFAULT_DEV0_RX_XY
+    )
+    assert r_true != pytest.approx(2.0, abs=1e-9)
+    df = pd.DataFrame(
+        [
+            {
+                "true_x_m": 0.0,
+                "true_y_m": 0.0,
+                "r_dev0_m": r_true - 0.12,
+                "r_dev1_m": true_quasi_monostatic_range_m(
+                    target, DEFAULT_DEV1_TX_XY, DEFAULT_DEV1_RX_XY
+                )
+                - 0.08,
+            }
+        ]
+    )
+    result = fit_dual_dev_range_biases(
+        df,
+        tx0_xy=DEFAULT_DEV0_TX_XY,
+        rx0_xy=DEFAULT_DEV0_RX_XY,
+        tx1_xy=DEFAULT_DEV1_TX_XY,
+        rx1_xy=DEFAULT_DEV1_RX_XY,
+        search_min=-1.0,
+        search_max=1.0,
+        step=0.01,
+    )
+    assert result.bias_dev0_m == pytest.approx(0.12, abs=0.011)
+    assert result.bias_dev1_m == pytest.approx(0.08, abs=0.011)
 
 
 def test_apply_range_bias_adds_cal_columns() -> None:
@@ -158,13 +212,18 @@ def test_resolve_loaded_range_biases(tmp_path: Path) -> None:
                     {
                         "true_x_m": 0.0,
                         "true_y_m": 0.0,
-                        "r_dev0_m": true_monostatic_range_m((0.0, 0.0), DEV0_XY) - 0.05,
-                        "r_dev1_m": true_monostatic_range_m((0.0, 0.0), DEV1_XY) - 0.03,
+                        "r_dev0_m": true_quasi_monostatic_range_m(
+                            (0.0, 0.0), TX0_XY, RX0_XY
+                        )
+                        - 0.05,
+                        "r_dev1_m": true_quasi_monostatic_range_m(
+                            (0.0, 0.0), TX1_XY, RX1_XY
+                        )
+                        - 0.03,
                     }
                 ]
             ),
-            dev0_xy=DEV0_XY,
-            dev1_xy=DEV1_XY,
+            **_fit_kwargs(),
             search_min=-1.0,
             search_max=1.0,
             step=0.01,

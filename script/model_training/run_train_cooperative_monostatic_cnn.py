@@ -4,9 +4,10 @@
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py
 
-默认对齐历史最优配方（late + attention、中心/侧边/角权重 1/3/3、
-无 geom-residual、session loss、ROI 0–4 m、lr 5e-4、jitter 0.05、
-dropout 0.3、batch 128、early-stop 10 等）。
+默认对齐更大宽度 + 低 lr 配方（输出 ``models/cnn_improve_next/aug_spec_only``）：
+late + attention、base_channels=64、num_layers=3、lr=5e-5、中心/侧边/角权重 1/3/3、
+无 geom-residual、session loss、ROI 0–4 m、jitter 0.02、feature noise 0、
+SpecAugment 0.5、dropout 0.3、batch 128、early-stop 15 等。
 覆盖示例::
 
     python script/model_training/run_train_cooperative_monostatic_cnn.py \\
@@ -37,6 +38,7 @@ from isac.models import (
     COOPERATIVE_POOL_MODES,
     CooperativeMonostatic2DCNN,
     CooperativeMonostaticCNN,
+    CooperativeMonostaticTransformer,
     TargetPositionRmseLoss,
     aux_range_rmse_loss,
     compute_logmag_norm_stats_from_h5,
@@ -46,7 +48,11 @@ from isac.models import (
     monostatic_ranges_from_xy,
     save_cooperative_norm_stats,
 )
-from isac.models.loss import session_aggregated_target_rmse_loss
+from isac.models.loss import (
+    session_aggregated_target_rmse_loss,
+    session_aggregated_trimmed_best_rmse_loss,
+    trimmed_best_rmse_loss,
+)
 from isac.utils import set_random_seed
 from isac_imp.cooperative_monostatic_pipeline import (
     grc_cooperative_processing_params,
@@ -63,6 +69,7 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
     load_cooperative_frame_energy,
     open_cooperative_monostatic_training_dataset,
     resolve_cooperative_features_h5,
+    maybe_exclude_subregion_corner_frames,
     session_train_val_split_by_region,
 )
 from isac_imp.record_target_metadata import (
@@ -77,23 +84,39 @@ DEFAULT_H5 = Path(
 DEFAULT_TEST_H5 = Path(
     "data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5"
 )
-DEFAULT_OUTPUT_DIR = Path("models/cnn_deploy_strict_roi4")
+DEFAULT_OUTPUT_DIR = Path("models/cnn_improve_next/aug_spec_only")
 # 训练脚本默认 ROI（部署配置）；pipeline 全局 DEFAULT_RANGE_ROI 仍为 (0, 3.5)
 TRAIN_DEFAULT_RANGE_ROI = (0.0, 4.0)
-TRAIN_DEFAULT_LABEL_JITTER_M = 0.05
-# 损失加权三区默认：中心 / 侧边 / 角（hist catch-up BEST2）
+TRAIN_DEFAULT_LABEL_JITTER_M = 0.02
+# 损失加权三区默认：中心 / 侧边 / 角（improve-next BEST2 / aug_spec_only）
 TRAIN_DEFAULT_CENTER_WEIGHT = 1.0
 TRAIN_DEFAULT_SIDE_WEIGHT = 3.0
 TRAIN_DEFAULT_CORNER_WEIGHT = 3.0
 TRAIN_DEFAULT_GEOM_RESIDUAL = False
-TRAIN_DEFAULT_FEATURE_NOISE_STD = 0.02
-TRAIN_DEFAULT_SPEC_AUGMENT_PROB = 0.3
-TRAIN_DEFAULT_LR = 5e-4
+TRAIN_DEFAULT_FEATURE_NOISE_STD = 0.0
+TRAIN_DEFAULT_SPEC_AUGMENT_PROB = 0.5
+TRAIN_DEFAULT_CPI_AMP_SCALE = 0.2
+TRAIN_DEFAULT_CPI_COMPLEX_NOISE_STD = 0.02
+TRAIN_DEFAULT_LR = 5e-5
+TRAIN_DEFAULT_BASE_CHANNELS = 64
+TRAIN_DEFAULT_NUM_LAYERS = 3
 TRAIN_DEFAULT_DROPOUT = 0.3
 TRAIN_DEFAULT_POOL_MODE = "attention"
 TRAIN_DEFAULT_FUSION_MODE = "late"
+TRAIN_DEFAULT_MODEL_TYPE = "cnn"
+# Light Transformer defaults (arch_light_tf)
+TRANSFORMER_DEFAULT_D_MODEL = 64
+TRANSFORMER_DEFAULT_NHEAD = 4
+TRANSFORMER_DEFAULT_NUM_LAYERS = 2
+TRANSFORMER_DEFAULT_DIM_FF = 128
+
+LocalizationModel = (
+    CooperativeMonostaticCNN
+    | CooperativeMonostatic2DCNN
+    | CooperativeMonostaticTransformer
+)
 TRAIN_DEFAULT_EPOCHS = 100
-TRAIN_DEFAULT_EARLY_STOP_PATIENCE = 10
+TRAIN_DEFAULT_EARLY_STOP_PATIENCE = 15
 EVAL_SCRIPT = PROJECT_ROOT / "script/experiment/run_cooperative_monostatic_cnn_rmse.py"
 
 
@@ -190,6 +213,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="use --test-h5-path for checkpoint selection (legacy cross-domain mode)",
     )
     parser.add_argument(
+        "--test-val-ratio",
+        type=float,
+        default=None,
+        help=(
+            "when --use-test-h5: region-stratified session fraction of --test-h5-path "
+            "used as val (e.g. 0.1); None = all test frames (default)"
+        ),
+    )
+    parser.add_argument(
         "--no-test-h5",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -213,7 +245,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--epochs", type=int, default=TRAIN_DEFAULT_EPOCHS)
-    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=TRAIN_DEFAULT_LR)
     parser.add_argument(
         "--weight-decay",
@@ -250,6 +282,26 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="model input feature mode (default: real_imag for cross-domain)",
     )
     parser.add_argument(
+        "--model-type",
+        type=str,
+        choices=["cnn", "transformer"],
+        default=TRAIN_DEFAULT_MODEL_TYPE,
+        help=(
+            "backbone: cnn (default 1D/2D by feature-mode) | "
+            "transformer (light late-fusion range-bin TF)"
+        ),
+    )
+    parser.add_argument(
+        "--feature-norm",
+        type=str,
+        choices=["none", "rms"],
+        default="none",
+        help=(
+            "deterministic real_imag normalization: none | rms "
+            "(per-station ROI RMS; only with --feature-mode real_imag)"
+        ),
+    )
+    parser.add_argument(
         "--norm-stats",
         type=Path,
         default=None,
@@ -263,8 +315,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         metavar=("MIN_M", "MAX_M"),
         help="range ROI in meters (default: 0 4)",
     )
-    parser.add_argument("--base-channels", type=int, default=32)
-    parser.add_argument("--num-layers", type=int, default=3)
+    parser.add_argument(
+        "--base-channels",
+        type=int,
+        default=TRAIN_DEFAULT_BASE_CHANNELS,
+        help=f"CNN stem channels (default: {TRAIN_DEFAULT_BASE_CHANNELS})",
+    )
+    parser.add_argument(
+        "--num-layers",
+        type=int,
+        default=TRAIN_DEFAULT_NUM_LAYERS,
+        help=f"CNN residual blocks (default: {TRAIN_DEFAULT_NUM_LAYERS})",
+    )
     parser.add_argument("--dropout", type=float, default=TRAIN_DEFAULT_DROPOUT)
     parser.add_argument(
         "--pool-mode",
@@ -316,11 +378,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--geom-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "late fusion: range head only + differentiable two-circle "
+            "geometry (no Δxy head; mutually exclusive with --geom-residual)"
+        ),
+    )
+    parser.add_argument(
         "--stopgrad-geom",
         action=argparse.BooleanOptionalAction,
         default=False,
         help=(
-            "when --geom-residual, stop gradient through xy_geom "
+            "when --geom-residual/--geom-only, stop gradient through xy_geom "
             "(default: end-to-end, no stopgrad)"
         ),
     )
@@ -394,6 +465,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="训练前剔除异常帧（默认关闭；--filter-outliers 开启）",
     )
     parser.add_argument(
+        "--exclude-subregion-corners",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "剔除 4x4 四角子区帧（ids 0/3/12/15；默认关闭；"
+            "--exclude-subregion-corners 开启）"
+        ),
+    )
+    parser.add_argument(
         "--xy-max-m",
         type=float,
         default=1.0,
@@ -456,13 +536,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--feature-noise-std",
         type=float,
         default=TRAIN_DEFAULT_FEATURE_NOISE_STD,
-        help="Gaussian noise std on float training features (default: 0.02)",
+        help=(
+            "Gaussian noise std on float training features "
+            f"(default: {TRAIN_DEFAULT_FEATURE_NOISE_STD})"
+        ),
     )
     parser.add_argument(
         "--spec-augment-prob",
         type=float,
         default=TRAIN_DEFAULT_SPEC_AUGMENT_PROB,
-        help="probability of range-bin SpecAugment on training features (default: 0.3)",
+        help=(
+            "probability of range-bin SpecAugment on training features "
+            f"(default: {TRAIN_DEFAULT_SPEC_AUGMENT_PROB})"
+        ),
     )
     parser.add_argument(
         "--spec-augment-max-bins",
@@ -471,12 +557,63 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="max masked range bins for SpecAugment",
     )
     parser.add_argument(
+        "--cpi-aug",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "对 raw CPI ROI 做幅度缩放+复噪声（默认关；开启时强制 raw 在线路径，"
+            "跳过 features sidecar）"
+        ),
+    )
+    parser.add_argument(
+        "--cpi-amp-scale",
+        type=float,
+        default=TRAIN_DEFAULT_CPI_AMP_SCALE,
+        help=(
+            "CPI 分站幅度缩放半幅：α~U(1-s,1+s) "
+            f"（default: {TRAIN_DEFAULT_CPI_AMP_SCALE}；仅 --cpi-aug）"
+        ),
+    )
+    parser.add_argument(
+        "--cpi-complex-noise-std",
+        type=float,
+        default=TRAIN_DEFAULT_CPI_COMPLEX_NOISE_STD,
+        help=(
+            "CPI 复噪声相对各站 RMS 强度 "
+            f"（default: {TRAIN_DEFAULT_CPI_COMPLEX_NOISE_STD}；仅 --cpi-aug）"
+        ),
+    )
+    parser.add_argument(
+        "--force-raw-cpi",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="跳过 features sidecar，强制 raw CPI 在线变换（--cpi-aug 时自动开启）",
+    )
+    parser.add_argument(
         "--session-aggregated-loss",
         action=argparse.BooleanOptionalAction,
         default=True,
         help=(
             "train with session-level aggregated RMSE loss "
             "(default on; --no-session-aggregated-loss 关闭)"
+        ),
+    )
+    parser.add_argument(
+        "--trim-best-rmse",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "xy loss: RMSE over the best keep_frac of samples/sessions "
+            "(lowest errors; default off)"
+        ),
+    )
+    parser.add_argument(
+        "--trim-best-frac",
+        type=float,
+        default=0.8,
+        help=(
+            "fraction of lowest-error samples/sessions kept when "
+            "--trim-best-rmse (default: 0.8)"
         ),
     )
     parser.add_argument(
@@ -519,10 +656,11 @@ def _collate_batch(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
 
 
 def _checkpoint_payload(
-    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
+    model: LocalizationModel,
     *,
     in_channels: int,
     feature_mode: str,
+    feature_norm: str,
     model_type: str,
     norm_stats_path: str | None,
 ) -> dict[str, Any]:
@@ -533,19 +671,31 @@ def _checkpoint_payload(
         "num_layers": model.num_layers,
         "dropout": model.dropout,
         "feature_mode": feature_mode,
+        "feature_norm": feature_norm,
         "model_type": model_type,
     }
-    if isinstance(model, CooperativeMonostaticCNN):
+    if isinstance(model, CooperativeMonostaticTransformer):
+        payload["d_model"] = model.d_model
+        payload["nhead"] = model.nhead
+        payload["dim_feedforward"] = model.dim_feedforward
+        payload["max_range_bins"] = model.max_range_bins
+        payload["fusion_mode"] = "late"
+    elif isinstance(model, CooperativeMonostaticCNN):
         payload["pool_mode"] = model.pool_mode
         payload["multiscale_bins"] = model.multiscale_bins
         payload["soft_argmax_temp"] = model.soft_argmax_temp
         payload["fusion_mode"] = model.fusion_mode
         payload["aux_range"] = model.aux_range
         payload["geom_residual"] = model.geom_residual
+        payload["geom_only"] = model.geom_only
         payload["stopgrad_geom"] = model.stopgrad_geom
         payload["cross_attn"] = model.cross_attn
         payload["cross_attn_heads"] = model.cross_attn_heads
-        if model.geom_residual and model.dev0_xy is not None and model.dev1_xy is not None:
+        if (
+            (model.geom_residual or model.geom_only)
+            and model.dev0_xy is not None
+            and model.dev1_xy is not None
+        ):
             payload["dev0_xy"] = (
                 float(model.dev0_xy[0].item()),
                 float(model.dev0_xy[1].item()),
@@ -567,11 +717,7 @@ def _region_zone_sample_weights(
     corner_weight: float,
 ) -> torch.Tensor | None:
     """按中心 / 侧边 / 角三区赋样本权重；三权重均为 1 时返回 None。"""
-    if (
-        center_weight == 1.0
-        and side_weight == 1.0
-        and corner_weight == 1.0
-    ):
+    if center_weight == 1.0 and side_weight == 1.0 and corner_weight == 1.0:
         return None
     zone_to_weight = {
         "center": float(center_weight),
@@ -637,12 +783,30 @@ def _compute_batch_loss(
     *,
     sample_weight: torch.Tensor | None,
     session_aggregated_loss: bool,
+    trim_best_rmse: bool = False,
+    trim_best_frac: float = 0.8,
     pred_ranges: torch.Tensor | None = None,
     aux_range_weight: float = 0.0,
     dev0_xy: tuple[float, float] = (0.0, -2.0),
     dev1_xy: tuple[float, float] = (-2.0, 0.0),
 ) -> torch.Tensor:
-    if session_aggregated_loss:
+    if trim_best_rmse:
+        if session_aggregated_loss:
+            xy_loss = session_aggregated_trimmed_best_rmse_loss(
+                pred_xy,
+                target_xy,
+                session_index,
+                sample_weight=sample_weight,
+                keep_frac=trim_best_frac,
+            )
+        else:
+            xy_loss = trimmed_best_rmse_loss(
+                pred_xy,
+                target_xy,
+                sample_weight=sample_weight,
+                keep_frac=trim_best_frac,
+            )
+    elif session_aggregated_loss:
         xy_loss = session_aggregated_target_rmse_loss(
             pred_xy,
             target_xy,
@@ -663,11 +827,11 @@ def _compute_batch_loss(
 
 
 def _model_forward_xy_and_ranges(
-    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
+    model: LocalizationModel,
     dual_profiles: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     if isinstance(model, CooperativeMonostaticCNN) and (
-        model.aux_range or model.geom_residual
+        model.aux_range or model.geom_residual or model.geom_only
     ):
         return model.forward_with_aux(dual_profiles)
     return model(dual_profiles), None
@@ -676,7 +840,7 @@ def _model_forward_xy_and_ranges(
 @torch.no_grad()
 def _evaluate(
     loader: DataLoader,
-    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
+    model: LocalizationModel,
     criterion: TargetPositionRmseLoss,
     device: torch.device | str,
     *,
@@ -684,6 +848,8 @@ def _evaluate(
     side_weight: float = 1.0,
     corner_weight: float = 1.0,
     session_aggregated_loss: bool = False,
+    trim_best_rmse: bool = False,
+    trim_best_frac: float = 0.8,
     aux_range_weight: float = 0.0,
     dev0_xy: tuple[float, float] = (0.0, -2.0),
     dev1_xy: tuple[float, float] = (-2.0, 0.0),
@@ -710,6 +876,8 @@ def _evaluate(
             session_index,
             sample_weight=sample_weight,
             session_aggregated_loss=session_aggregated_loss,
+            trim_best_rmse=trim_best_rmse,
+            trim_best_frac=trim_best_frac,
             pred_ranges=pred_ranges,
             aux_range_weight=aux_range_weight,
             dev0_xy=dev0_xy,
@@ -729,7 +897,7 @@ def _evaluate(
 
 def _train_one_epoch(
     loader: DataLoader,
-    model: CooperativeMonostaticCNN | CooperativeMonostatic2DCNN,
+    model: LocalizationModel,
     criterion: TargetPositionRmseLoss,
     optimizer: torch.optim.Optimizer,
     device: torch.device | str,
@@ -738,6 +906,8 @@ def _train_one_epoch(
     side_weight: float = 1.0,
     corner_weight: float = 1.0,
     session_aggregated_loss: bool = False,
+    trim_best_rmse: bool = False,
+    trim_best_frac: float = 0.8,
     aux_range_weight: float = 0.0,
     dev0_xy: tuple[float, float] = (0.0, -2.0),
     dev1_xy: tuple[float, float] = (-2.0, 0.0),
@@ -764,6 +934,8 @@ def _train_one_epoch(
             session_index,
             sample_weight=sample_weight,
             session_aggregated_loss=session_aggregated_loss,
+            trim_best_rmse=trim_best_rmse,
+            trim_best_frac=trim_best_frac,
             pred_ranges=pred_ranges,
             aux_range_weight=aux_range_weight,
             dev0_xy=dev0_xy,
@@ -827,11 +999,15 @@ def _make_dataset(
     range_roi: tuple[float, float],
     label_jitter_m: float,
     feature_mode: str,
+    feature_norm: str,
     norm_means: np.ndarray | None,
     norm_stds: np.ndarray | None,
     feature_noise_std: float,
     spec_augment_prob: float,
     spec_augment_max_bins: int,
+    cpi_aug: bool,
+    cpi_amp_scale: float,
+    cpi_complex_noise_std: float,
     augment: bool,
     seed: int,
 ):
@@ -843,11 +1019,15 @@ def _make_dataset(
         transform_on_load=True,
         label_jitter_m=label_jitter_m,
         feature_mode=feature_mode,
+        feature_norm=feature_norm,
         norm_means=norm_means,
         norm_stds=norm_stds,
         feature_noise_std=feature_noise_std,
         spec_augment_prob=spec_augment_prob,
         spec_augment_max_bins=spec_augment_max_bins,
+        cpi_aug=cpi_aug,
+        cpi_amp_scale=cpi_amp_scale,
+        cpi_complex_noise_std=cpi_complex_noise_std,
         augment=augment,
         seed=seed,
     )
@@ -1065,6 +1245,20 @@ def _run_post_train_eval(
     subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
 
 
+def _validate_test_val_ratio_args(
+    args: argparse.Namespace,
+    *,
+    use_external_test: bool,
+) -> None:
+    """Validate --test-val-ratio against --use-test-h5."""
+    if args.test_val_ratio is not None and not use_external_test:
+        raise ValueError("--test-val-ratio 须与 --use-test-h5 同时使用")
+    if args.test_val_ratio is not None and not (0.0 < float(args.test_val_ratio) < 1.0):
+        raise ValueError(
+            f"--test-val-ratio 须满足 0 < ratio < 1，收到 {args.test_val_ratio}"
+        )
+
+
 def main() -> None:
     args = _build_arg_parser().parse_args()
     set_random_seed(args.seed)
@@ -1084,18 +1278,31 @@ def main() -> None:
     if args.corner_weight <= 0.0:
         raise ValueError(f"--corner-weight 须 > 0，收到 {args.corner_weight}")
     if args.aux_range and args.aux_range_weight < 0.0:
-        raise ValueError(
-            f"--aux-range-weight 须 >= 0，收到 {args.aux_range_weight}"
-        )
+        raise ValueError(f"--aux-range-weight 须 >= 0，收到 {args.aux_range_weight}")
     if args.geom_residual and args.fusion_mode != "late":
         raise ValueError("--geom-residual 仅支持 --fusion-mode late")
-    if args.stopgrad_geom and not args.geom_residual:
-        raise ValueError("--stopgrad-geom 须与 --geom-residual 同时使用")
+    if args.geom_only and args.fusion_mode != "late":
+        raise ValueError("--geom-only 仅支持 --fusion-mode late")
+    if args.geom_residual and args.geom_only:
+        raise ValueError("--geom-residual 与 --geom-only 互斥")
+    if args.stopgrad_geom and not (args.geom_residual or args.geom_only):
+        raise ValueError("--stopgrad-geom 须与 --geom-residual 或 --geom-only 同时使用")
+    if args.cross_attn and args.geom_only:
+        raise ValueError("--geom-only 不支持 --cross-attn")
     if args.cross_attn and args.fusion_mode != "late":
         raise ValueError("--cross-attn 仅支持 --fusion-mode late")
     if args.cross_attn and args.cross_attn_heads < 1:
+        raise ValueError(f"--cross-attn-heads 须 >= 1，收到 {args.cross_attn_heads}")
+    if args.model_type == "transformer":
+        if args.feature_mode == "range_slowtime_2d":
+            raise ValueError("--model-type transformer 不支持 range_slowtime_2d")
+        if args.geom_residual or args.geom_only or args.cross_attn or args.aux_range:
+            raise ValueError(
+                "--model-type transformer 不支持 geom/cross-attn/aux-range"
+            )
+    if args.trim_best_rmse and not (0.0 < float(args.trim_best_frac) <= 1.0):
         raise ValueError(
-            f"--cross-attn-heads 须 >= 1，收到 {args.cross_attn_heads}"
+            f"--trim-best-frac 须满足 0 < frac <= 1，收到 {args.trim_best_frac}"
         )
     if args.filter_outliers:
         if args.xy_max_m <= 0.0:
@@ -1114,12 +1321,19 @@ def main() -> None:
         raise ValueError("--finetune 与 --use-test-h5 不能同时使用")
     if args.extra_train_h5_path is not None and use_external_test:
         raise ValueError("--extra-train-h5-path 与 --use-test-h5 不能同时使用")
+    _validate_test_val_ratio_args(args, use_external_test=use_external_test)
 
     test_h5_path = resolved_test_h5 if use_external_test else None
     if test_h5_path is not None and not test_h5_path.is_file():
         raise FileNotFoundError(f"测试 HDF5 不存在: {test_h5_path}")
 
     feature_mode = args.feature_mode
+    feature_norm = str(args.feature_norm)
+    if feature_norm != "none" and feature_mode != "real_imag":
+        raise ValueError(
+            f"--feature-norm={feature_norm!r} 仅支持 --feature-mode real_imag，"
+            f"收到 {feature_mode!r}"
+        )
     range_roi = _parse_range_roi(list(args.range_roi))
     proc_params = grc_cooperative_processing_params()
     device = torch.device(
@@ -1129,15 +1343,32 @@ def main() -> None:
     paths.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     raw_h5_path = h5_path
-    h5_path = resolve_cooperative_features_h5(
-        raw_h5_path,
-        range_roi=range_roi,
-        feature_mode=feature_mode,
-        features_h5=args.features_h5,
-        require=bool(args.require_features_h5),
-    )
-    if h5_path != raw_h5_path.resolve():
-        print(f"Using features sidecar for train: {h5_path}", flush=True)
+    force_raw = bool(args.force_raw_cpi) or bool(args.cpi_aug)
+    if args.cpi_aug and args.features_h5 is not None:
+        raise ValueError(
+            "--cpi-aug 与 --features-h5 不能同时使用（CPI 增强需 raw 路径）"
+        )
+    if force_raw:
+        if not raw_h5_path.is_file():
+            raise FileNotFoundError(raw_h5_path)
+        if is_cooperative_monostatic_features_h5(raw_h5_path):
+            raise ValueError(
+                f"--force-raw-cpi/--cpi-aug 需要 raw CPI HDF5，收到 features sidecar: "
+                f"{raw_h5_path}"
+            )
+        h5_path = raw_h5_path.resolve()
+        reason = "--cpi-aug" if args.cpi_aug else "--force-raw-cpi"
+        print(f"Forcing raw CPI online path ({reason}): {h5_path}", flush=True)
+    else:
+        h5_path = resolve_cooperative_features_h5(
+            raw_h5_path,
+            range_roi=range_roi,
+            feature_mode=feature_mode,
+            features_h5=args.features_h5,
+            require=bool(args.require_features_h5),
+        )
+        if h5_path != raw_h5_path.resolve():
+            print(f"Using features sidecar for train: {h5_path}", flush=True)
 
     post_eval_features: Path | None = None
     try:
@@ -1185,7 +1416,27 @@ def main() -> None:
             test_targets = np.asarray(
                 f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
             )
-        eval_idx = np.arange(n_test_frames, dtype=np.int64)
+        if args.test_val_ratio is not None:
+            _, eval_idx, test_split_info = session_train_val_split_by_region(
+                test_sessions,
+                test_targets,
+                float(args.test_val_ratio),
+                seed=args.seed,
+            )
+            print(
+                f"External val subset: test-h5 region-stratified "
+                f"ratio={float(args.test_val_ratio):.2f} "
+                f"({len(eval_idx)}/{n_test_frames} frames); "
+                f"holdout not used for training",
+                flush=True,
+            )
+            _print_region_split_summary(
+                test_split_info,
+                val_ratio=float(args.test_val_ratio),
+                seed=args.seed,
+            )
+        else:
+            eval_idx = np.arange(n_test_frames, dtype=np.int64)
         eval_h5_path = test_h5_path
         eval_label = "Test"
     else:
@@ -1249,9 +1500,37 @@ def main() -> None:
                 require_nonempty_train=True,
             )
 
+    train_idx = maybe_exclude_subregion_corner_frames(
+        train_idx,
+        target_position,
+        enabled=bool(args.exclude_subregion_corners),
+        label="train",
+    )
+    if eval_idx is not None:
+        eval_idx = maybe_exclude_subregion_corner_frames(
+            eval_idx,
+            target_position,
+            enabled=bool(args.exclude_subregion_corners),
+            label="eval",
+        )
+    if train_idx.size == 0:
+        raise ValueError("exclude-subregion-corners 后训练集为空")
+
     label_jitter_m = 0.0 if args.no_label_jitter else float(args.label_jitter_m)
     if label_jitter_m < 0.0:
         raise ValueError(f"--label-jitter-m 须 >= 0，收到 {label_jitter_m}")
+    cpi_amp_scale = float(args.cpi_amp_scale)
+    cpi_complex_noise_std = float(args.cpi_complex_noise_std)
+    if cpi_amp_scale < 0.0:
+        raise ValueError(f"--cpi-amp-scale 须 >= 0，收到 {cpi_amp_scale}")
+    if cpi_complex_noise_std < 0.0:
+        raise ValueError(
+            f"--cpi-complex-noise-std 须 >= 0，收到 {cpi_complex_noise_std}"
+        )
+    if args.cpi_aug and cpi_amp_scale <= 0.0 and cpi_complex_noise_std <= 0.0:
+        raise ValueError(
+            "--cpi-aug 已开启，但 --cpi-amp-scale 与 --cpi-complex-noise-std 均为 0"
+        )
 
     norm_means, norm_stds, norm_stats_path = _resolve_norm_stats(
         feature_mode=feature_mode,
@@ -1271,11 +1550,15 @@ def main() -> None:
             range_roi=range_roi,
             label_jitter_m=label_jitter_m,
             feature_mode=feature_mode,
+            feature_norm=feature_norm,
             norm_means=norm_means,
             norm_stds=norm_stds,
             feature_noise_std=args.feature_noise_std,
             spec_augment_prob=args.spec_augment_prob,
             spec_augment_max_bins=args.spec_augment_max_bins,
+            cpi_aug=bool(args.cpi_aug),
+            cpi_amp_scale=cpi_amp_scale,
+            cpi_complex_noise_std=cpi_complex_noise_std,
             augment=True,
             seed=args.seed,
         )
@@ -1284,13 +1567,20 @@ def main() -> None:
         extra_path = args.extra_train_h5_path.resolve()
         if not extra_path.is_file():
             raise FileNotFoundError(f"extra train HDF5 不存在: {extra_path}")
-        extra_path = resolve_cooperative_features_h5(
-            extra_path,
-            range_roi=range_roi,
-            feature_mode=feature_mode,
-            features_h5=None,
-            require=bool(args.require_features_h5),
-        )
+        if force_raw:
+            if is_cooperative_monostatic_features_h5(extra_path):
+                raise ValueError(
+                    f"--force-raw-cpi/--cpi-aug 需要 raw CPI，extra-train 为 sidecar: "
+                    f"{extra_path}"
+                )
+        else:
+            extra_path = resolve_cooperative_features_h5(
+                extra_path,
+                range_roi=range_roi,
+                feature_mode=feature_mode,
+                features_h5=None,
+                require=bool(args.require_features_h5),
+            )
         with h5py.File(extra_path, "r") as f:
             extra_n = int(f[DATASET_KEY_SESSION_INDEX].shape[0])
             extra_sessions = np.asarray(f[DATASET_KEY_SESSION_INDEX][:], dtype=np.int64)
@@ -1325,6 +1615,14 @@ def main() -> None:
                 require_nonempty_train=True,
                 label="extra-train-h5",
             )
+        extra_train_idx = maybe_exclude_subregion_corner_frames(
+            extra_train_idx,
+            extra_targets,
+            enabled=bool(args.exclude_subregion_corners),
+            label="extra-train",
+        )
+        if extra_train_idx.size == 0:
+            raise ValueError("exclude-subregion-corners 后 extra-train 为空")
         train_datasets.append(
             _make_dataset(
                 extra_path,
@@ -1333,11 +1631,15 @@ def main() -> None:
                 range_roi=range_roi,
                 label_jitter_m=label_jitter_m,
                 feature_mode=feature_mode,
+                feature_norm=feature_norm,
                 norm_means=norm_means,
                 norm_stds=norm_stds,
                 feature_noise_std=args.feature_noise_std,
                 spec_augment_prob=args.spec_augment_prob,
                 spec_augment_max_bins=args.spec_augment_max_bins,
+                cpi_aug=bool(args.cpi_aug),
+                cpi_amp_scale=cpi_amp_scale,
+                cpi_complex_noise_std=cpi_complex_noise_std,
                 augment=True,
                 seed=args.seed + 17,
             )
@@ -1355,11 +1657,15 @@ def main() -> None:
         range_roi=range_roi,
         label_jitter_m=0.0,
         feature_mode=feature_mode,
+        feature_norm=feature_norm,
         norm_means=norm_means,
         norm_stds=norm_stds,
         feature_noise_std=0.0,
         spec_augment_prob=0.0,
         spec_augment_max_bins=args.spec_augment_max_bins,
+        cpi_aug=False,
+        cpi_amp_scale=0.0,
+        cpi_complex_noise_std=0.0,
         augment=False,
         seed=args.seed,
     )
@@ -1391,7 +1697,11 @@ def main() -> None:
     )
 
     in_channels = cooperative_feature_in_channels(feature_mode)  # type: ignore[arg-type]
-    model_type = cooperative_model_type(feature_mode)  # type: ignore[arg-type]
+    feature_backbone = cooperative_model_type(feature_mode)  # type: ignore[arg-type]
+    if args.model_type == "transformer":
+        model_type = "transformer"
+    else:
+        model_type = feature_backbone
     lr = float(
         args.finetune_lr if args.resume is not None and args.finetune_lr else args.lr
     )
@@ -1413,6 +1723,16 @@ def main() -> None:
                 f"resume in_channels={ckpt.get('in_channels')} "
                 f"与当前 feature_mode 需要 {in_channels} 不一致"
             )
+        model_type = str(ckpt.get("model_type", model_type))
+    elif model_type == "transformer":
+        model = CooperativeMonostaticTransformer(
+            in_channels=in_channels,
+            d_model=TRANSFORMER_DEFAULT_D_MODEL,
+            nhead=TRANSFORMER_DEFAULT_NHEAD,
+            num_layers=TRANSFORMER_DEFAULT_NUM_LAYERS,
+            dim_feedforward=TRANSFORMER_DEFAULT_DIM_FF,
+            dropout=args.dropout,
+        ).to(device)
     elif model_type == "2d":
         model = CooperativeMonostatic2DCNN(
             in_channels=in_channels,
@@ -1431,6 +1751,7 @@ def main() -> None:
             fusion_mode=args.fusion_mode,
             aux_range=bool(args.aux_range),
             geom_residual=bool(args.geom_residual),
+            geom_only=bool(args.geom_only),
             stopgrad_geom=bool(args.stopgrad_geom),
             cross_attn=bool(args.cross_attn),
             cross_attn_heads=int(args.cross_attn_heads),
@@ -1454,11 +1775,20 @@ def main() -> None:
         )
 
     if use_external_test:
-        dataset_msg = (
-            f"训练集: {h5_path} ({len(train_dataset)} 帧)\n"
-            f"测试集: {test_h5_path} ({len(eval_dataset)} 帧) | "
-            f"checkpoint 依据 test_loss [legacy mode]"
-        )
+        if args.test_val_ratio is not None:
+            dataset_msg = (
+                f"train=Run1 all | val=external region-stratified "
+                f"ratio={float(args.test_val_ratio):.2f}\n"
+                f"训练集: {h5_path} ({len(train_dataset)} 帧)\n"
+                f"验证集: {test_h5_path} ({len(eval_dataset)} 帧) | "
+                f"checkpoint 依据 test_loss [external val subset]"
+            )
+        else:
+            dataset_msg = (
+                f"训练集: {h5_path} ({len(train_dataset)} 帧)\n"
+                f"测试集: {test_h5_path} ({len(eval_dataset)} 帧) | "
+                f"checkpoint 依据 test_loss [legacy mode]"
+            )
     elif args.finetune:
         dataset_msg = (
             f"Finetune 数据集: {h5_path}\n"
@@ -1476,24 +1806,38 @@ def main() -> None:
 
     print(
         f"{dataset_msg}\n"
-        f"feature_mode={feature_mode}, model_type={model_type}, in_channels={in_channels}\n"
+        f"feature_mode={feature_mode}, feature_norm={feature_norm}, "
+        f"model_type={model_type}, in_channels={in_channels}\n"
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"label_jitter_m={label_jitter_m:.3f} (train only)\n"
         f"weight_decay={args.weight_decay}, "
         f"center_weight={args.center_weight}, side_weight={args.side_weight}, "
         f"corner_weight={args.corner_weight}, "
         f"session_aggregated_loss={args.session_aggregated_loss}, "
-        f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}\n"
-        f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
-        f"dropout={args.dropout}, pool_mode={args.pool_mode}, "
-        f"multiscale_bins={args.multiscale_bins}, fusion_mode={args.fusion_mode}, "
-        f"aux_range={args.aux_range}, aux_range_weight={args.aux_range_weight}, "
-        f"geom_residual={args.geom_residual}, stopgrad_geom={args.stopgrad_geom}, "
-        f"cross_attn={args.cross_attn}, cross_attn_heads={args.cross_attn_heads}, "
-        f"dev0_xy=({args.dev0_xy[0]:g},{args.dev0_xy[1]:g}), "
-        f"dev1_xy=({args.dev1_xy[0]:g},{args.dev1_xy[1]:g}), "
-        f"lr={lr}\n"
-        f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
+        f"trim_best_rmse={args.trim_best_rmse}, "
+        f"trim_best_frac={args.trim_best_frac}, "
+        f"feature_noise_std={args.feature_noise_std}, spec_augment_prob={args.spec_augment_prob}, "
+        f"cpi_aug={args.cpi_aug}, cpi_amp_scale={cpi_amp_scale}, "
+        f"cpi_complex_noise_std={cpi_complex_noise_std}\n"
+        + (
+            f"模型 transformer d_model={model.d_model}, nhead={model.nhead}, "
+            f"num_layers={model.num_layers}, dim_ff={model.dim_feedforward}, "
+            f"dropout={model.dropout}, "
+            if isinstance(model, CooperativeMonostaticTransformer)
+            else (
+                f"模型 base_channels={args.base_channels}, num_layers={args.num_layers}, "
+                f"dropout={args.dropout}, pool_mode={args.pool_mode}, "
+                f"multiscale_bins={args.multiscale_bins}, fusion_mode={args.fusion_mode}, "
+                f"aux_range={args.aux_range}, aux_range_weight={args.aux_range_weight}, "
+                f"geom_residual={args.geom_residual}, geom_only={args.geom_only}, "
+                f"stopgrad_geom={args.stopgrad_geom}, "
+                f"cross_attn={args.cross_attn}, cross_attn_heads={args.cross_attn_heads}, "
+                f"dev0_xy=({args.dev0_xy[0]:g},{args.dev0_xy[1]:g}), "
+                f"dev1_xy=({args.dev1_xy[0]:g},{args.dev1_xy[1]:g}), "
+            )
+        )
+        + f"lr={lr}\n"
+        + f"检查点: {paths.best_model} | 曲线: {paths.training_curve} | device={device}"
     )
     if norm_stats_path is not None:
         print(f"Norm stats: {norm_stats_path}")
@@ -1530,6 +1874,8 @@ def main() -> None:
             side_weight=args.side_weight,
             corner_weight=args.corner_weight,
             session_aggregated_loss=args.session_aggregated_loss,
+            trim_best_rmse=bool(args.trim_best_rmse),
+            trim_best_frac=float(args.trim_best_frac),
             aux_range_weight=float(args.aux_range_weight) if args.aux_range else 0.0,
             dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),
             dev1_xy=(float(args.dev1_xy[0]), float(args.dev1_xy[1])),
@@ -1543,6 +1889,8 @@ def main() -> None:
             side_weight=args.side_weight,
             corner_weight=args.corner_weight,
             session_aggregated_loss=args.session_aggregated_loss,
+            trim_best_rmse=bool(args.trim_best_rmse),
+            trim_best_frac=float(args.trim_best_frac),
             aux_range_weight=float(args.aux_range_weight) if args.aux_range else 0.0,
             dev0_xy=(float(args.dev0_xy[0]), float(args.dev0_xy[1])),
             dev1_xy=(float(args.dev1_xy[0]), float(args.dev1_xy[1])),
@@ -1571,6 +1919,7 @@ def main() -> None:
                     model,
                     in_channels=in_channels,
                     feature_mode=feature_mode,
+                    feature_norm=feature_norm,
                     model_type=model_type,
                     norm_stats_path=norm_stats_rel,
                 ),

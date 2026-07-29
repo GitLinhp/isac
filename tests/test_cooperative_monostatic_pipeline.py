@@ -17,9 +17,12 @@ from isac_imp.cooperative_monostatic_pipeline import (
     compute_1d_cfar_threshold,
     default_range_cfar_detector,
     divide_cpi_to_complex_range_profile,
+    divide_cpi_to_roi_range_profile,
+    esprit_range_from_divide_cpi,
     estimate_monostatic_range_esprit_m,
     estimate_monostatic_range_m,
     grc_cooperative_processing_params,
+    music_range_from_divide_cpi,
 )
 
 
@@ -116,3 +119,135 @@ def test_estimate_monostatic_range_with_and_without_cfar() -> None:
 
     assert np.isfinite(r_plain) or np.isnan(r_plain)
     assert np.isfinite(r_cfar) or np.isnan(r_cfar)
+
+
+def test_estimate_monostatic_range_esprit_with_and_without_cfar() -> None:
+    vlen_range = DEFAULT_FFT_LEN * DEFAULT_ZEROPADDING_FAC
+    vlen_divide = vlen_range * DEFAULT_TRANSPOSE_LEN
+    rng = np.random.default_rng(2)
+    cpi = rng.normal(size=vlen_divide) + 1j * rng.normal(size=vlen_divide)
+    cpi = cpi.astype(np.complex64)
+    profile = divide_cpi_to_complex_range_profile(cpi)
+    params = grc_cooperative_processing_params()
+    cfar_detector = default_range_cfar_detector()
+
+    r_plain = estimate_monostatic_range_esprit_m(
+        profile,
+        range_bin_step=params["range_bin_step"],
+        range_roi=params["range_roi"],
+    )
+    r_cfar = estimate_monostatic_range_esprit_m(
+        profile,
+        range_bin_step=params["range_bin_step"],
+        range_roi=params["range_roi"],
+        cfar_detector=cfar_detector,
+    )
+
+    assert np.isfinite(r_plain) or np.isnan(r_plain)
+    assert np.isfinite(r_cfar) or np.isnan(r_cfar)
+
+
+def test_divide_cpi_to_roi_range_profile_shape_and_length() -> None:
+    params = grc_cooperative_processing_params()
+    vlen_divide = int(params["vlen_divide_cpi"])
+    vlen_range = int(params["vlen_range"])
+    cpi = np.ones(vlen_divide, dtype=np.complex64)
+    roi = divide_cpi_to_roi_range_profile(
+        cpi,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=params["range_roi"],
+        fft_len=int(params["fft_len"]),
+        zeropadding_fac=int(params["zeropadding_fac"]),
+        transpose_len=int(params["transpose_len"]),
+    )
+    assert roi.dtype == np.complex64
+    assert roi.ndim == 1
+    assert 0 < roi.size < vlen_range
+    assert roi.size >= int(params["music_subarray_size"]) + 1
+    assert roi.size >= int(params["esprit_subarray_size"]) + 1
+
+
+def test_full_spectrum_vs_roi_spectrum_music_esprit_equivalent() -> None:
+    """全谱路径与 ROI 预裁切路径在 range_roi[0]==0 时应给出相同距离估计。"""
+    params = grc_cooperative_processing_params()
+    range_roi = params["range_roi"]
+    assert float(range_roi[0]) == 0.0
+
+    vlen_divide = int(params["vlen_divide_cpi"])
+    rng = np.random.default_rng(42)
+    cpi = (
+        rng.normal(size=vlen_divide) + 1j * rng.normal(size=vlen_divide)
+    ).astype(np.complex64)
+
+    profile_full = divide_cpi_to_complex_range_profile(
+        cpi,
+        fft_len=int(params["fft_len"]),
+        zeropadding_fac=int(params["zeropadding_fac"]),
+        transpose_len=int(params["transpose_len"]),
+    )
+    profile_roi = divide_cpi_to_roi_range_profile(
+        cpi,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=range_roi,
+        fft_len=int(params["fft_len"]),
+        zeropadding_fac=int(params["zeropadding_fac"]),
+        transpose_len=int(params["transpose_len"]),
+    )
+    assert np.allclose(profile_roi, profile_full[: profile_roi.size])
+
+    r_music_full = estimate_monostatic_range_m(
+        profile_full,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=range_roi,
+        num_sources=int(params["music_num_sources"]),
+        subarray_size=int(params["music_subarray_size"]),
+        threshold=float(params["music_threshold"]),
+    )
+    r_music_roi = estimate_monostatic_range_m(
+        profile_roi,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=range_roi,
+        num_sources=int(params["music_num_sources"]),
+        subarray_size=int(params["music_subarray_size"]),
+        threshold=float(params["music_threshold"]),
+    )
+    r_esprit_full = estimate_monostatic_range_esprit_m(
+        profile_full,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=range_roi,
+        num_sources=int(params["esprit_num_sources"]),
+        subarray_size=int(params["esprit_subarray_size"]),
+        window_size=int(params["esprit_window_size"]),
+    )
+    r_esprit_roi = estimate_monostatic_range_esprit_m(
+        profile_roi,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=range_roi,
+        num_sources=int(params["esprit_num_sources"]),
+        subarray_size=int(params["esprit_subarray_size"]),
+        window_size=int(params["esprit_window_size"]),
+    )
+
+    if np.isnan(r_music_full):
+        assert np.isnan(r_music_roi)
+    else:
+        assert r_music_roi == pytest.approx(r_music_full, rel=0, abs=1e-6)
+    if np.isnan(r_esprit_full):
+        assert np.isnan(r_esprit_roi)
+    else:
+        assert r_esprit_roi == pytest.approx(r_esprit_full, rel=0, abs=1e-6)
+
+    r_music_entry = music_range_from_divide_cpi(
+        cpi, proc_params=params, range_roi=range_roi
+    )
+    r_esprit_entry = esprit_range_from_divide_cpi(
+        cpi, proc_params=params, range_roi=range_roi
+    )
+    if np.isnan(r_music_roi):
+        assert np.isnan(r_music_entry)
+    else:
+        assert r_music_entry == pytest.approx(r_music_roi, rel=0, abs=1e-6)
+    if np.isnan(r_esprit_roi):
+        assert np.isnan(r_esprit_entry)
+    else:
+        assert r_esprit_entry == pytest.approx(r_esprit_roi, rel=0, abs=1e-6)

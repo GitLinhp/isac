@@ -1,0 +1,122 @@
+Run2 split seed=42 frac=0.1: aug_sessions=22 holdout_sessions=195
+
+>>> /opt/miniconda3/bin/python /home/lhp/projects/isac/script/model_training/run_train_cooperative_monostatic_region_cnn.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset.h5 --extra-h5 /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --extra-session-list /home/lhp/projects/isac/models/region_run2_10pct/split/run2_aug_sessions.txt --resume-checkpoint /home/lhp/projects/isac/models/region_run2_zeroshot/region/aug_neighbor/best_model.pth --output-dir /home/lhp/projects/isac/models/region_run2_10pct/r1_plus_run2_10 --epochs 50 --early-stop-patience 10 --lr 1e-5 --batch-size 128 --dropout 0.1 --base-channels 64 --num-layers 3 --pool-mode attention --neighbor-smooth 0.2 --spec-augment-prob 0.5 --feature-noise-std 0.0 --device cuda:0 --num-workers 4
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic_measurement0/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Subregion split: 16/16 cells nonempty; train=8650 val=2200
+Using extra features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Extra train: h5=/home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5 sessions=22 frames=1091 holdout_sessions=195 (val 仍仅为主 H5)
+Resumed Region weights from /home/lhp/projects/isac/models/region_run2_zeroshot/region/aug_neighbor/best_model.pth
+Region CNN | classes=16 | device=cuda:0 | topk_ce=False k=3 select=acc | neighbor_smooth=0.2 label_smoothing=0.0 mixup_alpha=0.0 noise=0.0 spec_aug=0.5 wd=0.01 | checkpoint=/home/lhp/projects/isac/models/region_run2_10pct/r1_plus_run2_10/best_model.pth
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   1%|▏         | 1/77 [00:00<00:27,  2.74it/s]train:  18%|█▊        | 14/77 [00:00<00:01, 38.26it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 65.84it/s]train:  55%|█████▍    | 42/77 [00:00<00:00, 86.13it/s]train:  71%|███████▏  | 55/77 [00:00<00:00, 98.70it/s]train:  88%|████████▊ | 68/77 [00:00<00:00, 107.69it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 39.22it/s]                                                   Epoch 001 | train loss=0.8884 acc=0.9397 top3=0.9754 | val loss=1.6705 acc=0.6777 top3=0.8905
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 19.61it/s]train:  21%|██        | 16/77 [00:00<00:00, 88.07it/s]train:  39%|███▉      | 30/77 [00:00<00:00, 107.79it/s]train:  57%|█████▋    | 44/77 [00:00<00:00, 118.58it/s]train:  75%|███████▌  | 58/77 [00:00<00:00, 123.97it/s]train:  94%|█████████▎| 72/77 [00:00<00:00, 127.68it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 39.85it/s]                                                   Epoch 002 | train loss=0.8275 acc=0.9734 top3=0.9912 | val loss=1.6274 acc=0.6727 top3=0.8977
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 19.65it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 82.66it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 102.53it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 111.76it/s]train:  70%|███████   | 54/77 [00:00<00:00, 117.09it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 120.30it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 39.93it/s]                                                   Epoch 003 | train loss=0.8033 acc=0.9894 top3=0.9980 | val loss=1.6056 acc=0.6573 top3=0.8977
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 18.98it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 81.56it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 102.46it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 111.42it/s]train:  70%|███████   | 54/77 [00:00<00:00, 116.72it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 120.01it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  33%|███▎      | 6/18 [00:00<00:00, 53.82it/s]                                                   Epoch 004 | train loss=0.7930 acc=0.9932 top3=0.9993 | val loss=1.5465 acc=0.6664 top3=0.8995
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 19.30it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 81.92it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 102.34it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 111.86it/s]train:  70%|███████   | 54/77 [00:00<00:00, 117.42it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 120.61it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  28%|██▊       | 5/18 [00:00<00:00, 48.01it/s]                                                   Epoch 005 | train loss=0.7858 acc=0.9961 top3=0.9994 | val loss=1.5982 acc=0.6636 top3=0.8945
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   4%|▍         | 3/77 [00:00<00:02, 28.90it/s]train:  21%|██        | 16/77 [00:00<00:00, 86.35it/s]train:  38%|███▊      | 29/77 [00:00<00:00, 104.11it/s]train:  55%|█████▍    | 42/77 [00:00<00:00, 113.20it/s]train:  71%|███████▏  | 55/77 [00:00<00:00, 118.32it/s]train:  88%|████████▊ | 68/77 [00:00<00:00, 121.44it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 38.43it/s]                                                   Epoch 006 | train loss=0.7829 acc=0.9962 top3=0.9998 | val loss=1.5795 acc=0.6564 top3=0.8982
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 19.46it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 81.56it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 101.66it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 111.68it/s]train:  70%|███████   | 54/77 [00:00<00:00, 117.15it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 120.10it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  17%|█▋        | 3/18 [00:00<00:00, 29.58it/s]                                                   Epoch 007 | train loss=0.7789 acc=0.9973 top3=0.9993 | val loss=1.6022 acc=0.6632 top3=0.8950
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:04, 18.50it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 80.14it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 101.51it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 111.95it/s]train:  70%|███████   | 54/77 [00:00<00:00, 116.96it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 120.69it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 38.73it/s]                                                   Epoch 008 | train loss=0.7774 acc=0.9976 top3=0.9996 | val loss=1.5743 acc=0.6605 top3=0.8986
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 19.26it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 80.66it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 101.77it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 111.65it/s]train:  70%|███████   | 54/77 [00:00<00:00, 117.11it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 120.50it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 39.84it/s]                                                   Epoch 009 | train loss=0.7751 acc=0.9977 top3=0.9997 | val loss=1.5845 acc=0.6523 top3=0.9005
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:03, 18.98it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 81.70it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 102.73it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 112.70it/s]train:  70%|███████   | 54/77 [00:00<00:00, 118.62it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 121.36it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 38.79it/s]                                                   Epoch 010 | train loss=0.7741 acc=0.9982 top3=0.9997 | val loss=1.5845 acc=0.6468 top3=0.9055
+train:   0%|          | 0/77 [00:00<?, ?it/s]train:   3%|▎         | 2/77 [00:00<00:04, 18.28it/s]train:  19%|█▉        | 15/77 [00:00<00:00, 79.01it/s]train:  36%|███▋      | 28/77 [00:00<00:00, 100.37it/s]train:  53%|█████▎    | 41/77 [00:00<00:00, 110.27it/s]train:  70%|███████   | 54/77 [00:00<00:00, 116.06it/s]train:  87%|████████▋ | 67/77 [00:00<00:00, 119.58it/s]                                                       val:   0%|          | 0/18 [00:00<?, ?it/s]val:  22%|██▏       | 4/18 [00:00<00:00, 38.69it/s]                                                   Epoch 011 | train loss=0.7728 acc=0.9986 top3=0.9998 | val loss=1.5744 acc=0.6523 top3=0.9009
+Early stop at epoch 11 (best=1)
+|--------------------------|---------------------------------------------------------------------------------------|
+| Best epoch (select)      | 1                                                                                     |
+| Select metric            | acc                                                                                   |
+| Best val select          | 0.6777                                                                                |
+| Best val top-1           | 0.6777                                                                                |
+| Best val top-3 hit       | 0.8905                                                                                |
+| Best topk-hit epoch      | 10                                                                                    |
+| Best topk-hit            | 0.9055                                                                                |
+| Checkpoint               | /home/lhp/projects/isac/models/region_run2_10pct/r1_plus_run2_10/best_model.pth       |
+| Checkpoint (by topk hit) | /home/lhp/projects/isac/models/region_run2_10pct/r1_plus_run2_10/best_by_topk_hit.pth |
+
+>>> /opt/miniconda3/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_two_stage_eval.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --region-checkpoint /home/lhp/projects/isac/models/region_run2_zeroshot/region/aug_neighbor/best_model.pth --fine-checkpoint /home/lhp/projects/isac/models/two_stage_tune/fine/fine_lr1e4/best_model.pth --output-dir /home/lhp/projects/isac/models/region_run2_10pct/eval/r1_only_aug_neighbor --session-list /home/lhp/projects/isac/models/region_run2_10pct/split/run2_holdout_sessions.txt --region-topk 3 --batch-size 128 --device cuda:0 --no-plot
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Region ckpt: /home/lhp/projects/isac/models/region_run2_zeroshot/region/aug_neighbor/best_model.pth
+Fine ckpt: /home/lhp/projects/isac/models/two_stage_tune/fine/fine_lr1e4/best_model.pth
+Frames: 9661 | ROI 0.0–4.0 m | feature_mode=real_imag | region_topk=3 | device=cuda:0
+Two-stage eval:   0%|          | 0/76 [00:00<?, ?batch/s]Two-stage eval:   1%|▏         | 1/76 [00:00<00:16,  4.53batch/s]Two-stage eval:   8%|▊         | 6/76 [00:00<00:03, 22.02batch/s]Two-stage eval:  14%|█▍        | 11/76 [00:00<00:02, 31.55batch/s]Two-stage eval:  21%|██        | 16/76 [00:00<00:01, 37.26batch/s]Two-stage eval:  28%|██▊       | 21/76 [00:00<00:01, 40.90batch/s]Two-stage eval:  34%|███▍      | 26/76 [00:00<00:01, 43.25batch/s]Two-stage eval:  41%|████      | 31/76 [00:00<00:01, 44.86batch/s]Two-stage eval:  47%|████▋     | 36/76 [00:00<00:00, 45.93batch/s]Two-stage eval:  54%|█████▍    | 41/76 [00:01<00:00, 46.63batch/s]Two-stage eval:  61%|██████    | 46/76 [00:01<00:00, 47.12batch/s]Two-stage eval:  67%|██████▋   | 51/76 [00:01<00:00, 47.46batch/s]Two-stage eval:  74%|███████▎  | 56/76 [00:01<00:00, 46.92batch/s]Two-stage eval:  80%|████████  | 61/76 [00:01<00:00, 47.27batch/s]Two-stage eval:  87%|████████▋ | 66/76 [00:01<00:00, 47.54batch/s]Two-stage eval:  93%|█████████▎| 71/76 [00:01<00:00, 47.75batch/s]Two-stage eval: 100%|██████████| 76/76 [00:01<00:00, 47.71batch/s]Two-stage eval: 100%|██████████| 76/76 [00:01<00:00, 42.62batch/s]
+output csv: /home/lhp/projects/isac/models/region_run2_10pct/eval/r1_only_aug_neighbor/two_stage_rmse.csv
+| Metric                    |     Value |
+|---------------------------|-----------|
+| N                         | 9661      |
+| region_topk               |    3      |
+| Region top-1 acc          |    0.2651 |
+| Region top-3 hit          |    0.5557 |
+| Global RMSE (topk fusion) |    0.6165 |
+| Global RMSE (hard top-1)  |    0.6595 |
+| Global RMSE median (topk) |    0.4581 |
+| Global RMSE p90 (topk)    |    1.3694 |
+| Oracle-region RMSE mean   |    0.2013 |
+| RMSE when top-1 correct   |    0.2267 |
+| RMSE when top-1 wrong     |    0.7571 |
+
+Per-class top-1 accuracy (nonempty):
+|   subregion_id |    n |   correct |   acc |
+|----------------|------|-----------|-------|
+|              0 |  450 |         0 | 0     |
+|              1 |  248 |         0 | 0     |
+|              2 |  397 |       176 | 0.443 |
+|              3 |  445 |         0 | 0     |
+|              4 |  298 |        34 | 0.114 |
+|              5 | 1136 |       640 | 0.563 |
+|              6 | 1086 |       363 | 0.334 |
+|              7 |  493 |         0 | 0     |
+|              8 |  346 |        53 | 0.153 |
+|              9 | 1093 |       355 | 0.325 |
+|             10 | 1089 |       493 | 0.453 |
+|             11 |  694 |       172 | 0.248 |
+|             12 |  346 |         0 | 0     |
+|             13 |  547 |       124 | 0.227 |
+|             14 |  546 |       151 | 0.277 |
+|             15 |  447 |         0 | 0     |
+output confusion: /home/lhp/projects/isac/models/region_run2_10pct/eval/r1_only_aug_neighbor/region_confusion.npy
+
+>>> /opt/miniconda3/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_two_stage_eval.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --region-checkpoint /home/lhp/projects/isac/models/region_run2_10pct/r1_plus_run2_10/best_model.pth --fine-checkpoint /home/lhp/projects/isac/models/two_stage_tune/fine/fine_lr1e4/best_model.pth --output-dir /home/lhp/projects/isac/models/region_run2_10pct/eval/r1_plus_run2_10 --session-list /home/lhp/projects/isac/models/region_run2_10pct/split/run2_holdout_sessions.txt --region-topk 3 --batch-size 128 --device cuda:0 --no-plot
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Region ckpt: /home/lhp/projects/isac/models/region_run2_10pct/r1_plus_run2_10/best_model.pth
+Fine ckpt: /home/lhp/projects/isac/models/two_stage_tune/fine/fine_lr1e4/best_model.pth
+Frames: 9661 | ROI 0.0–4.0 m | feature_mode=real_imag | region_topk=3 | device=cuda:0
+Two-stage eval:   0%|          | 0/76 [00:00<?, ?batch/s]Two-stage eval:   1%|▏         | 1/76 [00:00<00:16,  4.50batch/s]Two-stage eval:   8%|▊         | 6/76 [00:00<00:03, 21.86batch/s]Two-stage eval:  14%|█▍        | 11/76 [00:00<00:02, 31.34batch/s]Two-stage eval:  21%|██        | 16/76 [00:00<00:01, 36.96batch/s]Two-stage eval:  28%|██▊       | 21/76 [00:00<00:01, 40.55batch/s]Two-stage eval:  34%|███▍      | 26/76 [00:00<00:01, 42.85batch/s]Two-stage eval:  41%|████      | 31/76 [00:00<00:01, 44.42batch/s]Two-stage eval:  47%|████▋     | 36/76 [00:00<00:00, 45.44batch/s]Two-stage eval:  54%|█████▍    | 41/76 [00:01<00:00, 46.18batch/s]Two-stage eval:  61%|██████    | 46/76 [00:01<00:00, 46.69batch/s]Two-stage eval:  67%|██████▋   | 51/76 [00:01<00:00, 47.05batch/s]Two-stage eval:  74%|███████▎  | 56/76 [00:01<00:00, 47.28batch/s]Two-stage eval:  80%|████████  | 61/76 [00:01<00:00, 47.13batch/s]Two-stage eval:  87%|████████▋ | 66/76 [00:01<00:00, 47.42batch/s]Two-stage eval:  93%|█████████▎| 71/76 [00:01<00:00, 47.59batch/s]Two-stage eval: 100%|██████████| 76/76 [00:01<00:00, 47.51batch/s]Two-stage eval: 100%|██████████| 76/76 [00:01<00:00, 42.38batch/s]
+output csv: /home/lhp/projects/isac/models/region_run2_10pct/eval/r1_plus_run2_10/two_stage_rmse.csv
+| Metric                    |     Value |
+|---------------------------|-----------|
+| N                         | 9661      |
+| region_topk               |    3      |
+| Region top-1 acc          |    0.2597 |
+| Region top-3 hit          |    0.554  |
+| Global RMSE (topk fusion) |    0.6268 |
+| Global RMSE (hard top-1)  |    0.6995 |
+| Global RMSE median (topk) |    0.4175 |
+| Global RMSE p90 (topk)    |    1.4924 |
+| Oracle-region RMSE mean   |    0.2013 |
+| RMSE when top-1 correct   |    0.2174 |
+| RMSE when top-1 wrong     |    0.7704 |
+
+Per-class top-1 accuracy (nonempty):
+|   subregion_id |    n |   correct |   acc |
+|----------------|------|-----------|-------|
+|              0 |  450 |         0 | 0     |
+|              1 |  248 |         7 | 0.028 |
+|              2 |  397 |       280 | 0.705 |
+|              3 |  445 |         0 | 0     |
+|              4 |  298 |        21 | 0.07  |
+|              5 | 1136 |       346 | 0.305 |
+|              6 | 1086 |       514 | 0.473 |
+|              7 |  493 |        67 | 0.136 |
+|              8 |  346 |        78 | 0.225 |
+|              9 | 1093 |       227 | 0.208 |
+|             10 | 1089 |       465 | 0.427 |
+|             11 |  694 |       181 | 0.261 |
+|             12 |  346 |         9 | 0.026 |
+|             13 |  547 |       107 | 0.196 |
+|             14 |  546 |       203 | 0.372 |
+|             15 |  447 |         4 | 0.009 |
+output confusion: /home/lhp/projects/isac/models/region_run2_10pct/eval/r1_plus_run2_10/region_confusion.npy
+
+Wrote summary: /home/lhp/projects/isac/out/cooperative_monostatic/region_run2_10pct_summary.csv
+
+Holdout compare: baseline top1=0.2651 top3=0.5557 rmse=0.6165
+Finetune: top1=0.2597 (-2.0% vs baseline) top3=0.5540 rmse=0.6268

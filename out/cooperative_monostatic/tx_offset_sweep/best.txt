@@ -1,0 +1,16 @@
+best_offset_dev0_cm=0.0
+best_offset_dev1_cm=0.0
+best_offset_dev0_m=0.0
+best_offset_dev1_m=0.0
+dev0_range_mae_m=0.5289055341538941
+dev1_range_mae_m=0.7516766277168085
+dev0_range_rmse_m=0.8441049591686379
+dev1_range_rmse_m=0.8780893150659959
+loc_global_rmse_m=1.2550643690881382
+loc_inner_rmse_m=0.927254469715372
+loc_outer_rmse_m=1.670467487955732
+loc_n_valid=10343
+geometry_dev0_tx=(0.0, -2.0)
+geometry_dev0_rx=(-0.0, -2.0)
+geometry_dev1_tx=(-2.0, 0.0)
+geometry_dev1_rx=(-2.0, -0.0)

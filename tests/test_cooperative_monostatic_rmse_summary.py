@@ -58,7 +58,7 @@ def test_print_summary_inner_outer(capsys, eval_mod) -> None:
     eval_mod._print_summary(rows)
     out = capsys.readouterr().out
 
-    assert "MUSIC localization RMSE summary" in out
+    assert "MUSIC localization mean error summary" in out
     assert "global" in out
     assert "inner (|x|,|y| <= 0.5 m)" in out
     assert "outer" in out

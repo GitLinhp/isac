@@ -194,6 +194,165 @@ def target_zone_name_xy_m(
     raise RuntimeError(f"未映射的九宫格区域: {name!r}")
 
 
+# ---------------------------------------------------------------------------
+# 0.5 m 间隔 4×4=16 子区域（两阶段定位专用；与上方九宫格并存）
+# ---------------------------------------------------------------------------
+SUBREGION_CELL_SIZE_M = 0.5
+SUBREGION_GRID_MIN_M = -1.0
+SUBREGION_GRID_MAX_M = 1.0
+SUBREGION_GRID_N = 4
+SUBREGION_COUNT = SUBREGION_GRID_N * SUBREGION_GRID_N  # 16
+# 4×4 四角格：左下 / 右下 / 左上 / 右上（行优先 id = y_idx * N + x_idx）
+SUBREGION_CORNER_IDS: frozenset[int] = frozenset({0, 3, 12, 15})
+
+
+def _subregion_axis_index(
+    coord_m: float,
+    *,
+    grid_min_m: float = SUBREGION_GRID_MIN_M,
+    grid_max_m: float = SUBREGION_GRID_MAX_M,
+    cell_size_m: float = SUBREGION_CELL_SIZE_M,
+    grid_n: int = SUBREGION_GRID_N,
+) -> int:
+    """单轴坐标 → 子区域轴索引 0..grid_n-1（左闭右开，上边界 clip 到最后一格）。"""
+    if cell_size_m <= 0.0:
+        raise ValueError(f"cell_size_m 须 > 0，收到 {cell_size_m}")
+    if grid_n < 1:
+        raise ValueError(f"grid_n 须 >= 1，收到 {grid_n}")
+    _ = grid_max_m
+    # +eps 抵消浮点误差，保持左闭右开语义
+    rel = (float(coord_m) - float(grid_min_m)) / float(cell_size_m)
+    idx = int(rel + 1e-12)
+    if idx < 0:
+        return 0
+    if idx >= grid_n:
+        return grid_n - 1
+    return idx
+
+
+def target_subregion_index_xy_m(
+    x_m: float,
+    y_m: float,
+    *,
+    grid_min_m: float = SUBREGION_GRID_MIN_M,
+    grid_max_m: float = SUBREGION_GRID_MAX_M,
+    cell_size_m: float = SUBREGION_CELL_SIZE_M,
+    grid_n: int = SUBREGION_GRID_N,
+) -> int:
+    """目标 (x, y) 所属 4×4 子区域索引 0..15（行优先：``id = y_idx * N + x_idx``）。
+
+    默认场地 ``[grid_min_m, grid_max_m]``、间隔 ``cell_size_m``；每轴左闭右开，
+    上边界 ``grid_max_m`` 归入最后一格。
+    """
+    _ = grid_max_m  # 保留参数以与中心/局部坐标 API 对齐
+    x_idx = _subregion_axis_index(
+        x_m,
+        grid_min_m=grid_min_m,
+        grid_max_m=grid_max_m,
+        cell_size_m=cell_size_m,
+        grid_n=grid_n,
+    )
+    y_idx = _subregion_axis_index(
+        y_m,
+        grid_min_m=grid_min_m,
+        grid_max_m=grid_max_m,
+        cell_size_m=cell_size_m,
+        grid_n=grid_n,
+    )
+    return int(y_idx * grid_n + x_idx)
+
+
+def is_subregion_corner_xy_m(
+    x_m: float,
+    y_m: float,
+    *,
+    grid_min_m: float = SUBREGION_GRID_MIN_M,
+    grid_max_m: float = SUBREGION_GRID_MAX_M,
+    cell_size_m: float = SUBREGION_CELL_SIZE_M,
+    grid_n: int = SUBREGION_GRID_N,
+    corner_ids: frozenset[int] = SUBREGION_CORNER_IDS,
+) -> bool:
+    """目标是否落在 4×4 子区域的四角格内。"""
+    sid = target_subregion_index_xy_m(
+        x_m,
+        y_m,
+        grid_min_m=grid_min_m,
+        grid_max_m=grid_max_m,
+        cell_size_m=cell_size_m,
+        grid_n=grid_n,
+    )
+    return int(sid) in corner_ids
+
+
+def target_subregion_center_xy_m(
+    subregion_id: int,
+    *,
+    grid_min_m: float = SUBREGION_GRID_MIN_M,
+    cell_size_m: float = SUBREGION_CELL_SIZE_M,
+    grid_n: int = SUBREGION_GRID_N,
+) -> tuple[float, float]:
+    """子区域中心坐标 (x_m, y_m)。"""
+    count = grid_n * grid_n
+    if not (0 <= subregion_id < count):
+        raise ValueError(f"subregion_id 须在 [0, {count})，收到 {subregion_id}")
+    x_idx = int(subregion_id % grid_n)
+    y_idx = int(subregion_id // grid_n)
+    cx = grid_min_m + (x_idx + 0.5) * cell_size_m
+    cy = grid_min_m + (y_idx + 0.5) * cell_size_m
+    return (float(cx), float(cy))
+
+
+def target_local_offset_xy_m(
+    x_m: float,
+    y_m: float,
+    subregion_id: int | None = None,
+    *,
+    grid_min_m: float = SUBREGION_GRID_MIN_M,
+    grid_max_m: float = SUBREGION_GRID_MAX_M,
+    cell_size_m: float = SUBREGION_CELL_SIZE_M,
+    grid_n: int = SUBREGION_GRID_N,
+) -> tuple[float, float]:
+    """目标相对子区域中心的局部偏移 ``(dx, dy)``（米）。
+
+    ``subregion_id`` 为 ``None`` 时由 ``(x_m, y_m)`` 自动推断。
+    """
+    if subregion_id is None:
+        subregion_id = target_subregion_index_xy_m(
+            x_m,
+            y_m,
+            grid_min_m=grid_min_m,
+            grid_max_m=grid_max_m,
+            cell_size_m=cell_size_m,
+            grid_n=grid_n,
+        )
+    cx, cy = target_subregion_center_xy_m(
+        int(subregion_id),
+        grid_min_m=grid_min_m,
+        cell_size_m=cell_size_m,
+        grid_n=grid_n,
+    )
+    return (float(x_m - cx), float(y_m - cy))
+
+
+def global_xy_from_subregion_local(
+    subregion_id: int,
+    local_x: float,
+    local_y: float,
+    *,
+    grid_min_m: float = SUBREGION_GRID_MIN_M,
+    cell_size_m: float = SUBREGION_CELL_SIZE_M,
+    grid_n: int = SUBREGION_GRID_N,
+) -> tuple[float, float]:
+    """由子区域 id + 局部偏移重建全局 ``(x_m, y_m)``。"""
+    cx, cy = target_subregion_center_xy_m(
+        int(subregion_id),
+        grid_min_m=grid_min_m,
+        cell_size_m=cell_size_m,
+        grid_n=grid_n,
+    )
+    return (float(cx + local_x), float(cy + local_y))
+
+
 def _is_inner_coord(
     x_cm: float,
     y_cm: float,

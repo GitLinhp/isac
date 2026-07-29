@@ -24,9 +24,13 @@ from .evaluation import (
 from .clutter import MovingTargetIndication, MovingTargetDetection
 from .localization import (
     ground_circle_radius_sq,
+    horn_beam_score_xy,
     intersect_circles_xy,
+    intersect_ellipses_xy,
     localize_xy_two_monostatic_ranges,
+    localize_xy_two_quasi_monostatic_path_sums,
     localize_xy_z0_colocated_tx_mono_bistatic,
+    path_sum_xy,
     position_rmse_xy,
     select_xy_solution,
 )
@@ -70,9 +74,13 @@ __all__ = [
     "monostatic_range_velocity",
     "stack_state_field",
     "ground_circle_radius_sq",
+    "horn_beam_score_xy",
     "intersect_circles_xy",
+    "intersect_ellipses_xy",
     "localize_xy_two_monostatic_ranges",
+    "localize_xy_two_quasi_monostatic_path_sums",
     "localize_xy_z0_colocated_tx_mono_bistatic",
+    "path_sum_xy",
     "position_rmse_xy",
     "select_xy_solution",
 ]

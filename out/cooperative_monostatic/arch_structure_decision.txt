@@ -1,0 +1,18 @@
+非 CNN 结构可行性结论（零微调，对照 aug_spec_only G≈0.579）
+协议：Run1 训 / Run2 全帧 / --no-filter-outliers / ROI 0–4 / aug_spec_only 配方
+成功标准：Run2 Global < 0.579
+
+结果
+----
+arch_range_geom     G=0.7399  FAIL  （仅学 r0,r1→可微交会，无 Δxy；明显差于 plain CNN）
+arch_session_median G=0.5801  FAIL  （同 session 中值平滑；≈基线，未低于 0.579）
+arch_session_ema    G=0.5814  FAIL  （同 session EMA α=0.3；略差于基线）
+
+裁决
+----
+不采纳 geom-only / session 平滑作为主线。
+维持 plain 1D late+attn CNN + SpecAug（aug_spec_only）零微调平台；
+若要明显低于 ~0.57，继续 Run2 域适配（微调），而非换骨架。
+
+日志：out/cooperative_monostatic/cnn_arch_structure_matrix.log
+摘要：out/cooperative_monostatic/cnn_improve_next_summary.csv

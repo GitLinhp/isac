@@ -1,0 +1,8 @@
+exp_id,description,base_channels,lr,dropout,pool_mode,class_weight,checkpoint,val_acc,epoch
+region_baseline,bc64 lr5e-5 attn dropout0.3,64,5e-05,0.3,attention,0,/home/lhp/projects/isac/models/two_stage_tune/region/region_baseline/best_model.pth,0.6022727272727273,6
+region_lr1e4,bc64 lr1e-4 attn,64,0.0001,0.3,attention,0,/home/lhp/projects/isac/models/two_stage_tune/region/region_lr1e4/best_model.pth,0.5945454545454546,2
+region_lr2e5,bc64 lr2e-5 attn,64,2e-05,0.3,attention,0,/home/lhp/projects/isac/models/two_stage_tune/region/region_lr2e5/best_model.pth,0.6077272727272728,6
+region_bc32,bc32 lr5e-5 attn,32,5e-05,0.3,attention,0,/home/lhp/projects/isac/models/two_stage_tune/region/region_bc32/best_model.pth,0.6427272727272727,7
+region_class_weight,bc64 + inverse-freq class weight,64,5e-05,0.3,attention,1,/home/lhp/projects/isac/models/two_stage_tune/region/region_class_weight/best_model.pth,0.5809090909090909,6
+region_gap,bc64 pool=gap,64,5e-05,0.3,gap,0,/home/lhp/projects/isac/models/two_stage_tune/region/region_gap/best_model.pth,0.5868181818181818,3
+region_drop01,bc64 dropout=0.1,64,5e-05,0.1,attention,0,/home/lhp/projects/isac/models/two_stage_tune/region/region_drop01/best_model.pth,0.5990909090909091,30

@@ -1,0 +1,18 @@
+极轻量 Transformer 结论（零微调，对照 aug_spec_only G≈0.579）
+协议：Run1 训 / Run2 全帧 / --no-filter-outliers / ROI 0–4 / aug_spec_only 配方
+结构：late-fusion range-bin TF，d_model=64，2 层，4 head，FFN=128，dropout=0.3
+成功标准：Run2 Global < 0.579
+
+结果
+----
+arch_light_tf  G=0.6654  I=0.4199  O=0.9741  FAIL
+
+裁决
+----
+不采纳 Transformer。关闭零微调结构探索线。
+维持 plain 1D late+attn CNN + SpecAug（aug_spec_only）。
+若要明显低于 ~0.57，继续 Run2 域适配（微调），而非换骨架。
+
+日志：out/cooperative_monostatic/cnn_arch_light_tf_matrix.log
+摘要：out/cooperative_monostatic/cnn_improve_next_summary.csv
+ckpt：models/cnn_improve_next/arch_light_tf/best_model.pth

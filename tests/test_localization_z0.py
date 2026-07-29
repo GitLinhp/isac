@@ -63,6 +63,68 @@ def test_intersect_circles_two_solutions_y_disambiguation():
     assert picked[1] < 0.0
 
 
+def test_horn_beam_prefers_origin_side_cooperative_geometry():
+    """dev0=(0,-2), dev1=(-2,0), horns aim origin → pick near-origin intersection."""
+    from isac.sensing.localization import (
+        horn_beam_score_xy,
+        localize_xy_two_monostatic_ranges,
+    )
+
+    dev0 = (0.0, -2.0)
+    dev1 = (-2.0, 0.0)
+    # True target near origin; ranges yield two intersections mirrored across baseline.
+    true_xy = (-0.4, -0.4)
+    r0 = float(np.hypot(true_xy[0] - dev0[0], true_xy[1] - dev0[1]))
+    r1 = float(np.hypot(true_xy[0] - dev1[0], true_xy[1] - dev1[1]))
+    sols = intersect_circles_xy(dev0, r0 * r0, dev1, r1 * r1)
+    assert len(sols) == 2
+
+    horn_pick = select_xy_solution(sols, station0_xy=dev0, station1_xy=dev1)
+    min_abs_y = select_xy_solution(sols)  # no stations → |y| min
+    assert horn_beam_score_xy(horn_pick, dev0, dev1) >= horn_beam_score_xy(
+        sols[0] if horn_pick == sols[1] else sols[1],
+        dev0,
+        dev1,
+    )
+    # Horn pick should be the Euclidean-nearest to truth for this geometry.
+    best = min(sols, key=lambda p: (p[0] - true_xy[0]) ** 2 + (p[1] - true_xy[1]) ** 2)
+    assert horn_pick[0] == pytest.approx(best[0], abs=1e-9)
+    assert horn_pick[1] == pytest.approx(best[1], abs=1e-9)
+
+    est = localize_xy_two_monostatic_ranges(dev0, r0, dev1, r1)
+    assert est[0] == pytest.approx(best[0], abs=1e-9)
+    assert est[1] == pytest.approx(best[1], abs=1e-9)
+
+    est_miny = localize_xy_two_monostatic_ranges(
+        dev0, r0, dev1, r1, use_horn_disambiguation=False
+    )
+    assert est_miny[0] == pytest.approx(min_abs_y[0], abs=1e-9)
+    assert est_miny[1] == pytest.approx(min_abs_y[1], abs=1e-9)
+
+
+def test_quasi_monostatic_ellipse_recovers_truth():
+    from isac.sensing.localization import (
+        localize_xy_two_monostatic_ranges,
+        localize_xy_two_quasi_monostatic_path_sums,
+        path_sum_xy,
+    )
+
+    # Fixed ±5 cm geometry (independent of pipeline defaults after offset sweep).
+    tx0, rx0 = (0.05, -2.0), (-0.05, -2.0)
+    tx1, rx1 = (-2.0, 0.05), (-2.0, -0.05)
+    mid0, mid1 = (0.0, -2.0), (-2.0, 0.0)
+
+    true_xy = (-0.4, -0.4)
+    r0 = 0.5 * path_sum_xy(true_xy, tx0, rx0)
+    r1 = 0.5 * path_sum_xy(true_xy, tx1, rx1)
+    est = localize_xy_two_quasi_monostatic_path_sums(tx0, rx0, r0, tx1, rx1, r1)
+    assert est[0] == pytest.approx(true_xy[0], abs=1e-3)
+    assert est[1] == pytest.approx(true_xy[1], abs=1e-3)
+
+    circ = localize_xy_two_monostatic_ranges(mid0, r0, mid1, r1)
+    assert position_rmse_xy(est, circ) < 0.05
+
+
 def test_localize_raises_when_tx_not_colocated():
     mono = [-25.0, 0.0, 30.0]
     bi = [25.0, 0.0, 30.0]

@@ -1,0 +1,18 @@
+ADAPTATION LINE: Run1 full train + Run2 10% val finetune
+protocol=adaptation (early-stop saw Run2 val 10%); primary=holdout_90
+resume=models/cnn_deploy_strict_roi4/best_model.pth
+finetune_checkpoint=models/cnn_run1_full_run2val10_ft/best_model.pth
+finetune_lr=1e-4
+test_val_ratio=0.1 seed=42
+
+HOLD OUT 90% (primary):
+  baseline  G=0.585879 I=0.360403 O=0.877926 n=9562
+  finetune  G=0.568514 I=0.355577 O=0.844320 n=9562
+  delta_G=-0.0174
+
+FULL FRAME (reference; mild val leakage via early-stop):
+  baseline  G=0.587467 I=0.355713 O=0.878875
+  finetune  G=0.569918 I=0.351473 O=0.844590
+  delta_G=-0.0175
+
+Do NOT claim full-frame SOTA without noting adaptation leakage.

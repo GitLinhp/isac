@@ -112,19 +112,227 @@ def _xy_from_linearized_circles(
     return (x, y)
 
 
+def _unit_xy(dx: float, dy: float) -> tuple[float, float]:
+    n = math.hypot(dx, dy)
+    if n < 1e-12:
+        return 0.0, 0.0
+    return dx / n, dy / n
+
+
+def horn_beam_score_xy(
+    point_xy: Sequence[float],
+    station0_xy: Sequence[float],
+    station1_xy: Sequence[float],
+    *,
+    aim_xy: Sequence[float] = (0.0, 0.0),
+    cos_power: float = 2.0,
+) -> float:
+    """两站 Horn 方向图代理增益之和：``G=max(cos θ,0)^p``，boresight 指向 ``aim_xy``。
+
+    θ 为站→目标相对站→瞄准点的离轴角。用于双圆两解消歧（朝瞄准点一侧得分更高）。
+    """
+    ax, ay = float(aim_xy[0]), float(aim_xy[1])
+    px, py = float(point_xy[0]), float(point_xy[1])
+    p = float(cos_power)
+    score = 0.0
+    for station in (station0_xy, station1_xy):
+        sx, sy = float(station[0]), float(station[1])
+        bx, by = _unit_xy(ax - sx, ay - sy)
+        vx, vy = _unit_xy(px - sx, py - sy)
+        cos_t = bx * vx + by * vy
+        score += max(cos_t, 0.0) ** p
+    return score
+
+
 def select_xy_solution(
     solutions: list[tuple[float, float]],
     *,
     y_hint: float | None = None,
+    station0_xy: Sequence[float] | None = None,
+    station1_xy: Sequence[float] | None = None,
+    horn_aim_xy: Sequence[float] = (0.0, 0.0),
+    horn_cos_power: float = 2.0,
 ) -> tuple[float, float]:
-    """在 1 或 2 个交点中择一；``y_hint`` 用于消解 ±y 镜像歧义。"""
+    """在 1 或 2 个交点中择一。
+
+    优先级：``y_hint`` → 两站已知时的 Horn 波束打分（指向 ``horn_aim_xy``，默认原点）
+    → ``|y|`` 最小。
+    """
     if not solutions:
         raise ValueError("无有效 (x, y) 交点")
     if len(solutions) == 1:
         return solutions[0]
     if y_hint is not None:
         return min(solutions, key=lambda p: abs(p[1] - float(y_hint)))
+    if station0_xy is not None and station1_xy is not None:
+        return max(
+            solutions,
+            key=lambda p: horn_beam_score_xy(
+                p,
+                station0_xy,
+                station1_xy,
+                aim_xy=horn_aim_xy,
+                cos_power=horn_cos_power,
+            ),
+        )
     return min(solutions, key=lambda p: abs(p[1]))
+
+
+def _midpoint_xy(
+    a_xy: Sequence[float],
+    b_xy: Sequence[float],
+) -> tuple[float, float]:
+    return (
+        0.5 * (float(a_xy[0]) + float(b_xy[0])),
+        0.5 * (float(a_xy[1]) + float(b_xy[1])),
+    )
+
+
+def path_sum_xy(
+    point_xy: Sequence[float],
+    tx_xy: Sequence[float],
+    rx_xy: Sequence[float],
+) -> float:
+    """折叠路径长 ``||P-TX|| + ||P-RX||``。"""
+    px, py = float(point_xy[0]), float(point_xy[1])
+    return math.hypot(px - float(tx_xy[0]), py - float(tx_xy[1])) + math.hypot(
+        px - float(rx_xy[0]), py - float(rx_xy[1])
+    )
+
+
+def _ellipse_point_xy(
+    tx_xy: Sequence[float],
+    rx_xy: Sequence[float],
+    path_sum_m: float,
+    theta: float,
+) -> tuple[float, float] | None:
+    """以 TX/RX 为焦点、路径和为 ``path_sum_m`` 的椭圆参数点；退化时返回 ``None``。"""
+    tx0, tx1 = float(tx_xy[0]), float(tx_xy[1])
+    rx0, rx1 = float(rx_xy[0]), float(rx_xy[1])
+    mx, my = 0.5 * (tx0 + rx0), 0.5 * (tx1 + rx1)
+    dx, dy = tx0 - rx0, tx1 - rx1
+    dist = math.hypot(dx, dy)
+    a = 0.5 * float(path_sum_m)
+    c = 0.5 * dist
+    if a < c - 1e-12:
+        return None
+    b = math.sqrt(max(a * a - c * c, 0.0))
+    if dist < 1e-12:
+        return (mx + a * math.cos(theta), my + a * math.sin(theta))
+    ux, uy = dx / dist, dy / dist
+    vx, vy = -uy, ux
+    return (
+        mx + a * math.cos(theta) * ux + b * math.sin(theta) * vx,
+        my + a * math.cos(theta) * uy + b * math.sin(theta) * vy,
+    )
+
+
+def intersect_ellipses_xy(
+    tx0_xy: Sequence[float],
+    rx0_xy: Sequence[float],
+    path_sum0_m: float,
+    tx1_xy: Sequence[float],
+    rx1_xy: Sequence[float],
+    path_sum1_m: float,
+    *,
+    n_theta: int = 720,
+    dedupe_tol_m: float = 1e-4,
+) -> list[tuple[float, float]]:
+    """两椭圆交点（各以 TX/RX 为焦点、路径和为 ``path_sum``）。
+
+    在椭圆 0 上参数扫描，对椭圆 1 残差过零做二分；通常返回 0–2 个点。
+    """
+    s0 = float(path_sum0_m)
+    s1 = float(path_sum1_m)
+    if not np.isfinite(s0) or not np.isfinite(s1) or s0 <= 0.0 or s1 <= 0.0:
+        return []
+
+    solutions: list[tuple[float, float]] = []
+    g_prev: float | None = None
+    th_prev = 0.0
+    n = max(int(n_theta), 64)
+
+    for i in range(n + 1):
+        theta = 2.0 * math.pi * i / n
+        p = _ellipse_point_xy(tx0_xy, rx0_xy, s0, theta)
+        if p is None:
+            g_prev = None
+            continue
+        g = path_sum_xy(p, tx1_xy, rx1_xy) - s1
+        if g_prev is not None and g_prev * g <= 0.0 and (abs(g_prev) + abs(g)) > 0.0:
+            lo, hi = th_prev, theta
+            glo, ghi = g_prev, g
+            for _ in range(48):
+                mid_t = 0.5 * (lo + hi)
+                p_mid = _ellipse_point_xy(tx0_xy, rx0_xy, s0, mid_t)
+                if p_mid is None:
+                    break
+                g_mid = path_sum_xy(p_mid, tx1_xy, rx1_xy) - s1
+                if glo * g_mid <= 0.0:
+                    hi, ghi = mid_t, g_mid
+                else:
+                    lo, glo = mid_t, g_mid
+            p_sol = _ellipse_point_xy(tx0_xy, rx0_xy, s0, 0.5 * (lo + hi))
+            if p_sol is not None:
+                if all(
+                    math.hypot(p_sol[0] - q[0], p_sol[1] - q[1]) > dedupe_tol_m
+                    for q in solutions
+                ):
+                    solutions.append(p_sol)
+        g_prev = g
+        th_prev = theta
+
+    return solutions
+
+
+def localize_xy_two_quasi_monostatic_path_sums(
+    tx0_xy: Sequence[float],
+    rx0_xy: Sequence[float],
+    r0_m: float,
+    tx1_xy: Sequence[float],
+    rx1_xy: Sequence[float],
+    r1_m: float,
+    *,
+    y_hint: float | None = None,
+    use_horn_disambiguation: bool = True,
+    horn_aim_xy: Sequence[float] = (0.0, 0.0),
+    horn_cos_power: float = 2.0,
+) -> tuple[float, float]:
+    """两站准单基地：测距 ``r`` 对应路径和 ``2r = ||P-TX||+||P-RX||``，椭圆交会求 ``(x,y)``。
+
+    Horn 消歧使用各站 TX/RX 中点；无实交点时回退为中点圆交会/线性化。
+    """
+    r0 = float(r0_m)
+    r1 = float(r1_m)
+    if not np.isfinite(r0) or not np.isfinite(r1) or r0 <= 0.0 or r1 <= 0.0:
+        raise ValueError(f"invalid monostatic ranges: r0={r0_m}, r1={r1_m}")
+
+    mid0 = _midpoint_xy(tx0_xy, rx0_xy)
+    mid1 = _midpoint_xy(tx1_xy, rx1_xy)
+    solutions = intersect_ellipses_xy(
+        tx0_xy,
+        rx0_xy,
+        2.0 * r0,
+        tx1_xy,
+        rx1_xy,
+        2.0 * r1,
+    )
+    if not solutions:
+        # 回退：中点共址圆近似
+        solutions = intersect_circles_xy(mid0, r0 * r0, mid1, r1 * r1)
+        if not solutions:
+            return _xy_from_linearized_circles(
+                mid0, r0 * r0, mid1, r1 * r1, y_hint=y_hint
+            )
+
+    return select_xy_solution(
+        solutions,
+        y_hint=y_hint,
+        station0_xy=mid0 if use_horn_disambiguation else None,
+        station1_xy=mid1 if use_horn_disambiguation else None,
+        horn_aim_xy=horn_aim_xy,
+        horn_cos_power=horn_cos_power,
+    )
 
 
 def localize_xy_two_monostatic_ranges(
@@ -134,10 +342,16 @@ def localize_xy_two_monostatic_ranges(
     r1_m: float,
     *,
     y_hint: float | None = None,
+    use_horn_disambiguation: bool = True,
+    horn_aim_xy: Sequence[float] = (0.0, 0.0),
+    horn_cos_power: float = 2.0,
 ) -> tuple[float, float]:
     """两单基地斜距在 z=0 平面圆交会，得到目标 ``(x, y)``。
 
     各站与目标均假定在同一水平面（z=0），故 ``r`` 即水平距离。
+
+    无 ``y_hint`` 时默认用 Horn 波束打分消歧（两站均朝 ``horn_aim_xy``，默认原点）；
+    ``use_horn_disambiguation=False`` 时回退为 ``|y|`` 最小。
     """
     r0 = float(r0_m)
     r1 = float(r1_m)
@@ -148,7 +362,14 @@ def localize_xy_two_monostatic_ranges(
     c1 = (float(pos1_xy[0]), float(pos1_xy[1]))
     solutions = intersect_circles_xy(c0, r0 * r0, c1, r1 * r1)
     if solutions:
-        return select_xy_solution(solutions, y_hint=y_hint)
+        return select_xy_solution(
+            solutions,
+            y_hint=y_hint,
+            station0_xy=c0 if use_horn_disambiguation else None,
+            station1_xy=c1 if use_horn_disambiguation else None,
+            horn_aim_xy=horn_aim_xy,
+            horn_cos_power=horn_cos_power,
+        )
     return _xy_from_linearized_circles(c0, r0 * r0, c1, r1 * r1, y_hint=y_hint)
 
 

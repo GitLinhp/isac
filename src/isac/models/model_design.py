@@ -447,6 +447,21 @@ def _mlp_xy_head(in_features: int, hidden: int, *, dropout: float) -> nn.Sequent
     )
 
 
+def _mlp_class_head(
+    in_features: int,
+    hidden: int,
+    num_classes: int,
+    *,
+    dropout: float,
+) -> nn.Sequential:
+    return nn.Sequential(
+        nn.Linear(in_features, hidden),
+        nn.ReLU(inplace=True),
+        nn.Dropout(p=dropout),
+        nn.Linear(hidden, num_classes),
+    )
+
+
 class BidirectionalStationCrossAttention(nn.Module):
     """晚融合：双站池化特征的一层双向交叉注意力。
 
@@ -556,6 +571,9 @@ class CooperativeMonostaticCNN(nn.Module):
     ``geom_residual``
         仅 ``late``：共享 range 头 → 可微双圆交会 ``xy_geom``，``xy_head`` 预测残差
         ``Δxy``，输出 ``xy = xy_geom + Δxy``
+    ``geom_only``
+        仅 ``late``：只学 ``(r0, r1)``，推理 ``xy = xy_geom``（无 Δxy 头）；
+        与 ``geom_residual`` 互斥
     ``cross_attn``
         仅 ``late``：池化后、xy/残差头前插入一层双向交叉注意力；可与
         ``geom_residual`` 叠加（range 仍用池化后、交叉注意力前的局部分站特征）
@@ -574,6 +592,7 @@ class CooperativeMonostaticCNN(nn.Module):
         fusion_mode: str = "late",
         aux_range: bool = False,
         geom_residual: bool = False,
+        geom_only: bool = False,
         stopgrad_geom: bool = False,
         cross_attn: bool = False,
         cross_attn_heads: int = 4,
@@ -602,13 +621,22 @@ class CooperativeMonostaticCNN(nn.Module):
             )
         self.aux_range = bool(aux_range)
         self.geom_residual = bool(geom_residual)
+        self.geom_only = bool(geom_only)
         self.stopgrad_geom = bool(stopgrad_geom)
         self.cross_attn = bool(cross_attn)
         self.cross_attn_heads = int(cross_attn_heads)
+        if self.geom_residual and self.geom_only:
+            raise ValueError("geom_residual 与 geom_only 互斥")
         if self.geom_residual and self.fusion_mode != "late":
             raise ValueError("geom_residual 仅支持 fusion_mode='late'")
+        if self.geom_only and self.fusion_mode != "late":
+            raise ValueError("geom_only 仅支持 fusion_mode='late'")
         if self.cross_attn and self.fusion_mode != "late":
             raise ValueError("cross_attn 仅支持 fusion_mode='late'")
+        if self.cross_attn and self.geom_only:
+            raise ValueError("geom_only 不使用 xy 头，不支持 cross_attn")
+        if self.stopgrad_geom and not (self.geom_residual or self.geom_only):
+            raise ValueError("stopgrad_geom 须与 geom_residual 或 geom_only 同时使用")
 
         if self.fusion_mode == "late":
             if in_channels % 2 != 0:
@@ -672,9 +700,10 @@ class CooperativeMonostaticCNN(nn.Module):
                 soft_argmax_ranges=soft_ranges,
             )
             pool_dim = self.pool.out_features
-            self.xy_head = _mlp_xy_head(
-                pool_dim * 2, final_ch // 2, dropout=dropout
-            )
+            if not self.geom_only:
+                self.xy_head = _mlp_xy_head(
+                    pool_dim * 2, final_ch // 2, dropout=dropout
+                )
             if self.cross_attn:
                 self.station_cross_attn = BidirectionalStationCrossAttention(
                     pool_dim,
@@ -683,7 +712,7 @@ class CooperativeMonostaticCNN(nn.Module):
                 )
 
         self.range_head: nn.Module | None = None
-        if self.aux_range or self.geom_residual:
+        if self.aux_range or self.geom_residual or self.geom_only:
             # 晚融合：共享单站 head；早融合：联合特征一次出 (r0, r1)
             out_r = 1 if self.fusion_mode == "late" else 2
             self.range_head = nn.Sequential(
@@ -693,7 +722,7 @@ class CooperativeMonostaticCNN(nn.Module):
                 nn.Linear(max(pool_dim // 2, 8), out_r),
             )
 
-        if self.geom_residual:
+        if self.geom_residual or self.geom_only:
             self.register_buffer(
                 "dev0_xy",
                 torch.tensor(
@@ -744,12 +773,12 @@ class CooperativeMonostaticCNN(nn.Module):
     def _station_ranges_from_pooled(
         self, f0: torch.Tensor, f1: torch.Tensor
     ) -> torch.Tensor:
-        """共享 ``range_head`` → ``(B, 2)``；``geom_residual`` 时 softplus 保证正距。"""
+        """共享 ``range_head`` → ``(B, 2)``；geom 路径 softplus 保证正距。"""
         assert self.range_head is not None
         r0 = self.range_head(f0)
         r1 = self.range_head(f1)
         ranges = torch.cat([r0, r1], dim=1)
-        if self.geom_residual:
+        if self.geom_residual or self.geom_only:
             ranges = F.softplus(ranges) + 1e-3
         return ranges
 
@@ -769,6 +798,18 @@ class CooperativeMonostaticCNN(nn.Module):
             pred_r: torch.Tensor | None = None
             if self.range_head is not None:
                 pred_r = self._station_ranges_from_pooled(f0, f1)
+            if self.geom_only:
+                assert pred_r is not None
+                assert self.dev0_xy is not None and self.dev1_xy is not None
+                xy_geom = localize_xy_two_monostatic_ranges_torch(
+                    pred_r[:, 0],
+                    pred_r[:, 1],
+                    pos0_xy=self.dev0_xy,
+                    pos1_xy=self.dev1_xy,
+                )
+                if self.stopgrad_geom:
+                    xy_geom = xy_geom.detach()
+                return xy_geom, pred_r
             if self.station_cross_attn is not None:
                 f0, f1 = self.station_cross_attn(f0, f1)
             assert self.xy_head is not None
@@ -807,6 +848,112 @@ class CooperativeMonostaticCNN(nn.Module):
         """
         xy, _ = self.forward_with_aux(dual_profiles)
         return xy
+
+
+class CooperativeMonostaticTransformer(nn.Module):
+    """双站 late-fusion 极轻量 range-bin Transformer → 目标 (x, y)。
+
+    每站：``Conv1d`` 投影 → 可学习位置编码 → ``TransformerEncoder`` →
+    attention 池化；双站特征拼接后 MLP 回归 xy。两站共享编码器权重。
+    """
+
+    def __init__(
+        self,
+        *,
+        in_channels: int = 4,
+        d_model: int = 64,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dim_feedforward: int = 128,
+        dropout: float = 0.3,
+        max_range_bins: int = 512,
+    ) -> None:
+        super().__init__()
+        if in_channels % 2 != 0:
+            raise ValueError(
+                f"late fusion Transformer 要求 in_channels 为偶数，收到 {in_channels}"
+            )
+        if d_model < 1:
+            raise ValueError(f"d_model 须 >= 1，收到 {d_model}")
+        if num_layers < 1:
+            raise ValueError(f"num_layers 须 >= 1，收到 {num_layers}")
+        if nhead < 1 or d_model % nhead != 0:
+            raise ValueError(
+                f"nhead 须整除 d_model，收到 d_model={d_model} nhead={nhead}"
+            )
+        if max_range_bins < 1:
+            raise ValueError(f"max_range_bins 须 >= 1，收到 {max_range_bins}")
+
+        self.in_channels = int(in_channels)
+        self.station_channels = in_channels // 2
+        self.d_model = int(d_model)
+        # checkpoint / 训练脚本兼容字段
+        self.base_channels = self.d_model
+        self.nhead = int(nhead)
+        self.num_layers = int(num_layers)
+        self.dim_feedforward = int(dim_feedforward)
+        self.dropout = float(dropout)
+        self.max_range_bins = int(max_range_bins)
+
+        self.input_proj = nn.Conv1d(
+            self.station_channels, self.d_model, kernel_size=1, bias=True
+        )
+        self.pos_embed = nn.Parameter(
+            torch.zeros(1, self.max_range_bins, self.d_model)
+        )
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=self.d_model,
+            nhead=self.nhead,
+            dim_feedforward=self.dim_feedforward,
+            dropout=self.dropout,
+            batch_first=True,
+            activation="gelu",
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=self.num_layers)
+        self.pool = RangeAttentionPool1d(self.d_model)
+        self.xy_head = _mlp_xy_head(
+            self.d_model * 2, max(self.d_model // 2, 8), dropout=self.dropout
+        )
+
+    def _features_from_input(self, dual_profiles: torch.Tensor) -> torch.Tensor:
+        if dual_profiles.is_complex():
+            features = dual_range_profiles_to_features(dual_profiles)
+        else:
+            features = dual_profiles
+            if features.ndim == 2:
+                features = features.unsqueeze(0)
+            elif features.ndim != 3:
+                raise ValueError(
+                    "CooperativeMonostaticTransformer float 输入须为 (C, L) 或 "
+                    f"(B, C, L)，收到 {tuple(features.shape)}"
+                )
+        if features.shape[1] != self.in_channels:
+            raise ValueError(
+                f"特征通道数 {features.shape[1]} 与 in_channels={self.in_channels} 不一致"
+            )
+        return features
+
+    def _encode_station(self, station_features: torch.Tensor) -> torch.Tensor:
+        """``(B, C_st, L)`` → ``(B, d_model)``。"""
+        h = self.input_proj(station_features)
+        tokens = h.transpose(1, 2)
+        length = tokens.shape[1]
+        if length > self.max_range_bins:
+            raise ValueError(
+                f"range bins={length} 超过 max_range_bins={self.max_range_bins}"
+            )
+        tokens = tokens + self.pos_embed[:, :length, :]
+        tokens = self.encoder(tokens)
+        return self.pool(tokens.transpose(1, 2))
+
+    def forward(self, dual_profiles: torch.Tensor) -> torch.Tensor:
+        features = self._features_from_input(dual_profiles)
+        c = self.station_channels
+        f0 = self._encode_station(features[:, :c])
+        f1 = self._encode_station(features[:, c:])
+        return self.xy_head(torch.cat([f0, f1], dim=1))
 
 
 class CooperativeMonostatic2DCNN(nn.Module):
@@ -884,6 +1031,17 @@ def _build_cooperative_localization_model_from_ckpt(
     base_channels = int(ckpt["base_channels"])
     num_layers = int(ckpt.get("num_layers", 3 if model_type == "1d" else 2))
     dropout = float(ckpt["dropout"])
+    if model_type == "transformer":
+        d_model = int(ckpt.get("d_model", base_channels))
+        return CooperativeMonostaticTransformer(
+            in_channels=in_channels,
+            d_model=d_model,
+            nhead=int(ckpt.get("nhead", 4)),
+            num_layers=num_layers,
+            dim_feedforward=int(ckpt.get("dim_feedforward", max(d_model * 2, 128))),
+            dropout=dropout,
+            max_range_bins=int(ckpt.get("max_range_bins", 512)),
+        )
     if model_type == "2d":
         return CooperativeMonostatic2DCNN(
             in_channels=in_channels,
@@ -892,6 +1050,7 @@ def _build_cooperative_localization_model_from_ckpt(
             dropout=dropout,
         )
     geom_residual = bool(ckpt.get("geom_residual", False))
+    geom_only = bool(ckpt.get("geom_only", False))
     cross_attn = bool(ckpt.get("cross_attn", False))
     dev0 = ckpt.get("dev0_xy", (0.0, -2.0))
     dev1 = ckpt.get("dev1_xy", (-2.0, 0.0))
@@ -906,6 +1065,7 @@ def _build_cooperative_localization_model_from_ckpt(
         fusion_mode=str(ckpt.get("fusion_mode", "early")),
         aux_range=bool(ckpt.get("aux_range", False)),
         geom_residual=geom_residual,
+        geom_only=geom_only,
         stopgrad_geom=bool(ckpt.get("stopgrad_geom", False)),
         cross_attn=cross_attn,
         cross_attn_heads=int(ckpt.get("cross_attn_heads", 4)),
@@ -917,8 +1077,8 @@ def _build_cooperative_localization_model_from_ckpt(
 def load_cooperative_monostatic_cnn_checkpoint(
     path: str | Path,
     device: torch.device | str,
-) -> CooperativeMonostaticCNN | CooperativeMonostatic2DCNN:
-    """从 checkpoint 加载 Cooperative Monostatic 定位 CNN（1D 或 2D）。"""
+) -> CooperativeMonostaticCNN | CooperativeMonostatic2DCNN | CooperativeMonostaticTransformer:
+    """从 checkpoint 加载 Cooperative Monostatic 定位模型（1D CNN / 2D CNN / Transformer）。"""
     ckpt_path = Path(path)
     if not ckpt_path.is_file():
         raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
@@ -930,6 +1090,363 @@ def load_cooperative_monostatic_cnn_checkpoint(
 
     model = _build_cooperative_localization_model_from_ckpt(ckpt)
     model.load_state_dict(ckpt["model_state_dict"])
+    model.to(device)
+    model.eval()
+    return model
+
+
+class CooperativeMonostaticRegionCNN(nn.Module):
+    """双站 late-fusion ROI 距离谱 → 16 子区域分类 logits。
+
+    骨干与 ``CooperativeMonostaticCNN`` late 路径一致；输出头为 ``num_classes`` 维。
+    """
+
+    def __init__(
+        self,
+        *,
+        in_channels: int = 4,
+        base_channels: int = 64,
+        num_layers: int = 3,
+        dropout: float = 0.3,
+        pool_mode: str = "attention",
+        multiscale_bins: int = 8,
+        soft_argmax_temp: float = 1.0,
+        num_classes: int = 16,
+    ) -> None:
+        super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"num_layers 须 >= 1，收到 {num_layers}")
+        if in_channels % 2 != 0:
+            raise ValueError(
+                f"late fusion 要求 in_channels 为偶数，收到 {in_channels}"
+            )
+        if num_classes < 2:
+            raise ValueError(f"num_classes 须 >= 2，收到 {num_classes}")
+        if pool_mode not in COOPERATIVE_POOL_MODES:
+            raise ValueError(
+                f"pool_mode 须为 {COOPERATIVE_POOL_MODES}，收到 {pool_mode!r}"
+            )
+
+        self.in_channels = int(in_channels)
+        self.station_channels = in_channels // 2
+        self.base_channels = int(base_channels)
+        self.num_layers = int(num_layers)
+        self.dropout = float(dropout)
+        self.pool_mode = str(pool_mode)
+        self.multiscale_bins = int(multiscale_bins)
+        self.soft_argmax_temp = float(soft_argmax_temp)
+        self.num_classes = int(num_classes)
+        self.fusion_mode = "late"
+
+        self.stem, self.layers, final_ch = _build_conv1d_backbone(
+            self.station_channels, base_channels, num_layers
+        )
+        self.final_ch = final_ch
+        self.pool = CooperativeRangePool(
+            final_ch,
+            pool_mode=self.pool_mode,
+            multiscale_bins=self.multiscale_bins,
+            soft_argmax_temp=self.soft_argmax_temp,
+            soft_argmax_ranges=1,
+        )
+        pool_dim = self.pool.out_features
+        self.class_head = _mlp_class_head(
+            pool_dim * 2,
+            final_ch // 2,
+            self.num_classes,
+            dropout=dropout,
+        )
+
+    def _encode(self, features: torch.Tensor) -> torch.Tensor:
+        x = self.stem(features)
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def _features_from_input(self, dual_profiles: torch.Tensor) -> torch.Tensor:
+        if dual_profiles.is_complex():
+            features = dual_range_profiles_to_features(dual_profiles)
+        else:
+            features = dual_profiles
+            if features.ndim == 2:
+                features = features.unsqueeze(0)
+            elif features.ndim != 3:
+                raise ValueError(
+                    "CooperativeMonostaticRegionCNN float 输入须为 (C, L) 或 "
+                    f"(B, C, L)，收到 {tuple(features.shape)}"
+                )
+        if features.shape[1] != self.in_channels:
+            raise ValueError(
+                f"特征通道数 {features.shape[1]} 与 in_channels={self.in_channels} 不一致"
+            )
+        return features
+
+    def forward(self, dual_profiles: torch.Tensor) -> torch.Tensor:
+        """``(B, C, L)`` → ``(B, num_classes)`` logits。"""
+        features = self._features_from_input(dual_profiles)
+        c = self.station_channels
+        f0 = self.pool(self._encode(features[:, :c]))
+        f1 = self.pool(self._encode(features[:, c:]))
+        return self.class_head(torch.cat([f0, f1], dim=1))
+
+
+def subregion_id_to_one_hot(
+    subregion_id: torch.Tensor,
+    num_classes: int,
+) -> torch.Tensor:
+    """``(B,)`` 子区域 id → ``(B, num_classes)`` one-hot（oracle / ablation）。"""
+    if subregion_id.ndim != 1:
+        subregion_id = subregion_id.reshape(-1)
+    return F.one_hot(subregion_id.long(), num_classes=int(num_classes)).to(
+        dtype=torch.float32
+    )
+
+
+class CooperativeMonostaticFineCNN(nn.Module):
+    """双站 late-fusion + Region 概率条件化 → 全局 ``(x, y)``。
+
+    主输入与单阶段 CNN 相同（``dual_profiles``）；串联条件为上游 Region 的
+    ``softmax`` 概率 ``(B, num_classes)``。正式推理须经
+    :class:`CooperativeMonostaticTwoStageCNN`，勿绕过 Region。
+    """
+
+    def __init__(
+        self,
+        *,
+        in_channels: int = 4,
+        base_channels: int = 64,
+        num_layers: int = 3,
+        dropout: float = 0.3,
+        pool_mode: str = "attention",
+        multiscale_bins: int = 8,
+        soft_argmax_temp: float = 1.0,
+        num_classes: int = 16,
+    ) -> None:
+        super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"num_layers 须 >= 1，收到 {num_layers}")
+        if in_channels % 2 != 0:
+            raise ValueError(
+                f"late fusion 要求 in_channels 为偶数，收到 {in_channels}"
+            )
+        if num_classes < 2:
+            raise ValueError(f"num_classes 须 >= 2，收到 {num_classes}")
+        if pool_mode not in COOPERATIVE_POOL_MODES:
+            raise ValueError(
+                f"pool_mode 须为 {COOPERATIVE_POOL_MODES}，收到 {pool_mode!r}"
+            )
+
+        self.in_channels = int(in_channels)
+        self.station_channels = in_channels // 2
+        self.base_channels = int(base_channels)
+        self.num_layers = int(num_layers)
+        self.dropout = float(dropout)
+        self.pool_mode = str(pool_mode)
+        self.multiscale_bins = int(multiscale_bins)
+        self.soft_argmax_temp = float(soft_argmax_temp)
+        self.num_classes = int(num_classes)
+        self.fusion_mode = "late"
+
+        self.stem, self.layers, final_ch = _build_conv1d_backbone(
+            self.station_channels, base_channels, num_layers
+        )
+        self.final_ch = final_ch
+        self.pool = CooperativeRangePool(
+            final_ch,
+            pool_mode=self.pool_mode,
+            multiscale_bins=self.multiscale_bins,
+            soft_argmax_temp=self.soft_argmax_temp,
+            soft_argmax_ranges=1,
+        )
+        pool_dim = self.pool.out_features
+        self.xy_head = _mlp_xy_head(
+            pool_dim * 2 + self.num_classes,
+            final_ch // 2,
+            dropout=dropout,
+        )
+
+    def _encode(self, features: torch.Tensor) -> torch.Tensor:
+        x = self.stem(features)
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def _features_from_input(self, dual_profiles: torch.Tensor) -> torch.Tensor:
+        if dual_profiles.is_complex():
+            features = dual_range_profiles_to_features(dual_profiles)
+        else:
+            features = dual_profiles
+            if features.ndim == 2:
+                features = features.unsqueeze(0)
+            elif features.ndim != 3:
+                raise ValueError(
+                    "CooperativeMonostaticFineCNN float 输入须为 (C, L) 或 "
+                    f"(B, C, L)，收到 {tuple(features.shape)}"
+                )
+        if features.shape[1] != self.in_channels:
+            raise ValueError(
+                f"特征通道数 {features.shape[1]} 与 in_channels={self.in_channels} 不一致"
+            )
+        return features
+
+    def forward(
+        self,
+        dual_profiles: torch.Tensor,
+        region_probs: torch.Tensor,
+    ) -> torch.Tensor:
+        """``(B, C, L)`` + ``(B, num_classes)`` region_probs → ``(B, 2)`` 全局坐标。"""
+        features = self._features_from_input(dual_profiles)
+        c = self.station_channels
+        f0 = self.pool(self._encode(features[:, :c]))
+        f1 = self.pool(self._encode(features[:, c:]))
+        if region_probs.ndim != 2:
+            raise ValueError(
+                f"region_probs 须为 (B, num_classes)，收到 {tuple(region_probs.shape)}"
+            )
+        if region_probs.shape[0] != f0.shape[0]:
+            raise ValueError(
+                "region_probs batch 须与特征对齐，"
+                f"收到 {tuple(region_probs.shape)} vs {f0.shape[0]}"
+            )
+        if region_probs.shape[1] != self.num_classes:
+            raise ValueError(
+                f"region_probs 类数 {region_probs.shape[1]} 与 "
+                f"num_classes={self.num_classes} 不一致"
+            )
+        probs = region_probs.to(dtype=f0.dtype)
+        return self.xy_head(torch.cat([f0, f1, probs], dim=1))
+
+
+class CooperativeMonostaticTwoStageCNN(nn.Module):
+    """RegionCNN → softmax → FineCNN 串联定位。
+
+    正式推理 / 联合训练 / 评估统一入口。``region_probs_override`` 仅用于
+    oracle ablation（例如真值 one-hot），非部署路径。
+    """
+
+    def __init__(
+        self,
+        region_model: CooperativeMonostaticRegionCNN,
+        fine_model: CooperativeMonostaticFineCNN,
+    ) -> None:
+        super().__init__()
+        if int(region_model.num_classes) != int(fine_model.num_classes):
+            raise ValueError(
+                "Region 与 Fine 的 num_classes 不一致："
+                f"{region_model.num_classes} vs {fine_model.num_classes}"
+            )
+        self.region_model = region_model
+        self.fine_model = fine_model
+        self.num_classes = int(fine_model.num_classes)
+
+    def forward(
+        self,
+        dual_profiles: torch.Tensor,
+        *,
+        region_probs_override: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """返回 ``(pred_xy, region_logits)``；``pred_xy`` 为全局坐标 ``(B, 2)``。"""
+        logits = self.region_model(dual_profiles)
+        if region_probs_override is not None:
+            probs = region_probs_override
+        else:
+            probs = F.softmax(logits, dim=-1)
+        xy = self.fine_model(dual_profiles, probs)
+        return xy, logits
+
+
+_REGION_FINE_CKPT_KEYS = (
+    "model_state_dict",
+    "in_channels",
+    "base_channels",
+    "num_layers",
+    "dropout",
+    "model_kind",
+)
+
+
+def load_cooperative_monostatic_region_cnn_checkpoint(
+    path: str | Path,
+    device: torch.device | str,
+) -> CooperativeMonostaticRegionCNN:
+    """从 checkpoint 加载子区域分类 CNN。"""
+    ckpt_path = Path(path)
+    if not ckpt_path.is_file():
+        raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    missing = [key for key in _REGION_FINE_CKPT_KEYS if key not in ckpt]
+    if missing:
+        raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
+    if str(ckpt.get("model_kind")) != "region":
+        raise ValueError(
+            f"期望 model_kind='region'，收到 {ckpt.get('model_kind')!r}"
+        )
+    model = CooperativeMonostaticRegionCNN(
+        in_channels=int(ckpt["in_channels"]),
+        base_channels=int(ckpt["base_channels"]),
+        num_layers=int(ckpt["num_layers"]),
+        dropout=float(ckpt["dropout"]),
+        pool_mode=str(ckpt.get("pool_mode", "attention")),
+        multiscale_bins=int(ckpt.get("multiscale_bins", 8)),
+        soft_argmax_temp=float(ckpt.get("soft_argmax_temp", 1.0)),
+        num_classes=int(ckpt.get("num_classes", 16)),
+    )
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.to(device)
+    model.eval()
+    return model
+
+
+def load_cooperative_monostatic_fine_cnn_checkpoint(
+    path: str | Path,
+    device: torch.device | str,
+) -> CooperativeMonostaticFineCNN:
+    """从 checkpoint 加载概率条件化 Fine CNN（全局 xy）。
+
+    旧版含 ``region_embed`` 的 checkpoint 不兼容，会抛出明确错误。
+    """
+    ckpt_path = Path(path)
+    if not ckpt_path.is_file():
+        raise FileNotFoundError(f"模型 checkpoint 不存在: {ckpt_path}")
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    missing = [key for key in _REGION_FINE_CKPT_KEYS if key not in ckpt]
+    if missing:
+        raise KeyError(f"checkpoint 缺少必填字段: {', '.join(missing)}")
+    if str(ckpt.get("model_kind")) != "fine":
+        raise ValueError(
+            f"期望 model_kind='fine'，收到 {ckpt.get('model_kind')!r}"
+        )
+    state = ckpt["model_state_dict"]
+    if any(str(k).startswith("region_embed") for k in state):
+        raise ValueError(
+            "checkpoint 含旧版 region_embed 权重，与当前概率条件化 FineCNN "
+            "不兼容，请使用新架构重新训练"
+        )
+    model = CooperativeMonostaticFineCNN(
+        in_channels=int(ckpt["in_channels"]),
+        base_channels=int(ckpt["base_channels"]),
+        num_layers=int(ckpt["num_layers"]),
+        dropout=float(ckpt["dropout"]),
+        pool_mode=str(ckpt.get("pool_mode", "attention")),
+        multiscale_bins=int(ckpt.get("multiscale_bins", 8)),
+        soft_argmax_temp=float(ckpt.get("soft_argmax_temp", 1.0)),
+        num_classes=int(ckpt.get("num_classes", 16)),
+    )
+    model.load_state_dict(state)
+    model.to(device)
+    model.eval()
+    return model
+
+
+def load_cooperative_monostatic_two_stage_checkpoints(
+    region_path: str | Path,
+    fine_path: str | Path,
+    device: torch.device | str,
+) -> CooperativeMonostaticTwoStageCNN:
+    """加载 Region + Fine checkpoint 并组装串联模块。"""
+    region = load_cooperative_monostatic_region_cnn_checkpoint(region_path, device)
+    fine = load_cooperative_monostatic_fine_cnn_checkpoint(fine_path, device)
+    model = CooperativeMonostaticTwoStageCNN(region, fine)
     model.to(device)
     model.eval()
     return model

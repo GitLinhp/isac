@@ -1,0 +1,85 @@
+
+=== music ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_music_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_rmse.csv --calibrate-range --write-calib-json /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_range_bias_calib.json --device cuda:0
+CFAR: off
+MUSIC preload:   0%|          | 0/10752 [00:00<?, ?frame/s]MUSIC preload:   5%|▌         | 547/10752 [00:00<00:01, 5469.17frame/s]MUSIC preload:  11%|█         | 1136/10752 [00:00<00:01, 5713.96frame/s]MUSIC preload:  16%|█▌        | 1723/10752 [00:00<00:01, 5784.71frame/s]MUSIC preload:  22%|██▏       | 2312/10752 [00:00<00:01, 5824.78frame/s]MUSIC preload:  27%|██▋       | 2901/10752 [00:00<00:01, 5845.14frame/s]MUSIC preload:  32%|███▏      | 3489/10752 [00:00<00:01, 5856.08frame/s]MUSIC preload:  38%|███▊      | 4077/10752 [00:00<00:01, 5863.27frame/s]MUSIC preload:  43%|████▎     | 4664/10752 [00:00<00:01, 5858.81frame/s]MUSIC preload:  49%|████▉     | 5251/10752 [00:00<00:00, 5861.73frame/s]MUSIC preload:  54%|█████▍    | 5841/10752 [00:01<00:00, 5870.04frame/s]MUSIC preload:  60%|█████▉    | 6429/10752 [00:01<00:00, 5872.06frame/s]MUSIC preload:  65%|██████▌   | 7018/10752 [00:01<00:00, 5876.28frame/s]MUSIC preload:  71%|███████   | 7608/10752 [00:01<00:00, 5882.02frame/s]MUSIC preload:  76%|███████▌  | 8197/10752 [00:01<00:00, 5859.26frame/s]MUSIC preload:  82%|████████▏ | 8783/10752 [00:01<00:00, 5809.90frame/s]MUSIC preload:  87%|████████▋ | 9369/10752 [00:01<00:00, 5823.82frame/s]MUSIC preload:  93%|█████████▎| 9955/10752 [00:01<00:00, 5833.12frame/s]MUSIC preload:  98%|█████████▊| 10539/10752 [00:01<00:00, 5833.37frame/s]MUSIC preload: 100%|██████████| 10752/10752 [00:01<00:00, 5836.79frame/s]
+fitted calibration: bias_dev0=0.130 m (ROI MAE=0.191, n=7477), bias_dev1=0.560 m (ROI MAE=0.557, n=7475)
+output calib json: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_range_bias_calib.json
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_rmse.csv
+timing: scope=algo_core device=cuda:0 eval_s=19.5714 n=10744 mean_ms_per_sample=1.8216
+output timing json: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_rmse_timing.json
+
+MUSIC localization mean error summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.9371 │    0.8474 │       0.5511 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.5988 │    0.5943 │       0.3707 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     1.3625 │    0.9231 │       1.2781 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+
+=== esprit ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_esprit_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/esprit/esprit_rmse.csv --calibrate-range --write-calib-json /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/esprit/esprit_range_bias_calib.json --device cuda:0
+CFAR: off
+ESPRIT preload:   0%|          | 0/10752 [00:00<?, ?frame/s]ESPRIT preload:   5%|▌         | 568/10752 [00:00<00:01, 5672.49frame/s]ESPRIT preload:  11%|█         | 1153/10752 [00:00<00:01, 5769.47frame/s]ESPRIT preload:  16%|█▌        | 1740/10752 [00:00<00:01, 5814.22frame/s]ESPRIT preload:  22%|██▏       | 2324/10752 [00:00<00:01, 5821.32frame/s]ESPRIT preload:  27%|██▋       | 2908/10752 [00:00<00:01, 5827.73frame/s]ESPRIT preload:  32%|███▏      | 3494/10752 [00:00<00:01, 5836.03frame/s]ESPRIT preload:  38%|███▊      | 4081/10752 [00:00<00:01, 5843.29frame/s]ESPRIT preload:  43%|████▎     | 4666/10752 [00:00<00:01, 5842.69frame/s]ESPRIT preload:  49%|████▉     | 5251/10752 [00:00<00:00, 5814.29frame/s]ESPRIT preload:  54%|█████▍    | 5835/10752 [00:01<00:00, 5819.80frame/s]ESPRIT preload:  60%|█████▉    | 6419/10752 [00:01<00:00, 5825.66frame/s]ESPRIT preload:  65%|██████▌   | 7006/10752 [00:01<00:00, 5837.52frame/s]ESPRIT preload:  71%|███████   | 7590/10752 [00:01<00:00, 5813.61frame/s]ESPRIT preload:  76%|███████▌  | 8173/10752 [00:01<00:00, 5817.49frame/s]ESPRIT preload:  81%|████████▏ | 8757/10752 [00:01<00:00, 5821.23frame/s]ESPRIT preload:  87%|████████▋ | 9342/10752 [00:01<00:00, 5829.14frame/s]ESPRIT preload:  92%|█████████▏| 9925/10752 [00:01<00:00, 5756.50frame/s]ESPRIT preload:  98%|█████████▊| 10508/10752 [00:01<00:00, 5777.54frame/s]ESPRIT preload: 100%|██████████| 10752/10752 [00:01<00:00, 5809.84frame/s]
+fitted calibration: bias_dev0=0.110 m (ROI MAE=0.252, n=7477), bias_dev1=0.560 m (ROI MAE=0.564, n=7475)
+output calib json: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/esprit/esprit_range_bias_calib.json
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/esprit/esprit_rmse.csv
+timing: scope=algo_core device=cuda:0 eval_s=27.7698 n=10744 mean_ms_per_sample=2.5847
+output timing json: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/esprit/esprit_rmse_timing.json
+
+ESPRIT localization mean error summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.9656 │    0.8336 │       0.5694 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.6272 │    0.5743 │       0.4441 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     1.3912 │    0.9103 │       1.5237 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+
+=== cnn ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_cnn_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --checkpoint /home/lhp/projects/isac/models/cnn_improve_next/aug_spec_only_no_corners/best_model.pth --range-roi 0.0 4.0 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_rmse.csv --output-heatmap /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_rmse_heatmap.png --output-cdf /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_rmse_cdf.png --output-scatter /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_xy_scatter.png --device cuda:0 --no-filter-outliers --batch-size 1 --no-exclude-subregion-corners --no-plot
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_improve_next/aug_spec_only_no_corners/best_model.pth
+Feature mode: real_imag
+Feature norm: none
+Frames: 10752 (all frames) | ROI 0.0–4.0 m | batch_size=1 | device=cuda:0
+CNN preload:   0%|          | 0/10752 [00:00<?, ?frame/s]CNN preload:  56%|█████▌    | 5991/10752 [00:00<00:00, 59902.92frame/s]CNN preload: 100%|██████████| 10752/10752 [00:00<00:00, 60003.77frame/s]
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_rmse.csv
+timing: scope=algo_core device=cuda:0 eval_s=6.5445 n=10744 mean_ms_per_sample=0.6091
+output timing json: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_rmse_timing.json
+
+CNN localization mean error summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────┬───────────┬──────────────┐
+│ Region                   │   Samples │   Valid │   NaN │   Mean (m) │   Std (m) │   Median (m) │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ global                   │     10752 │   10752 │     0 │     0.6072 │    0.3976 │       0.5049 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ inner (|x|,|y| <= 0.5 m) │      5989 │    5989 │     0 │     0.3708 │    0.2257 │       0.3108 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────┼───────────┼──────────────┤
+│ outer                    │      4763 │    4763 │     0 │     0.9044 │    0.3663 │       0.9040 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────┴───────────┴──────────────┘
+
+=== Methods compare summary ===
+┌──────────┬───────────────────┬──────────────────┬──────────────────┬───────┬──────────┬───────────┬──────────┐
+│ method   │   global_mean_err │   inner_mean_err │   outer_mean_err │     n │   eval_s │   mean_ms │ device   │
+├──────────┼───────────────────┼──────────────────┼──────────────────┼───────┼──────────┼───────────┼──────────┤
+│ music    │            0.9371 │           0.5988 │           1.3625 │ 10752 │  19.5714 │    1.8216 │ cuda:0   │
+├──────────┼───────────────────┼──────────────────┼──────────────────┼───────┼──────────┼───────────┼──────────┤
+│ esprit   │            0.9656 │           0.6272 │           1.3912 │ 10752 │  27.7698 │    2.5847 │ cuda:0   │
+├──────────┼───────────────────┼──────────────────┼──────────────────┼───────┼──────────┼───────────┼──────────┤
+│ cnn      │            0.6072 │           0.3708 │           0.9044 │ 10752 │   6.5445 │    0.6091 │ cuda:0   │
+└──────────┴───────────────────┴──────────────────┴──────────────────┴───────┴──────────┴───────────┴──────────┘
+
+Wrote /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/summary.csv
+Wrote /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/summary.txt
+
+Done.

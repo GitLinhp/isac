@@ -1,0 +1,70 @@
+
+=== music ===
+
+>>> /opt/miniconda3/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_music_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/music/music_rmse.csv --max-samples 64
+CFAR: off
+MUSIC RMSE:   0%|          | 0/64 [00:00<?, ?frame/s]MUSIC RMSE:  72%|███████▏  | 46/64 [00:00<00:00, 455.76frame/s]MUSIC RMSE: 100%|██████████| 64/64 [00:00<00:00, 473.13frame/s]
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/music/music_rmse.csv
+
+MUSIC localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────────────┬─────────────────────┬───────────────────┐
+│ Region                   │   Samples │   Valid │   NaN │ Mean (m)           │ Std (m)             │ Median (m)        │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────────────┼─────────────────────┼───────────────────┤
+│ global                   │        64 │      64 │     0 │ 2.3040870013395796 │ 0.08292414296255561 │ 2.258613431165905 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────────────┼─────────────────────┼───────────────────┤
+│ inner (|x|,|y| <= 0.5 m) │         0 │       0 │     0 │ -                  │ -                   │ -                 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────────────┼─────────────────────┼───────────────────┤
+│ outer                    │        64 │      64 │     0 │ 2.3040870013395796 │ 0.08292414296255561 │ 2.258613431165905 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────────────┴─────────────────────┴───────────────────┘
+
+=== esprit ===
+
+>>> /opt/miniconda3/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_esprit_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/esprit/esprit_rmse.csv --max-samples 64
+ESPRIT RMSE:   0%|          | 0/64 [00:00<?, ?frame/s]ESPRIT RMSE: 100%|██████████| 64/64 [00:00<00:00, 837.35frame/s]
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/esprit/esprit_rmse.csv
+
+ESPRIT localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬────────────────────┬─────────────────────┬───────────────────┐
+│ Region                   │   Samples │   Valid │   NaN │ Mean (m)           │ Std (m)             │ Median (m)        │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────────────┼─────────────────────┼───────────────────┤
+│ global                   │        64 │      64 │     0 │ 2.3040870013395796 │ 0.08292414296255561 │ 2.258613431165905 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────────────┼─────────────────────┼───────────────────┤
+│ inner (|x|,|y| <= 0.5 m) │         0 │       0 │     0 │ -                  │ -                   │ -                 │
+├──────────────────────────┼───────────┼─────────┼───────┼────────────────────┼─────────────────────┼───────────────────┤
+│ outer                    │        64 │      64 │     0 │ 2.3040870013395796 │ 0.08292414296255561 │ 2.258613431165905 │
+└──────────────────────────┴───────────┴─────────┴───────┴────────────────────┴─────────────────────┴───────────────────┘
+
+=== cnn ===
+
+>>> /opt/miniconda3/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_cnn_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --checkpoint /home/lhp/projects/isac/models/cnn_improve_next/aug_spec_only/best_model.pth --range-roi 0.0 4.0 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/cnn/cnn_rmse.csv --output-heatmap /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/cnn/cnn_rmse_heatmap.png --output-cdf /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/cnn/cnn_rmse_cdf.png --device cuda:0 --no-filter-outliers --max-samples 64 --no-plot
+Using features sidecar: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+HDF5: /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset_features_roi0_4_real_imag.h5
+Checkpoint: /home/lhp/projects/isac/models/cnn_improve_next/aug_spec_only/best_model.pth
+Feature mode: real_imag
+Feature norm: none
+Frames: 64 (all frames) | ROI 0.0–4.0 m | batch_size=64 | device=cuda:0
+CNN RMSE:   0%|          | 0/1 [00:00<?, ?batch/s]CNN RMSE: 100%|██████████| 1/1 [00:00<00:00,  6.13batch/s]CNN RMSE: 100%|██████████| 1/1 [00:00<00:00,  6.12batch/s]
+output csv: /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/cnn/cnn_rmse.csv
+
+CNN localization RMSE summary:
+┌──────────────────────────┬───────────┬─────────┬───────┬───────────────────┬─────────────────────┬────────────────────┐
+│ Region                   │   Samples │   Valid │   NaN │ Mean (m)          │ Std (m)             │ Median (m)         │
+├──────────────────────────┼───────────┼─────────┼───────┼───────────────────┼─────────────────────┼────────────────────┤
+│ global                   │        64 │      64 │     0 │ 1.528016755840301 │ 0.09671245525915922 │ 1.5394605571698317 │
+├──────────────────────────┼───────────┼─────────┼───────┼───────────────────┼─────────────────────┼────────────────────┤
+│ inner (|x|,|y| <= 0.5 m) │         0 │       0 │     0 │ -                 │ -                   │ -                  │
+├──────────────────────────┼───────────┼─────────┼───────┼───────────────────┼─────────────────────┼────────────────────┤
+│ outer                    │        64 │      64 │     0 │ 1.528016755840301 │ 0.09671245525915922 │ 1.5394605571698317 │
+└──────────────────────────┴───────────┴─────────┴───────┴───────────────────┴─────────────────────┴────────────────────┘
+
+=== Methods compare summary ===
+method      global    inner    outer    n
+--------  --------  -------  -------  ---
+music       2.3041      nan   2.3041   64
+esprit      2.3041      nan   2.3041   64
+cnn         1.528       nan   1.528    64
+
+Wrote /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/summary.csv
+Wrote /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/summary.txt
+
+Done.

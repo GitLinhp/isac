@@ -1064,6 +1064,171 @@ def session_train_val_split_by_region(
     return train_indices, val_indices, split_info
 
 
+def _session_subregion_map(
+    session_indices: np.ndarray,
+    target_position: np.ndarray,
+) -> dict[int, int]:
+    """session_index → 16 子区域 subregion_id。"""
+    session_indices = np.asarray(session_indices, dtype=np.int64)
+    target_position = np.asarray(target_position, dtype=np.float64)
+    if target_position.ndim != 2 or target_position.shape[1] < 2:
+        raise ValueError(
+            f"target_position 须为 (N, >=2)，收到 {target_position.shape}"
+        )
+    if session_indices.shape[0] != target_position.shape[0]:
+        raise ValueError(
+            "session_indices 与 target_position 帧数须一致，"
+            f"收到 {session_indices.shape[0]} vs {target_position.shape[0]}"
+        )
+
+    from isac_imp.record_target_metadata import (
+        SUBREGION_COUNT,
+        target_subregion_index_xy_m,
+    )
+
+    session_to_subregion: dict[int, int] = {}
+    for frame_idx, sess in enumerate(session_indices):
+        sess_int = int(sess)
+        if sess_int in session_to_subregion:
+            continue
+        x_m = float(target_position[frame_idx, 0])
+        y_m = float(target_position[frame_idx, 1])
+        sid = int(target_subregion_index_xy_m(x_m, y_m))
+        if not (0 <= sid < SUBREGION_COUNT):
+            raise ValueError(f"subregion_id 越界: {sid}")
+        session_to_subregion[sess_int] = sid
+    return session_to_subregion
+
+
+def filter_frame_indices_exclude_subregion_corners(
+    frame_indices: np.ndarray | Sequence[int],
+    target_position: np.ndarray,
+) -> np.ndarray:
+    """去掉 true_xy 落在 4×4 四角格（ids 0/3/12/15）的帧索引。"""
+    from isac_imp.record_target_metadata import is_subregion_corner_xy_m
+
+    indices = np.asarray(frame_indices, dtype=np.int64).reshape(-1)
+    target_position = np.asarray(target_position, dtype=np.float64)
+    if target_position.ndim != 2 or target_position.shape[1] < 2:
+        raise ValueError(
+            f"target_position 须为 (N, >=2)，收到 {target_position.shape}"
+        )
+    if indices.size == 0:
+        return indices
+    if int(indices.min()) < 0 or int(indices.max()) >= target_position.shape[0]:
+        raise ValueError(
+            "frame_indices 超出 target_position 范围: "
+            f"[{indices.min()}, {indices.max()}] vs N={target_position.shape[0]}"
+        )
+    keep: list[int] = []
+    for idx in indices.tolist():
+        x_m = float(target_position[int(idx), 0])
+        y_m = float(target_position[int(idx), 1])
+        if not is_subregion_corner_xy_m(x_m, y_m):
+            keep.append(int(idx))
+    return np.asarray(keep, dtype=np.int64)
+
+
+def maybe_exclude_subregion_corner_frames(
+    frame_indices: np.ndarray | Sequence[int],
+    target_position: np.ndarray,
+    *,
+    enabled: bool,
+    label: str = "",
+) -> np.ndarray:
+    """可选剔除四角帧；``enabled`` 时打印前后帧数。"""
+    indices = np.asarray(frame_indices, dtype=np.int64).reshape(-1)
+    if not enabled:
+        return indices
+    filtered = filter_frame_indices_exclude_subregion_corners(indices, target_position)
+    prefix = f"{label}: " if label else ""
+    print(
+        f"{prefix}exclude 4x4 corner frames: {len(indices)} -> {len(filtered)}",
+        flush=True,
+    )
+    return filtered
+
+
+def session_train_val_split_by_subregion(
+    session_indices: np.ndarray,
+    target_position: np.ndarray,
+    val_ratio: float,
+    *,
+    seed: int = 42,
+    exclude_corner_subregions: bool = False,
+) -> tuple[np.ndarray, np.ndarray, dict[int, dict[str, int]]]:
+    """按 16 子区域独立划分 train/val 帧索引（区域内按 session）。
+
+    与 ``session_train_val_split_by_region`` 并存；专供两阶段定位训练脚本使用。
+    ``exclude_corner_subregions=True`` 时跳过四角格 session（ids 0/3/12/15）。
+    """
+    from isac_imp.record_target_metadata import (
+        SUBREGION_CORNER_IDS,
+        SUBREGION_COUNT,
+    )
+
+    session_indices = np.asarray(session_indices, dtype=np.int64)
+    if session_indices.ndim != 1:
+        raise ValueError(
+            f"session_indices 须为一维，收到 shape {session_indices.shape}"
+        )
+    if not (0.0 < val_ratio < 1.0):
+        raise ValueError(f"val_ratio 须在 (0, 1)，收到 {val_ratio}")
+
+    session_to_subregion = _session_subregion_map(session_indices, target_position)
+    subregion_to_sessions: dict[int, list[int]] = {
+        i: [] for i in range(SUBREGION_COUNT)
+    }
+    for sess, sid in session_to_subregion.items():
+        if exclude_corner_subregions and int(sid) in SUBREGION_CORNER_IDS:
+            continue
+        subregion_to_sessions[sid].append(sess)
+
+    val_sessions: set[int] = set()
+    split_info: dict[int, dict[str, int]] = {}
+
+    for sid in range(SUBREGION_COUNT):
+        if exclude_corner_subregions and sid in SUBREGION_CORNER_IDS:
+            split_info[sid] = {"train": 0, "val": 0}
+            continue
+        sessions = sorted(subregion_to_sessions[sid])
+        n = len(sessions)
+        if n == 0:
+            split_info[sid] = {"train": 0, "val": 0}
+            continue
+        if n == 1:
+            split_info[sid] = {"train": 1, "val": 0}
+            continue
+
+        n_val = min(n - 1, max(1, int(round(n * val_ratio))))
+        rng = np.random.default_rng(seed + sid)
+        perm = np.array(sessions, dtype=np.int64)
+        rng.shuffle(perm)
+        region_val = set(int(s) for s in perm[:n_val])
+        val_sessions.update(region_val)
+        split_info[sid] = {
+            "train": n - n_val,
+            "val": n_val,
+        }
+
+    if exclude_corner_subregions:
+        corner_sessions = {
+            sess
+            for sess, sid in session_to_subregion.items()
+            if int(sid) in SUBREGION_CORNER_IDS
+        }
+        usable_mask = ~np.isin(session_indices, list(corner_sessions))
+    else:
+        usable_mask = np.ones(session_indices.size, dtype=bool)
+
+    all_indices = np.arange(session_indices.size, dtype=np.int64)
+    val_mask = np.isin(session_indices, list(val_sessions)) & usable_mask
+    train_mask = (~np.isin(session_indices, list(val_sessions))) & usable_mask
+    val_indices = all_indices[val_mask]
+    train_indices = all_indices[train_mask]
+    return train_indices, val_indices, split_info
+
+
 class CooperativeMonostaticRangeProfileDataset(
     Dataset if torch is not None else object  # type: ignore[misc]
 ):
@@ -1084,17 +1249,29 @@ class CooperativeMonostaticRangeProfileDataset(
         feature_noise_std: float = 0.0,
         spec_augment_prob: float = 0.0,
         spec_augment_max_bins: int = 3,
+        cpi_aug: bool = False,
+        cpi_amp_scale: float = 0.0,
+        cpi_complex_noise_std: float = 0.0,
+        feature_norm: str = "none",
         augment: bool = False,
         seed: int = 42,
+        return_subregion: bool = False,
     ) -> None:
         if torch is None:
             raise ImportError("torch is required for CooperativeMonostaticRangeProfileDataset")
 
-        from isac.models.preprocess import COOPERATIVE_FEATURE_MODES
+        from isac.models.preprocess import COOPERATIVE_FEATURE_MODES, COOPERATIVE_FEATURE_NORMS
         from isac_imp.cooperative_monostatic_pipeline import grc_cooperative_processing_params
 
         if feature_mode not in COOPERATIVE_FEATURE_MODES:
             raise ValueError(f"feature_mode 无效: {feature_mode!r}")
+        if feature_norm not in COOPERATIVE_FEATURE_NORMS:
+            raise ValueError(f"feature_norm 无效: {feature_norm!r}")
+        if feature_norm != "none" and feature_mode != "real_imag":
+            raise ValueError(
+                f"feature_norm={feature_norm!r} 仅支持 feature_mode=real_imag，"
+                f"收到 {feature_mode!r}"
+            )
 
         self.h5_path = Path(h5_path)
         self.frame_indices = np.asarray(frame_indices, dtype=np.int64)
@@ -1102,15 +1279,24 @@ class CooperativeMonostaticRangeProfileDataset(
         self.range_roi = (float(range_roi[0]), float(range_roi[1]))
         self.transform_on_load = transform_on_load
         self.feature_mode = feature_mode
+        self.feature_norm = feature_norm
         self.norm_means = None if norm_means is None else np.asarray(norm_means, dtype=np.float64)
         self.norm_stds = None if norm_stds is None else np.asarray(norm_stds, dtype=np.float64)
         self.feature_noise_std = float(feature_noise_std)
         self.spec_augment_prob = float(spec_augment_prob)
         self.spec_augment_max_bins = int(spec_augment_max_bins)
+        self.cpi_aug = bool(cpi_aug)
+        self.cpi_amp_scale = float(cpi_amp_scale)
+        self.cpi_complex_noise_std = float(cpi_complex_noise_std)
+        if self.cpi_amp_scale < 0.0:
+            raise ValueError(f"cpi_amp_scale 须 >= 0，收到 {cpi_amp_scale}")
+        if self.cpi_complex_noise_std < 0.0:
+            raise ValueError(f"cpi_complex_noise_std 须 >= 0，收到 {cpi_complex_noise_std}")
         self.augment = bool(augment)
         self.label_jitter_m = float(label_jitter_m)
         if self.label_jitter_m < 0.0:
             raise ValueError(f"label_jitter_m 须 >= 0，收到 {label_jitter_m}")
+        self.return_subregion = bool(return_subregion)
         self.seed = int(seed)
         self.reseed(self.seed)
         self._h5: h5py.File | None = None
@@ -1192,6 +1378,8 @@ class CooperativeMonostaticRangeProfileDataset(
             )
 
         xy = np.array([float(target_pos[0]), float(target_pos[1])], dtype=np.float32)
+        true_x = float(target_pos[0])
+        true_y = float(target_pos[1])
         if self.label_jitter_m > 0.0:
             jitter = self._label_rng.uniform(
                 -self.label_jitter_m,
@@ -1201,6 +1389,7 @@ class CooperativeMonostaticRangeProfileDataset(
             xy = xy + jitter
 
         from isac.models.preprocess import (
+            apply_cooperative_cpi_augmentation,
             apply_cooperative_feature_augmentation,
             cooperative_input_is_complex,
             cooperative_uses_slowtime_input,
@@ -1209,6 +1398,17 @@ class CooperativeMonostaticRangeProfileDataset(
         )
 
         if self.transform_on_load:
+            if (
+                self.augment
+                and self.cpi_aug
+                and (self.cpi_amp_scale > 0.0 or self.cpi_complex_noise_std > 0.0)
+            ):
+                dual_profiles = apply_cooperative_cpi_augmentation(
+                    dual_profiles,
+                    amp_scale=self.cpi_amp_scale,
+                    complex_noise_std=self.cpi_complex_noise_std,
+                    rng=self._aug_rng,
+                )
             if cooperative_uses_slowtime_input(self.feature_mode):  # type: ignore[arg-type]
                 model_input = dual_slowtime_to_model_input(
                     dual_profiles,
@@ -1220,6 +1420,7 @@ class CooperativeMonostaticRangeProfileDataset(
                     mode=self.feature_mode,  # type: ignore[arg-type]
                     norm_means=self.norm_means,
                     norm_stds=self.norm_stds,
+                    feature_norm=self.feature_norm,  # type: ignore[arg-type]
                 )
             if (
                 self.augment
@@ -1235,11 +1436,26 @@ class CooperativeMonostaticRangeProfileDataset(
         else:
             model_input = dual_profiles
 
-        return {
+        out: dict[str, Any] = {
             "dual_profiles": model_input,
             "target_xy": torch.from_numpy(xy),
             "session_index": torch.tensor(session_idx, dtype=torch.int64),
         }
+        if self.return_subregion:
+            from isac_imp.record_target_metadata import (
+                target_local_offset_xy_m,
+                target_subregion_index_xy_m,
+            )
+
+            # 子区域标签始终由未 jitter 真值计算，避免边界跳格
+            sid = int(target_subregion_index_xy_m(true_x, true_y))
+            local_xy = np.asarray(
+                target_local_offset_xy_m(true_x, true_y, sid),
+                dtype=np.float32,
+            )
+            out["target_subregion_id"] = torch.tensor(sid, dtype=torch.int64)
+            out["target_local_xy"] = torch.from_numpy(local_xy)
+        return out
 
 
 class CooperativeMonostaticFeaturesDataset(
@@ -1256,11 +1472,18 @@ class CooperativeMonostaticFeaturesDataset(
         feature_noise_std: float = 0.0,
         spec_augment_prob: float = 0.0,
         spec_augment_max_bins: int = 3,
+        feature_norm: str = "none",
         augment: bool = False,
         seed: int = 42,
+        return_subregion: bool = False,
     ) -> None:
         if torch is None:
             raise ImportError("torch is required for CooperativeMonostaticFeaturesDataset")
+
+        from isac.models.preprocess import COOPERATIVE_FEATURE_NORMS
+
+        if feature_norm not in COOPERATIVE_FEATURE_NORMS:
+            raise ValueError(f"feature_norm 无效: {feature_norm!r}")
 
         self.h5_path = Path(h5_path)
         self.frame_indices = np.asarray(frame_indices, dtype=np.int64)
@@ -1270,7 +1493,9 @@ class CooperativeMonostaticFeaturesDataset(
         self.feature_noise_std = float(feature_noise_std)
         self.spec_augment_prob = float(spec_augment_prob)
         self.spec_augment_max_bins = int(spec_augment_max_bins)
+        self.feature_norm = feature_norm
         self.augment = bool(augment)
+        self.return_subregion = bool(return_subregion)
         self.seed = int(seed)
         self.reseed(self.seed)
         self._h5: h5py.File | None = None
@@ -1317,6 +1542,8 @@ class CooperativeMonostaticFeaturesDataset(
         session_idx = int(f[DATASET_KEY_SESSION_INDEX][global_idx])
 
         xy = np.array([float(target_pos[0]), float(target_pos[1])], dtype=np.float32)
+        true_x = float(target_pos[0])
+        true_y = float(target_pos[1])
         if self.label_jitter_m > 0.0:
             jitter = self._label_rng.uniform(
                 -self.label_jitter_m,
@@ -1326,6 +1553,10 @@ class CooperativeMonostaticFeaturesDataset(
             xy = xy + jitter
 
         model_input = torch.from_numpy(np.asarray(features, dtype=_FEATURE_DTYPE))
+        if self.feature_norm == "rms":
+            from isac.models.preprocess import apply_real_imag_rms_norm
+
+            model_input = apply_real_imag_rms_norm(model_input)
         if self.augment:
             from isac.models.preprocess import apply_cooperative_feature_augmentation
 
@@ -1337,11 +1568,25 @@ class CooperativeMonostaticFeaturesDataset(
                 rng=self._aug_rng,
             )
 
-        return {
+        out: dict[str, Any] = {
             "dual_profiles": model_input,
             "target_xy": torch.from_numpy(xy),
             "session_index": torch.tensor(session_idx, dtype=torch.int64),
         }
+        if self.return_subregion:
+            from isac_imp.record_target_metadata import (
+                target_local_offset_xy_m,
+                target_subregion_index_xy_m,
+            )
+
+            sid = int(target_subregion_index_xy_m(true_x, true_y))
+            local_xy = np.asarray(
+                target_local_offset_xy_m(true_x, true_y, sid),
+                dtype=np.float32,
+            )
+            out["target_subregion_id"] = torch.tensor(sid, dtype=torch.int64)
+            out["target_local_xy"] = torch.from_numpy(local_xy)
+        return out
 
 
 def open_cooperative_monostatic_training_dataset(
@@ -1358,17 +1603,34 @@ def open_cooperative_monostatic_training_dataset(
     feature_noise_std: float = 0.0,
     spec_augment_prob: float = 0.0,
     spec_augment_max_bins: int = 3,
+    cpi_aug: bool = False,
+    cpi_amp_scale: float = 0.0,
+    cpi_complex_noise_std: float = 0.0,
+    feature_norm: str = "none",
     augment: bool = False,
     seed: int = 42,
+    return_subregion: bool = False,
 ) -> CooperativeMonostaticFeaturesDataset | CooperativeMonostaticRangeProfileDataset:
     """按 HDF5 data_kind 打开训练 Dataset（features sidecar 或 raw CPI）。"""
-    from isac.models.preprocess import COOPERATIVE_FEATURE_MODES
+    from isac.models.preprocess import COOPERATIVE_FEATURE_MODES, COOPERATIVE_FEATURE_NORMS
 
     if feature_mode not in COOPERATIVE_FEATURE_MODES:
         raise ValueError(f"feature_mode 无效: {feature_mode!r}")
+    if feature_norm not in COOPERATIVE_FEATURE_NORMS:
+        raise ValueError(f"feature_norm 无效: {feature_norm!r}")
+    if feature_norm != "none" and feature_mode != "real_imag":
+        raise ValueError(
+            f"feature_norm={feature_norm!r} 仅支持 feature_mode=real_imag，"
+            f"收到 {feature_mode!r}"
+        )
 
     h5_path = Path(h5_path)
     if is_cooperative_monostatic_features_h5(h5_path):
+        if cpi_aug:
+            raise ValueError(
+                "CPI 增强仅支持 raw CPI 在线路径；"
+                f"当前为 features sidecar: {h5_path}"
+            )
         if feature_mode not in SIDECAR_FEATURE_MODES:
             raise ValueError(
                 f"features sidecar 仅支持 feature_mode={SIDECAR_FEATURE_MODES}；"
@@ -1386,8 +1648,10 @@ def open_cooperative_monostatic_training_dataset(
             feature_noise_std=feature_noise_std,
             spec_augment_prob=spec_augment_prob,
             spec_augment_max_bins=spec_augment_max_bins,
+            feature_norm=feature_norm,
             augment=augment,
             seed=seed,
+            return_subregion=return_subregion,
         )
     return CooperativeMonostaticRangeProfileDataset(
         h5_path,
@@ -1402,6 +1666,11 @@ def open_cooperative_monostatic_training_dataset(
         feature_noise_std=feature_noise_std,
         spec_augment_prob=spec_augment_prob,
         spec_augment_max_bins=spec_augment_max_bins,
+        cpi_aug=cpi_aug,
+        cpi_amp_scale=cpi_amp_scale,
+        cpi_complex_noise_std=cpi_complex_noise_std,
+        feature_norm=feature_norm,
         augment=augment,
         seed=seed,
+        return_subregion=return_subregion,
     )

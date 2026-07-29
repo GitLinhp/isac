@@ -1,0 +1,5 @@
+exp_id,split,checkpoint,n_frames,global_rmse_m,inner_rmse_m,outer_rmse_m,note,output_csv
+baseline,holdout_90,models/cnn_deploy_strict_roi4/best_model.pth,9562,0.585879,0.360403,0.877926,primary honest metric (val 10% excluded),out/cooperative_monostatic/cnn_run1_full_run2val10_ft/baseline_holdout/cnn_rmse.csv
+finetune,holdout_90,models/cnn_run1_full_run2val10_ft/best_model.pth,9562,0.568514,0.355577,0.844320,primary honest metric (val 10% excluded),out/cooperative_monostatic/cnn_run1_full_run2val10_ft/ft_holdout/cnn_rmse.csv
+baseline,full_frame,models/cnn_deploy_strict_roi4/best_model.pth,10752,0.587467,0.355713,0.878875,reference only; mild optimism via early-stop on Run2 10% val,out/cooperative_monostatic/cnn_run1_full_run2val10_ft/baseline_full/cnn_rmse.csv
+finetune,full_frame,models/cnn_run1_full_run2val10_ft/best_model.pth,10752,0.569918,0.351473,0.844590,reference only; mild optimism via early-stop on Run2 10% val,out/cooperative_monostatic/cnn_run1_full_run2val10_ft/ft_full/cnn_rmse.csv

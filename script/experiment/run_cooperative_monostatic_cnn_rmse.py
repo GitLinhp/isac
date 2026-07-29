@@ -12,15 +12,13 @@ divide CPI → ROI 复数距离谱 → CooperativeMonostaticCNN → (x, y) 回�
 from __future__ import annotations
 
 import argparse
-import csv
-import importlib.util
+import time
 from collections import defaultdict
 from pathlib import Path
 
 import h5py
 import numpy as np
 import torch
-from tabulate import tabulate
 from tqdm import tqdm
 
 from isac import PROJECT_ROOT
@@ -51,19 +49,26 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
     is_cooperative_monostatic_features_h5,
     load_cooperative_frame_energy,
     resolve_cooperative_features_h5,
+    maybe_exclude_subregion_corner_frames,
     session_train_val_split_by_region,
 )
-from isac_imp.record_target_metadata import is_inner_target_xy_m
+from isac_imp.eval_timing import (
+    run_algo_core_timed,
+    timing_json_path_for_csv,
+    write_eval_timing_json,
+)
 
-CSV_COLUMNS = (
-    "sample_idx",
-    "session_index",
-    "frame_index",
-    "true_x_m",
-    "true_y_m",
-    "est_x_m",
-    "est_y_m",
-    "rmse_xy_m",
+# 同目录共享报告工具（脚本直接执行时需加入 path）
+import sys
+
+_EXPERIMENT_DIR = Path(__file__).resolve().parent
+if str(_EXPERIMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(_EXPERIMENT_DIR))
+from cooperative_monostatic_eval_report import (  # noqa: E402
+    LOCALIZATION_CSV_COLUMNS as CSV_COLUMNS,
+    plot_localization_artifacts,
+    print_localization_rmse_summary,
+    write_localization_csv,
 )
 
 DEFAULT_VAL_RATIO = 0.2
@@ -99,16 +104,8 @@ def _default_output_cdf() -> Path:
     return PROJECT_ROOT / "out" / "cooperative_monostatic" / "cnn_rmse_cdf.png"
 
 
-def _load_plot_heatmap_module():
-    plot_path = Path(__file__).resolve().with_name(
-        "plot_cooperative_monostatic_music_rmse_heatmap.py"
-    )
-    spec = importlib.util.spec_from_file_location("plot_rmse_heatmap", plot_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load heatmap plot module from {plot_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _default_output_scatter() -> Path:
+    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "cnn_xy_scatter.png"
 
 
 def _parse_range_roi(values: list[float]) -> tuple[float, float]:
@@ -186,21 +183,49 @@ def argument_parser() -> argparse.Namespace:
         help="evaluate only validation frames (session split, ratio=0.2, seed=42)",
     )
     parser.add_argument(
+        "--train-split-only",
+        action="store_true",
+        help=(
+            "evaluate only train-side frames of the same region-stratified split "
+            "as --val-only (holdout complement)"
+        ),
+    )
+    parser.add_argument(
         "--val-ratio",
         type=float,
         default=DEFAULT_VAL_RATIO,
-        help="validation session ratio when --val-only (default: 0.2)",
+        help="validation session ratio when --val-only/--train-split-only (default: 0.2)",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=DEFAULT_VAL_SEED,
-        help="random seed for session split when --val-only (default: 42)",
+        help=(
+            "random seed for session split when --val-only/--train-split-only "
+            "(default: 42)"
+        ),
     )
     parser.add_argument(
         "--aggregate-session",
         action="store_true",
         help="average CNN xy predictions over frames per session before RMSE",
+    )
+    parser.add_argument(
+        "--session-smooth",
+        type=str,
+        choices=["none", "median", "ema"],
+        default="none",
+        help=(
+            "per-session temporal smooth on frame predictions before RMSE: "
+            "none | median | ema (default: none; applied within each session "
+            "ordered by frame_index)"
+        ),
+    )
+    parser.add_argument(
+        "--session-smooth-alpha",
+        type=float,
+        default=0.3,
+        help="EMA alpha when --session-smooth ema (default: 0.3)",
     )
     parser.add_argument(
         "--no-progress",
@@ -235,10 +260,25 @@ def argument_parser() -> argparse.Namespace:
         help="output CDF PNG path (default: under out/cooperative_monostatic/)",
     )
     parser.add_argument(
+        "--output-scatter",
+        type=Path,
+        default=_default_output_scatter(),
+        help="output estimated xy scatter PNG path (default: under out/cooperative_monostatic/)",
+    )
+    parser.add_argument(
         "--filter-outliers",
         action=argparse.BooleanOptionalAction,
         default=False,
         help="硬过滤 + session 能量 MAD 软剔除（默认关闭；--filter-outliers 开启）",
+    )
+    parser.add_argument(
+        "--exclude-subregion-corners",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "剔除 4x4 四角子区帧（ids 0/3/12/15；默认关闭；"
+            "--exclude-subregion-corners 开启）"
+        ),
     )
     parser.add_argument(
         "--xy-max-m",
@@ -267,9 +307,12 @@ def _resolve_frame_indices(
     max_samples: int | None,
     session_index: int | None,
     val_only: bool,
+    train_split_only: bool,
     val_ratio: float,
     seed: int,
 ) -> list[int]:
+    if val_only and train_split_only:
+        raise ValueError("--val-only 与 --train-split-only 不能同时使用")
     with h5py.File(h5_path, "r") as f:
         if DATASET_KEY_FEATURES in f:
             total = int(f[DATASET_KEY_FEATURES].shape[0])
@@ -281,14 +324,14 @@ def _resolve_frame_indices(
         )
 
     indices = np.arange(total, dtype=np.int64)
-    if val_only:
-        _, val_idx, _ = session_train_val_split_by_region(
+    if val_only or train_split_only:
+        train_idx, val_idx, _ = session_train_val_split_by_region(
             session_arr,
             target_position,
             val_ratio,
             seed=seed,
         )
-        indices = val_idx
+        indices = val_idx if val_only else train_idx
 
     if session_index is not None:
         mask = session_arr[indices] == int(session_index)
@@ -401,9 +444,10 @@ def _predict_xy_batch(
 
 def _load_checkpoint_inference_config(
     checkpoint: Path,
-) -> tuple[str, np.ndarray | None, np.ndarray | None]:
+) -> tuple[str, str, np.ndarray | None, np.ndarray | None]:
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     feature_mode = str(ckpt.get("feature_mode", "legacy_4ch"))
+    feature_norm = str(ckpt.get("feature_norm", "none"))
     norm_means: np.ndarray | None = None
     norm_stds: np.ndarray | None = None
     norm_stats_path = ckpt.get("norm_stats_path")
@@ -415,7 +459,7 @@ def _load_checkpoint_inference_config(
             norm_means, norm_stds, stats_mode = load_cooperative_norm_stats(stats_path)
             if stats_mode != feature_mode and feature_mode == "logmag_fixed_norm":
                 pass
-    return feature_mode, norm_means, norm_stds
+    return feature_mode, feature_norm, norm_means, norm_stds
 
 
 def _evaluate_per_frame_from_features(
@@ -426,52 +470,118 @@ def _evaluate_per_frame_from_features(
     frame_indices: list[int],
     batch_size: int,
     show_progress: bool,
-) -> list[dict[str, float | int]]:
-    """从预计算 features sidecar 评估（跳过 CPI→ROI FFT）。"""
-    rows: list[dict[str, float | int]] = []
-    if not frame_indices:
-        return rows
+    feature_norm: str = "none",
+) -> tuple[list[dict[str, float | int]], float, int]:
+    """从预计算 features sidecar 评估；预加载后按算法核口径计时。"""
+    from isac.models.preprocess import apply_real_imag_rms_norm
 
+    if not frame_indices:
+        return [], 0.0, 0
+
+    device_t = torch.device(device)
     with h5py.File(h5_path, "r") as f:
         feat_ds = f[DATASET_KEY_FEATURES]
         target_ds = f[DATASET_KEY_TARGET_POSITION]
         session_ds = f[DATASET_KEY_SESSION_INDEX]
         frame_ds = f[DATASET_KEY_FRAME_INDEX]
 
-        batch_bar = tqdm(
-            range(0, len(frame_indices), batch_size),
-            desc="CNN RMSE",
-            unit="batch",
+        meta: list[tuple[int, int, int, float, float]] = []
+        feat_tensors: list[torch.Tensor] = []
+        for sample_idx in tqdm(
+            frame_indices,
+            desc="CNN preload",
+            unit="frame",
             disable=not show_progress,
-        )
-        for start in batch_bar:
-            chunk = frame_indices[start : start + batch_size]
-            feats = np.stack(
-                [np.asarray(feat_ds[i], dtype=np.float32) for i in chunk],
-                axis=0,
+        ):
+            feat = np.asarray(feat_ds[sample_idx], dtype=np.float32)
+            t = torch.from_numpy(feat).unsqueeze(0).to(device_t)
+            if feature_norm == "rms":
+                t = apply_real_imag_rms_norm(t)
+            feat_tensors.append(t)
+            meta.append(
+                (
+                    int(sample_idx),
+                    int(session_ds[sample_idx]),
+                    int(frame_ds[sample_idx]),
+                    float(target_ds[sample_idx, 0]),
+                    float(target_ds[sample_idx, 1]),
+                )
             )
-            model_input = torch.from_numpy(feats)
-            pred_xy = _predict_xy_batch(model, device, model_input)
 
-            for i, sample_idx in enumerate(chunk):
-                true_x = float(target_ds[sample_idx, 0])
-                true_y = float(target_ds[sample_idx, 1])
-                est_x = float(pred_xy[i, 0])
-                est_y = float(pred_xy[i, 1])
-                rmse = position_rmse_xy((est_x, est_y), (true_x, true_y))
-                rows.append(
-                    {
+    n = len(meta)
+    rows_slot: list[dict[str, float | int] | None] = [None] * n
+    # batch_size>1: still time per-frame forward for fair methods_compare;
+    # process in batches only when batch_size>1 for throughput (but timed as algo).
+    # Plan: methods_compare uses batch_size=1; keep single-frame timed run_one.
+    model.eval()
+
+    def run_one(i: int) -> None:
+        sample_idx, sess, frame_i, true_x, true_y = meta[i]
+        with torch.no_grad():
+            pred = model(feat_tensors[i])
+        est_x = float(pred[0, 0].item())
+        est_y = float(pred[0, 1].item())
+        rows_slot[i] = {
+            "sample_idx": sample_idx,
+            "session_index": sess,
+            "frame_index": frame_i,
+            "true_x_m": true_x,
+            "true_y_m": true_y,
+            "est_x_m": est_x,
+            "est_y_m": est_y,
+            "rmse_xy_m": position_rmse_xy((est_x, est_y), (true_x, true_y)),
+        }
+
+    # If batch_size>1, use batched timed loop for remaining frames after warmup
+    # while still syncing — for methods_compare batch=1, run_one is enough.
+    if batch_size <= 1:
+        eval_s, n_timed = run_algo_core_timed(n, device=device_t, run_one=run_one)
+    else:
+        # Warmup first min(8,n) single frames, then time batched remainder
+        from isac_imp.eval_timing import DEFAULT_WARMUP_FRAMES, sync_device
+        import time as _time
+
+        n_warm = min(DEFAULT_WARMUP_FRAMES, n)
+        for i in range(n_warm):
+            run_one(i)
+        sync_device(device_t)
+        remaining = list(range(n_warm, n))
+        if not remaining:
+            sync_device(device_t)
+            t0 = _time.perf_counter()
+            for i in range(n):
+                run_one(i)
+            sync_device(device_t)
+            eval_s, n_timed = _time.perf_counter() - t0, n
+        else:
+            sync_device(device_t)
+            t0 = _time.perf_counter()
+            for start in range(0, len(remaining), batch_size):
+                chunk_idx = remaining[start : start + batch_size]
+                batch = torch.cat([feat_tensors[i] for i in chunk_idx], dim=0)
+                with torch.no_grad():
+                    pred = model(batch)
+                for j, i in enumerate(chunk_idx):
+                    sample_idx, sess, frame_i, true_x, true_y = meta[i]
+                    est_x = float(pred[j, 0].item())
+                    est_y = float(pred[j, 1].item())
+                    rows_slot[i] = {
                         "sample_idx": sample_idx,
-                        "session_index": int(session_ds[sample_idx]),
-                        "frame_index": int(frame_ds[sample_idx]),
+                        "session_index": sess,
+                        "frame_index": frame_i,
                         "true_x_m": true_x,
                         "true_y_m": true_y,
                         "est_x_m": est_x,
                         "est_y_m": est_y,
-                        "rmse_xy_m": rmse,
+                        "rmse_xy_m": position_rmse_xy(
+                            (est_x, est_y), (true_x, true_y)
+                        ),
                     }
-                )
-    return rows
+            sync_device(device_t)
+            eval_s, n_timed = _time.perf_counter() - t0, len(remaining)
+
+    rows = [r for r in rows_slot if r is not None]
+    return rows, eval_s, n_timed
 
 
 def _evaluate_per_frame(
@@ -485,9 +595,10 @@ def _evaluate_per_frame(
     batch_size: int,
     show_progress: bool,
     feature_mode: str = "legacy_4ch",
+    feature_norm: str = "none",
     norm_means: np.ndarray | None = None,
     norm_stds: np.ndarray | None = None,
-) -> list[dict[str, float | int]]:
+) -> tuple[list[dict[str, float | int]], float, int]:
     if is_cooperative_monostatic_features_h5(h5_path):
         return _evaluate_per_frame_from_features(
             h5_path,
@@ -496,12 +607,21 @@ def _evaluate_per_frame(
             frame_indices=frame_indices,
             batch_size=batch_size,
             show_progress=show_progress,
+            feature_norm=feature_norm,
         )
 
+    import time as _time
+
+    from isac_imp.eval_timing import sync_device
+
+    # Raw CPI path: keep existing batch loop but wrap with sync timing
     rows: list[dict[str, float | int]] = []
     if not frame_indices:
-        return rows
+        return rows, 0.0, 0
 
+    device_t = torch.device(device)
+    sync_device(device_t)
+    t0 = _time.perf_counter()
     with h5py.File(h5_path, "r") as f:
         dev0_ds = f[DATASET_KEY_PROFILES_DEV0]
         dev1_ds = f[DATASET_KEY_PROFILES_DEV1]
@@ -511,7 +631,7 @@ def _evaluate_per_frame(
 
         batch_bar = tqdm(
             range(0, len(frame_indices), batch_size),
-            desc="CNN RMSE",
+            desc="CNN mean err",
             unit="batch",
             disable=not show_progress,
         )
@@ -564,6 +684,7 @@ def _evaluate_per_frame(
                     mode=feature_mode,  # type: ignore[arg-type]
                     norm_means=norm_means,
                     norm_stds=norm_stds,
+                    feature_norm=feature_norm,  # type: ignore[arg-type]
                 )
             pred_xy = _predict_xy_batch(model, device, model_input)
 
@@ -583,7 +704,9 @@ def _evaluate_per_frame(
                         "rmse_xy_m": rmse,
                     }
                 )
-    return rows
+    sync_device(device_t)
+    eval_s = _time.perf_counter() - t0
+    return rows, eval_s, len(rows)
 
 
 def _evaluate_aggregate_session(
@@ -630,90 +753,50 @@ def _evaluate_aggregate_session(
     return rows
 
 
-def _write_csv(path: Path, rows: list[dict[str, float | int]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as csv_f:
-        writer = csv.DictWriter(csv_f, fieldnames=CSV_COLUMNS)
-        writer.writeheader()
-        writer.writerows(rows)
+def _apply_session_smooth(
+    per_frame_rows: list[dict[str, float | int]],
+    *,
+    mode: str,
+    ema_alpha: float = 0.3,
+) -> list[dict[str, float | int]]:
+    """对同 session 内按 frame_index 排序的预测做中值或 EMA 平滑（帧级输出）。"""
+    if mode == "none" or not per_frame_rows:
+        return per_frame_rows
+    if mode == "ema" and not (0.0 < float(ema_alpha) <= 1.0):
+        raise ValueError(f"--session-smooth-alpha 须在 (0,1]，收到 {ema_alpha}")
 
+    by_sess: dict[int, list[dict[str, float | int]]] = defaultdict(list)
+    for row in per_frame_rows:
+        by_sess[int(row["session_index"])].append(dict(row))
 
-def _rmse_stats(rmses: np.ndarray) -> dict[str, float | int]:
-    """计算 RMSE 数组的样本数与 mean/std/median。"""
-    valid = rmses[np.isfinite(rmses)]
-    stats: dict[str, float | int] = {
-        "samples": int(rmses.size),
-        "valid": int(valid.size),
-        "nan": int(rmses.size - valid.size),
-    }
-    if valid.size:
-        stats["mean"] = float(valid.mean())
-        stats["std"] = float(valid.std())
-        stats["median"] = float(np.median(valid))
-    return stats
-
-
-def _stats_table_row(
-    region: str,
-    stats: dict[str, float | int],
-) -> list[str | int | float]:
-    """将 ``_rmse_stats`` 结果转为 tabulate 行。"""
-    if stats.get("valid", 0):
-        return [
-            region,
-            stats["samples"],
-            stats["valid"],
-            stats["nan"],
-            stats["mean"],
-            stats["std"],
-            stats["median"],
-        ]
-    return [
-        region,
-        stats["samples"],
-        stats["valid"],
-        stats["nan"],
-        "-",
-        "-",
-        "-",
-    ]
-
-
-def _print_summary(rows: list[dict[str, float | int]]) -> None:
-    rmses = np.asarray([row["rmse_xy_m"] for row in rows], dtype=np.float64)
-    inner_mask = np.array(
-        [
-            is_inner_target_xy_m(float(row["true_x_m"]), float(row["true_y_m"]))
-            for row in rows
-        ],
-        dtype=bool,
-    )
-    headers = [
-        "Region",
-        "Samples",
-        "Valid",
-        "NaN",
-        "Mean (m)",
-        "Std (m)",
-        "Median (m)",
-    ]
-    table_rows = [
-        _stats_table_row("global", _rmse_stats(rmses)),
-        _stats_table_row(
-            "inner (|x|,|y| <= 0.5 m)",
-            _rmse_stats(rmses[inner_mask]),
-        ),
-        _stats_table_row("outer", _rmse_stats(rmses[~inner_mask])),
-    ]
-    print("\nCNN localization RMSE summary:")
-    print(
-        tabulate(
-            table_rows,
-            headers=headers,
-            tablefmt="simple_grid",
-            floatfmt=".4f",
-        )
-    )
+    out: list[dict[str, float | int]] = []
+    for sess in sorted(by_sess):
+        rows = sorted(by_sess[sess], key=lambda r: int(r["frame_index"]))
+        xs = np.asarray([float(r["est_x_m"]) for r in rows], dtype=np.float64)
+        ys = np.asarray([float(r["est_y_m"]) for r in rows], dtype=np.float64)
+        if mode == "median":
+            sx = np.full_like(xs, float(np.median(xs)))
+            sy = np.full_like(ys, float(np.median(ys)))
+        else:
+            # causal EMA along frame order
+            a = float(ema_alpha)
+            sx = np.empty_like(xs)
+            sy = np.empty_like(ys)
+            sx[0] = xs[0]
+            sy[0] = ys[0]
+            for i in range(1, xs.size):
+                sx[i] = a * xs[i] + (1.0 - a) * sx[i - 1]
+                sy[i] = a * ys[i] + (1.0 - a) * sy[i - 1]
+        for i, row in enumerate(rows):
+            est_x = float(sx[i])
+            est_y = float(sy[i])
+            true_x = float(row["true_x_m"])
+            true_y = float(row["true_y_m"])
+            row["est_x_m"] = est_x
+            row["est_y_m"] = est_y
+            row["rmse_xy_m"] = position_rmse_xy((est_x, est_y), (true_x, true_y))
+            out.append(row)
+    return out
 
 
 def main() -> None:
@@ -734,7 +817,9 @@ def main() -> None:
     batch_size = max(1, int(args.batch_size))
 
     model = load_cooperative_monostatic_cnn_checkpoint(checkpoint, device)
-    feature_mode, norm_means, norm_stds = _load_checkpoint_inference_config(checkpoint)
+    feature_mode, feature_norm, norm_means, norm_stds = _load_checkpoint_inference_config(
+        checkpoint
+    )
 
     h5_path = resolve_cooperative_features_h5(
         raw_h5_path,
@@ -751,6 +836,7 @@ def main() -> None:
         max_samples=args.max_samples,
         session_index=args.session_index,
         val_only=args.val_only,
+        train_split_only=args.train_split_only,
         val_ratio=float(args.val_ratio),
         seed=int(args.seed),
     )
@@ -774,11 +860,31 @@ def main() -> None:
             energy_mad_z=float(args.outlier_energy_mad_z),
         )
 
-    split_label = (
-        f"val-only region-stratified (9 regions, ratio={args.val_ratio}, seed={args.seed})"
-        if args.val_only
-        else "all frames"
-    )
+    with h5py.File(h5_path, "r") as f:
+        target_position = np.asarray(
+            f[DATASET_KEY_TARGET_POSITION][:], dtype=np.float64
+        )
+    frame_indices = maybe_exclude_subregion_corner_frames(
+        frame_indices,
+        target_position,
+        enabled=bool(args.exclude_subregion_corners),
+        label="eval",
+    ).tolist()
+    if not frame_indices:
+        raise RuntimeError("exclude-subregion-corners 后无评估帧")
+
+    if args.val_only:
+        split_label = (
+            f"val-only region-stratified (9 regions, ratio={args.val_ratio}, "
+            f"seed={args.seed})"
+        )
+    elif args.train_split_only:
+        split_label = (
+            f"train-split-only holdout region-stratified "
+            f"(9 regions, val_ratio={args.val_ratio}, seed={args.seed})"
+        )
+    else:
+        split_label = "all frames"
     if args.filter_outliers:
         frames_msg = (
             f"{n_before_filter} -> {len(frame_indices)} after outlier filter "
@@ -790,12 +896,13 @@ def main() -> None:
         f"HDF5: {h5_path}\n"
         f"Checkpoint: {checkpoint}\n"
         f"Feature mode: {feature_mode}\n"
+        f"Feature norm: {feature_norm}\n"
         f"Frames: {frames_msg} | "
         f"ROI {range_roi[0]:.1f}–{range_roi[1]:.1f} m | "
         f"batch_size={batch_size} | device={device}"
     )
 
-    per_frame_rows = _evaluate_per_frame(
+    per_frame_rows, eval_s, n_timed = _evaluate_per_frame(
         h5_path,
         model,
         device,
@@ -805,9 +912,22 @@ def main() -> None:
         batch_size=batch_size,
         show_progress=not args.no_progress,
         feature_mode=feature_mode,
+        feature_norm=feature_norm,
         norm_means=norm_means,
         norm_stds=norm_stds,
     )
+
+    if args.session_smooth != "none":
+        per_frame_rows = _apply_session_smooth(
+            per_frame_rows,
+            mode=str(args.session_smooth),
+            ema_alpha=float(args.session_smooth_alpha),
+        )
+        print(
+            f"Session smooth: mode={args.session_smooth} "
+            f"alpha={args.session_smooth_alpha}",
+            flush=True,
+        )
 
     if args.aggregate_session:
         rows = _evaluate_aggregate_session(per_frame_rows)
@@ -815,23 +935,27 @@ def main() -> None:
         rows = per_frame_rows
 
     output_csv = args.output_csv.resolve()
-    _write_csv(output_csv, rows)
+    write_localization_csv(output_csv, rows)
     print(f"output csv: {output_csv}")
-    _print_summary(rows)
+    write_eval_timing_json(
+        timing_json_path_for_csv(output_csv),
+        method="cnn",
+        eval_s=eval_s,
+        n_samples=n_timed,
+        device=str(device),
+    )
+    print_localization_rmse_summary(
+        rows, title="CNN localization mean error summary"
+    )
 
     if not args.no_plot:
-        plot_mod = _load_plot_heatmap_module()
-        plot_mod.plot_rmse_heatmap_combined_from_csv(
+        plot_localization_artifacts(
             output_csv,
-            args.output_heatmap.resolve(),
+            heatmap=args.output_heatmap.resolve(),
+            cdf=args.output_cdf.resolve(),
+            scatter=args.output_scatter.resolve(),
+            cdf_title="CNN localization mean error CDF",
         )
-        print(f"output heatmap: {args.output_heatmap.resolve()}")
-        plot_mod.plot_rmse_cdf_from_csv(
-            output_csv,
-            args.output_cdf.resolve(),
-            title="CNN localization RMSE CDF",
-        )
-        print(f"output cdf: {args.output_cdf.resolve()}")
 
 
 if __name__ == "__main__":

@@ -186,12 +186,16 @@ def range_profile_to_features(
     use_phase: bool = True,
 ) -> torch.Tensor:
     """单设备 ROI 复数距离谱 → ``(C, L)`` float 特征。"""
-    mag = torch.abs(profile_complex).clamp_min(eps)
+    # Prefer re/im magnitude over torch.abs(complex) for CUDA NVRTC robustness.
+    mag = torch.sqrt(
+        profile_complex.real.to(dtype=torch.float32) ** 2
+        + profile_complex.imag.to(dtype=torch.float32) ** 2
+    ).clamp_min(eps)
     mag_db = 20.0 * torch.log10(mag)
     mag_db = (mag_db - mag_db.mean()) / (mag_db.std() + eps)
     channels = [mag_db]
     if use_phase:
-        channels.append(torch.angle(profile_complex) / np.pi)
+        channels.append(torch.atan2(profile_complex.imag, profile_complex.real) / np.pi)
     return torch.stack(channels, dim=0).to(dtype=torch.float32)
 
 
@@ -421,6 +425,76 @@ def dual_roi_to_real_imag_features(dual_roi: torch.Tensor) -> torch.Tensor:
     return torch.stack(feats, dim=0)
 
 
+CooperativeFeatureNorm = Literal["none", "rms"]
+COOPERATIVE_FEATURE_NORMS: tuple[CooperativeFeatureNorm, ...] = ("none", "rms")
+
+
+def apply_real_imag_rms_norm(
+    features: torch.Tensor,
+    *,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """对 ``real_imag`` float 特征做按站 RMS 归一化。
+
+    支持 ``(4, L)`` / ``(B, 4, L)``（1D）以及 ``(4, T, L)`` / ``(B, 4, T, L)``（2D）。
+    每站两通道 (re, im) 共用该站 ROI RMS：``sqrt(mean(re^2+im^2))``。
+    """
+    if features.ndim == 2:
+        if features.shape[0] != 4:
+            raise ValueError(f"期望 (4, L)，收到 {tuple(features.shape)}")
+        out = features.clone()
+        for re_i, im_i in ((0, 1), (2, 3)):
+            power = out[re_i] ** 2 + out[im_i] ** 2
+            rms = torch.sqrt(torch.mean(power)).clamp_min(eps)
+            out[re_i] = out[re_i] / rms
+            out[im_i] = out[im_i] / rms
+        return out
+    if features.ndim == 3 and features.shape[1] == 4:
+        # (B, 4, L)
+        out = features.clone()
+        for re_i, im_i in ((0, 1), (2, 3)):
+            power = out[:, re_i] ** 2 + out[:, im_i] ** 2
+            rms = torch.sqrt(torch.mean(power.reshape(power.shape[0], -1), dim=1))
+            rms = rms.clamp_min(eps).view(-1, 1)
+            out[:, re_i] = out[:, re_i] / rms
+            out[:, im_i] = out[:, im_i] / rms
+        return out
+    if features.ndim == 3 and features.shape[0] == 4:
+        # (4, T, L)
+        out = features.clone()
+        for re_i, im_i in ((0, 1), (2, 3)):
+            power = out[re_i] ** 2 + out[im_i] ** 2
+            rms = torch.sqrt(torch.mean(power)).clamp_min(eps)
+            out[re_i] = out[re_i] / rms
+            out[im_i] = out[im_i] / rms
+        return out
+    if features.ndim == 4 and features.shape[1] == 4:
+        # (B, 4, T, L)
+        out = features.clone()
+        for re_i, im_i in ((0, 1), (2, 3)):
+            power = out[:, re_i] ** 2 + out[:, im_i] ** 2
+            rms = torch.sqrt(torch.mean(power.reshape(power.shape[0], -1), dim=1))
+            rms = rms.clamp_min(eps).view(-1, 1, 1)
+            out[:, re_i] = out[:, re_i] / rms
+            out[:, im_i] = out[:, im_i] / rms
+        return out
+    raise ValueError(
+        "real_imag RMS 归一化须为 (4,L)/(B,4,L) 或 (4,T,L)/(B,4,T,L)，"
+        f"收到 {tuple(features.shape)}"
+    )
+
+
+def dual_roi_to_real_imag_rms_norm_features(
+    dual_roi: torch.Tensor,
+    *,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """双设备 ROI → real_imag 后再按站 RMS 归一化。"""
+    return apply_real_imag_rms_norm(
+        dual_roi_to_real_imag_features(dual_roi), eps=eps
+    )
+
+
 def _dual_slowtime_to_batch(dual_slowtime: torch.Tensor) -> torch.Tensor:
     """规范为 ``(B, 2, T, L)`` complex。"""
     if dual_slowtime.ndim == 3:
@@ -483,7 +557,10 @@ def range_profile_to_logmag_fixed_norm(
     eps: float = 1e-12,
 ) -> torch.Tensor:
     """单设备 ROI → ``(1, L)`` 固定统计量归一化 log-mag。"""
-    mag = torch.abs(profile_complex).clamp_min(eps)
+    mag = torch.sqrt(
+        profile_complex.real.to(dtype=torch.float32) ** 2
+        + profile_complex.imag.to(dtype=torch.float32) ** 2
+    ).clamp_min(eps)
     mag_db = 20.0 * torch.log10(mag)
     return _normalize_logmag_with_stats(mag_db, mean=mean, std=std, eps=eps).unsqueeze(0)
 
@@ -523,8 +600,11 @@ def dual_roi_to_model_input(
     norm_stds: np.ndarray | torch.Tensor | None = None,
     eps: float = 1e-12,
     use_phase: bool = True,
+    feature_norm: CooperativeFeatureNorm = "none",
 ) -> torch.Tensor:
     """双设备 ROI 复数距离谱 → 模型输入 tensor。"""
+    if feature_norm not in COOPERATIVE_FEATURE_NORMS:
+        raise ValueError(f"未知 feature_norm: {feature_norm!r}")
     if mode == "complex_roi":
         if dual_roi.ndim == 2:
             return dual_roi
@@ -535,7 +615,14 @@ def dual_roi_to_model_input(
             f"收到 {tuple(dual_roi.shape)}"
         )
     if mode == "real_imag":
+        if feature_norm == "rms":
+            return dual_roi_to_real_imag_rms_norm_features(dual_roi, eps=eps)
         return dual_roi_to_real_imag_features(dual_roi)
+    if feature_norm != "none":
+        raise ValueError(
+            f"feature_norm={feature_norm!r} 仅支持 feature_mode=real_imag，"
+            f"收到 mode={mode!r}"
+        )
     if mode == "logmag_fixed_norm":
         if norm_means is None or norm_stds is None:
             raise ValueError("logmag_fixed_norm 须提供 norm_means / norm_stds")
@@ -591,6 +678,58 @@ def apply_cooperative_feature_augmentation(
                     )
                     row_idx = gen.choice(out.shape[-2], size=n_rows, replace=False)
                     out[..., row_idx, :] = 0.0
+    return out
+
+
+def apply_cooperative_cpi_augmentation(
+    dual_roi: torch.Tensor,
+    *,
+    amp_scale: float = 0.0,
+    complex_noise_std: float = 0.0,
+    rng: np.random.Generator | None = None,
+) -> torch.Tensor:
+    """对复数 ROI 做分站幅度缩放 + 复高斯噪声（raw CPI 在线路径）。
+
+    支持 ``(2, L)`` 或 ``(2, T, L)`` complex。``amp_scale`` 为半幅：
+    各站独立采样 ``α ~ U(1-s, 1+s)``。``complex_noise_std`` 为相对各站
+    RMS 幅度的复噪声强度（实/虚部各 ``σ/√2``）。
+    """
+    if dual_roi.ndim not in (2, 3) or dual_roi.shape[0] != 2:
+        raise ValueError(
+            "dual_roi 须为 (2, L) 或 (2, T, L) complex，"
+            f"收到 {tuple(dual_roi.shape)}"
+        )
+    if amp_scale < 0.0:
+        raise ValueError(f"amp_scale 须 >= 0，收到 {amp_scale}")
+    if complex_noise_std < 0.0:
+        raise ValueError(f"complex_noise_std 须 >= 0，收到 {complex_noise_std}")
+    if amp_scale <= 0.0 and complex_noise_std <= 0.0:
+        return dual_roi
+
+    out = dual_roi.clone()
+    gen = rng or np.random.default_rng()
+    if amp_scale > 0.0:
+        lo = 1.0 - float(amp_scale)
+        hi = 1.0 + float(amp_scale)
+        scales = gen.uniform(lo, hi, size=2).astype(np.float32, copy=False)
+        for dev in range(2):
+            out[dev] = out[dev] * float(scales[dev])
+
+    if complex_noise_std > 0.0:
+        for dev in range(2):
+            flat = out[dev].reshape(-1)
+            rms = float(torch.sqrt(torch.mean(torch.abs(flat) ** 2)).item())
+            if rms <= 0.0:
+                continue
+            sigma = float(complex_noise_std) * rms / float(np.sqrt(2.0))
+            noise = gen.normal(0.0, sigma, size=tuple(out[dev].shape)).astype(
+                np.float32, copy=False
+            ) + 1j * gen.normal(0.0, sigma, size=tuple(out[dev].shape)).astype(
+                np.float32, copy=False
+            )
+            out[dev] = out[dev] + torch.from_numpy(noise.astype(np.complex64)).to(
+                dtype=out.dtype, device=out.device
+            )
     return out
 
 

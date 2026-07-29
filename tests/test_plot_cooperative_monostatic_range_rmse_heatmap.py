@@ -36,6 +36,13 @@ def fixture_plot_mod():
 
 DEV0_XY = (0.0, -2.0)
 DEV1_XY = (-2.0, 0.0)
+# 共址：与旧 monostatic 真值一致
+COLOC_ANT = {
+    "tx0_xy": DEV0_XY,
+    "rx0_xy": DEV0_XY,
+    "tx1_xy": DEV1_XY,
+    "rx1_xy": DEV1_XY,
+}
 
 
 def _synthetic_range_df() -> pd.DataFrame:
@@ -70,32 +77,32 @@ def _synthetic_range_csv(path: Path) -> None:
     df.to_csv(path, index=False)
 
 
-def test_true_monostatic_range_m(plot_mod) -> None:
-    assert plot_mod.true_monostatic_range_m((0.0, 0.0), DEV0_XY) == pytest.approx(2.0)
-    assert plot_mod.true_monostatic_range_m((0.0, 0.0), DEV1_XY) == pytest.approx(2.0)
-    assert plot_mod.true_monostatic_range_m((-1.0, -1.0), DEV0_XY) == pytest.approx(
-        math.hypot(-1.0, 1.0)
-    )
+def test_true_quasi_monostatic_range_m(plot_mod) -> None:
+    assert plot_mod.true_quasi_monostatic_range_m(
+        (0.0, 0.0), DEV0_XY, DEV0_XY
+    ) == pytest.approx(2.0)
+    assert plot_mod.true_quasi_monostatic_range_m(
+        (0.0, 0.0), DEV1_XY, DEV1_XY
+    ) == pytest.approx(2.0)
+    assert plot_mod.true_quasi_monostatic_range_m(
+        (-1.0, -1.0), DEV0_XY, DEV0_XY
+    ) == pytest.approx(math.hypot(-1.0, 1.0))
 
 
 def test_add_per_dev_range_abs_errors(plot_mod, tmp_path: Path) -> None:
     csv_path = tmp_path / "range.csv"
     _synthetic_range_csv(csv_path)
     df = pd.read_csv(csv_path)
-    out = plot_mod.add_per_dev_range_abs_errors(
-        df, dev0_xy=DEV0_XY, dev1_xy=DEV1_XY
-    )
+    out = plot_mod.add_per_dev_range_abs_errors(df, **COLOC_ANT)
 
     assert out.loc[0, plot_mod.ABS_ERR_COL_DEV0] == pytest.approx(0.1)
     assert out.loc[0, plot_mod.ABS_ERR_COL_DEV1] == pytest.approx(0.1)
-    true_r0 = plot_mod.true_monostatic_range_m((-1.0, -1.0), DEV0_XY)
+    true_r0 = plot_mod.true_quasi_monostatic_range_m((-1.0, -1.0), DEV0_XY, DEV0_XY)
     assert out.loc[1, plot_mod.ABS_ERR_COL_DEV0] == pytest.approx(abs(3.0 - true_r0))
 
 
 def test_build_range_mae_grid_10cm(plot_mod, tmp_path: Path) -> None:
-    df = plot_mod.add_per_dev_range_abs_errors(
-        _synthetic_range_df(), dev0_xy=DEV0_XY, dev1_xy=DEV1_XY
-    )
+    df = plot_mod.add_per_dev_range_abs_errors(_synthetic_range_df(), **COLOC_ANT)
     heatmap_mod = plot_mod._load_heatmap_module()
     xs, ys, z0, _ = heatmap_mod.build_rmse_grid_10cm_interpolated(
         df, value_col=plot_mod.ABS_ERR_COL_DEV0
@@ -296,3 +303,74 @@ def test_default_output_png_includes_h5_parent_tag(plot_mod, tmp_path: Path) -> 
     h5_path = tmp_path / "cooperative_monostatic_measurement0" / "dataset.h5"
     out = plot_mod._default_output_png("music", h5_path=h5_path)
     assert "cooperative_monostatic_measurement0" in out.name
+
+
+def test_plot_range_abs_error_cdf_from_csv(plot_mod, tmp_path: Path) -> None:
+    csv_path = tmp_path / "range.csv"
+    _synthetic_range_csv(csv_path)
+    out0 = tmp_path / "music_range_dev0_cdf.png"
+    out1 = tmp_path / "music_range_dev1_cdf.png"
+
+    summary0 = plot_mod.plot_range_abs_error_cdf_from_csv(
+        csv_path, out0, device="dev0", method="music", **COLOC_ANT
+    )
+    summary1 = plot_mod.plot_range_abs_error_cdf_from_csv(
+        csv_path, out1, device="dev1", method="music", **COLOC_ANT
+    )
+
+    assert out0.is_file() and out0.stat().st_size > 0
+    assert out1.is_file() and out1.stat().st_size > 0
+    assert summary0["device"] == "dev0"
+    assert summary1["device"] == "dev1"
+    assert int(summary0["valid"]) == 3
+    assert int(summary1["valid"]) == 3
+
+
+def test_plot_range_abs_error_cdf_dual_dev_from_csv(plot_mod, tmp_path: Path) -> None:
+    csv_path = tmp_path / "range.csv"
+    _synthetic_range_csv(csv_path)
+    out_dir = tmp_path / "music"
+    out_dir.mkdir()
+
+    summaries = plot_mod.plot_range_abs_error_cdf_dual_dev_from_csv(
+        csv_path,
+        method="music",
+        out_dir=out_dir,
+        **COLOC_ANT,
+    )
+
+    out0 = out_dir / "music_range_dev0_cdf.png"
+    out1 = out_dir / "music_range_dev1_cdf.png"
+    assert out0.is_file() and out0.stat().st_size > 0
+    assert out1.is_file() and out1.stat().st_size > 0
+    assert summaries["dev0"]["output_png"] == str(out0.resolve())
+    assert summaries["dev1"]["output_png"] == str(out1.resolve())
+    assert int(summaries["dev0"]["valid"]) == 3
+    assert int(summaries["dev1"]["valid"]) == 3
+
+
+def test_plot_range_abs_error_cdf_compare_from_csvs(plot_mod, tmp_path: Path) -> None:
+    music_csv = tmp_path / "music_rmse.csv"
+    esprit_csv = tmp_path / "esprit_rmse.csv"
+    _synthetic_range_csv(music_csv)
+    _synthetic_range_csv(esprit_csv)
+    out_png = tmp_path / "methods_range_cdf_compare.png"
+
+    summary = plot_mod.plot_range_abs_error_cdf_compare_from_csvs(
+        [
+            ("music", music_csv, "dev0"),
+            ("music", music_csv, "dev1"),
+            ("esprit", esprit_csv, "dev0"),
+            ("esprit", esprit_csv, "dev1"),
+        ],
+        out_png,
+        **COLOC_ANT,
+    )
+
+    assert out_png.is_file() and out_png.stat().st_size > 0
+    assert summary["output_png"] == str(out_png.resolve())
+    assert int(summary["curves_plotted"]) == 4
+    assert int(summary["music_dev0_valid"]) == 3
+    assert int(summary["music_dev1_valid"]) == 3
+    assert int(summary["esprit_dev0_valid"]) == 3
+    assert int(summary["esprit_dev1_valid"]) == 3

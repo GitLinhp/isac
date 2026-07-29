@@ -1,0 +1,8 @@
+{
+  "method": "music",
+  "eval_s": 19.699114817005466,
+  "n_samples": 10744,
+  "mean_ms_per_sample": 1.8334991452909033,
+  "timing_scope": "algo_core",
+  "device": "cuda:0"
+}

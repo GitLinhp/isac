@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cooperative monostatic HDF5 数据集：ESPRIT 双站定位 RMSE 评估。
 
-复现 GRC 接收链中 divide CPI → CPI 复数距离谱 → 1D ESPRIT → 双圆交会。
+复现 GRC 接收链中 divide CPI → CPI 复数距离谱 → 1D ESPRIT → TX/RX 椭圆交会。
 
 示例::
 
@@ -15,7 +15,9 @@ import argparse
 import csv
 import importlib.util
 import sys
+import time
 from collections import defaultdict
+from functools import partial
 from pathlib import Path
 
 import h5py
@@ -24,14 +26,30 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from isac import PROJECT_ROOT
+from isac.sensing.detection.cfar import CFARDetector
 from isac.sensing.localization import position_rmse_xy
+from isac_imp.cfar_eval_cli import (
+    add_cfar_arguments,
+    build_cfar_detector_from_args,
+    print_cfar_config,
+)
+from isac_imp.eval_timing import (
+    run_algo_core_timed,
+    timing_json_path_for_csv,
+    write_eval_timing_json,
+)
 from isac_imp.cooperative_monostatic_pipeline import (
+    DEFAULT_DEV0_RX_XY,
+    DEFAULT_DEV0_TX_XY,
+    DEFAULT_DEV0_XY,
+    DEFAULT_DEV1_RX_XY,
+    DEFAULT_DEV1_TX_XY,
+    DEFAULT_DEV1_XY,
     DEFAULT_ESPRIT_NUM_SOURCES,
     DEFAULT_ESPRIT_SUBARRAY_SIZE,
     DEFAULT_ESPRIT_WINDOW_SIZE,
     DEFAULT_RANGE_ROI,
-    divide_cpi_to_complex_range_profile,
-    estimate_monostatic_range_esprit_m,
+    esprit_range_from_divide_cpi,
     grc_cooperative_processing_params,
     localize_xy_from_two_ranges_with_bias,
 )
@@ -98,6 +116,28 @@ def _default_output_range_heatmap() -> Path:
     )
 
 
+def _default_output_range_cdf_dev0() -> Path:
+    return (
+        PROJECT_ROOT
+        / "out"
+        / "cooperative_monostatic"
+        / "esprit_range_dev0_cdf.png"
+    )
+
+
+def _default_output_range_cdf_dev1() -> Path:
+    return (
+        PROJECT_ROOT
+        / "out"
+        / "cooperative_monostatic"
+        / "esprit_range_dev1_cdf.png"
+    )
+
+
+def _default_output_scatter() -> Path:
+    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "esprit_xy_scatter.png"
+
+
 def _load_plot_heatmap_module():
     plot_path = Path(__file__).resolve().with_name(
         "plot_cooperative_monostatic_music_rmse_heatmap.py"
@@ -144,17 +184,49 @@ def argument_parser() -> argparse.Namespace:
         "--dev0-xy",
         type=float,
         nargs=2,
-        default=(0.0, -2.0),
+        default=DEFAULT_DEV0_XY,
         metavar=("X", "Y"),
-        help="dev0 sensor position in meters (default: 0 -2)",
+        help="dev0 midpoint (heatmap / legacy); default 0 -2",
     )
     parser.add_argument(
         "--dev1-xy",
         type=float,
         nargs=2,
-        default=(-2.0, 0.0),
+        default=DEFAULT_DEV1_XY,
         metavar=("X", "Y"),
-        help="dev1 sensor position in meters (default: -2 0)",
+        help="dev1 midpoint (heatmap / legacy); default -2 0",
+    )
+    parser.add_argument(
+        "--dev0-tx-xy",
+        type=float,
+        nargs=2,
+        default=DEFAULT_DEV0_TX_XY,
+        metavar=("X", "Y"),
+        help="dev0 TX antenna xy (default: from DEFAULT_DEV0_TX_XY)",
+    )
+    parser.add_argument(
+        "--dev0-rx-xy",
+        type=float,
+        nargs=2,
+        default=DEFAULT_DEV0_RX_XY,
+        metavar=("X", "Y"),
+        help="dev0 RX antenna xy (default: from DEFAULT_DEV0_RX_XY)",
+    )
+    parser.add_argument(
+        "--dev1-tx-xy",
+        type=float,
+        nargs=2,
+        default=DEFAULT_DEV1_TX_XY,
+        metavar=("X", "Y"),
+        help="dev1 TX antenna xy (default: from DEFAULT_DEV1_TX_XY)",
+    )
+    parser.add_argument(
+        "--dev1-rx-xy",
+        type=float,
+        nargs=2,
+        default=DEFAULT_DEV1_RX_XY,
+        metavar=("X", "Y"),
+        help="dev1 RX antenna xy (default: from DEFAULT_DEV1_RX_XY)",
     )
     parser.add_argument(
         "--max-samples",
@@ -212,6 +284,34 @@ def argument_parser() -> argparse.Namespace:
         help="output range MAE heatmap PNG when --plot-range-heatmap is set",
     )
     parser.add_argument(
+        "--plot-range-cdf",
+        action="store_true",
+        help="after evaluation, plot per-device range absolute-error CDF (dev0 + dev1)",
+    )
+    parser.add_argument(
+        "--output-range-cdf-dev0",
+        type=Path,
+        default=_default_output_range_cdf_dev0(),
+        help="output range CDF PNG for dev0 when --plot-range-cdf is set",
+    )
+    parser.add_argument(
+        "--output-range-cdf-dev1",
+        type=Path,
+        default=_default_output_range_cdf_dev1(),
+        help="output range CDF PNG for dev1 when --plot-range-cdf is set",
+    )
+    parser.add_argument(
+        "--plot-scatter",
+        action="store_true",
+        help="after evaluation, plot estimated xy scatter colored by RMSE",
+    )
+    parser.add_argument(
+        "--output-scatter",
+        type=Path,
+        default=_default_output_scatter(),
+        help="output xy scatter PNG when --plot-scatter is set",
+    )
+    parser.add_argument(
         "--esprit-num-sources",
         type=int,
         default=DEFAULT_ESPRIT_NUM_SOURCES,
@@ -229,7 +329,14 @@ def argument_parser() -> argparse.Namespace:
         default=DEFAULT_ESPRIT_WINDOW_SIZE,
         help=f"ESPRIT refine window size (default: {DEFAULT_ESPRIT_WINDOW_SIZE})",
     )
+    add_cfar_arguments(parser, method_label="ESPRIT peak selection")
     add_range_bias_calib_arguments(parser)
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda:0",
+        help="compute device for ESPRIT (default: cuda:0; use cpu for NumPy path)",
+    )
     return parser.parse_args()
 
 
@@ -244,21 +351,30 @@ def _esprit_range_from_divide_cpi(
     *,
     proc_params: dict,
     range_roi: tuple[float, float],
+    cfar_detector: CFARDetector | None = None,
+    device: str | None = None,
 ) -> float:
-    profile = divide_cpi_to_complex_range_profile(
+    """Thin wrapper：divide CPI → 固定 ROI 谱 → ESPRIT（兼容现有测试）。"""
+    return esprit_range_from_divide_cpi(
         divide_cpi,
-        fft_len=proc_params["fft_len"],
-        zeropadding_fac=proc_params["zeropadding_fac"],
-        transpose_len=proc_params["transpose_len"],
-    )
-    return estimate_monostatic_range_esprit_m(
-        profile,
-        range_bin_step=proc_params["range_bin_step"],
+        proc_params=proc_params,
         range_roi=range_roi,
-        num_sources=proc_params["esprit_num_sources"],
-        subarray_size=proc_params["esprit_subarray_size"],
-        window_size=proc_params["esprit_window_size"],
+        cfar_detector=cfar_detector,
+        device=device,
     )
+
+
+def _xy_pair(values: tuple[float, float] | list[float]) -> tuple[float, float]:
+    return (float(values[0]), float(values[1]))
+
+
+def _antenna_kwargs_from_args(args: argparse.Namespace) -> dict[str, tuple[float, float]]:
+    return {
+        "tx0_xy": _xy_pair(args.dev0_tx_xy),
+        "rx0_xy": _xy_pair(args.dev0_rx_xy),
+        "tx1_xy": _xy_pair(args.dev1_tx_xy),
+        "rx1_xy": _xy_pair(args.dev1_rx_xy),
+    }
 
 
 def _localize_sample(
@@ -270,6 +386,10 @@ def _localize_sample(
     dev1_xy: tuple[float, float],
     bias_dev0_m: float = 0.0,
     bias_dev1_m: float = 0.0,
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
 ) -> tuple[float, float, float]:
     if not np.isfinite(r0_m) or not np.isfinite(r1_m):
         return float("nan"), float("nan"), float("nan")
@@ -281,7 +401,10 @@ def _localize_sample(
             r1_m,
             bias_dev0_m=bias_dev0_m,
             bias_dev1_m=bias_dev1_m,
-            y_hint=true_xy[1],
+            tx0_xy=tx0_xy,
+            rx0_xy=rx0_xy,
+            tx1_xy=tx1_xy,
+            rx1_xy=rx1_xy,
         )
     except ValueError:
         return float("nan"), float("nan"), float("nan")
@@ -309,6 +432,10 @@ def _build_eval_row(
     dev0_xy: tuple[float, float],
     dev1_xy: tuple[float, float],
     range_biases: tuple[float, float] | None = None,
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
 ) -> dict[str, float | int]:
     bias_dev0_m, bias_dev1_m = _range_bias_tuple(range_biases)
     true_xy = (true_x, true_y)
@@ -326,6 +453,10 @@ def _build_eval_row(
         dev1_xy=dev1_xy,
         bias_dev0_m=bias_dev0_m,
         bias_dev1_m=bias_dev1_m,
+        tx0_xy=tx0_xy,
+        rx0_xy=rx0_xy,
+        tx1_xy=tx1_xy,
+        rx1_xy=rx1_xy,
     )
     return {
         "sample_idx": int(sample_idx),
@@ -354,8 +485,14 @@ def _evaluate_per_frame(
     session_index: int | None,
     show_progress: bool,
     range_biases: tuple[float, float] | None = None,
-) -> list[dict[str, float | int]]:
-    rows: list[dict[str, float | int]] = []
+    antenna_kwargs: dict[str, tuple[float, float]] | None = None,
+    cfar_detector: CFARDetector | None = None,
+    device: str = "cuda:0",
+) -> tuple[list[dict[str, float | int]], float, int]:
+    """预加载 CPI 后按算法核口径计时；返回 ``(rows, eval_s, n_timed)``。"""
+    import torch
+
+    ant = antenna_kwargs or {}
     with h5py.File(h5_path, "r") as f:
         dev0_ds = f[DATASET_KEY_PROFILES_DEV0]
         dev1_ds = f[DATASET_KEY_PROFILES_DEV1]
@@ -364,50 +501,85 @@ def _evaluate_per_frame(
         frame_ds = f[DATASET_KEY_FRAME_INDEX]
         total = int(dev0_ds.shape[0])
 
-        indices = range(total)
+        indices = list(range(total))
         if session_index is not None:
             session_arr = session_ds[:]
-            indices = (i for i in indices if int(session_arr[i]) == session_index)
-            indices = list(indices)
+            indices = [i for i in indices if int(session_arr[i]) == session_index]
         if max_samples is not None:
-            indices = list(indices)[: max_samples]
+            indices = indices[: max_samples]
 
-        iterator = tqdm(
+        meta: list[tuple[int, int, int, float, float]] = []
+        cpi0_list: list = []
+        cpi1_list: list = []
+        use_cuda = str(device).startswith("cuda") and torch.cuda.is_available()
+        torch_device = torch.device(device if use_cuda else "cpu")
+        algo_device = str(torch_device) if use_cuda else "cpu"
+
+        for sample_idx in tqdm(
             indices,
-            desc="ESPRIT RMSE",
+            desc="ESPRIT preload",
             unit="frame",
             disable=not show_progress,
-        )
-        for sample_idx in iterator:
-            divide_dev0 = dev0_ds[sample_idx]
-            divide_dev1 = dev1_ds[sample_idx]
+        ):
+            d0 = np.asarray(dev0_ds[sample_idx], dtype=np.complex64)
+            d1 = np.asarray(dev1_ds[sample_idx], dtype=np.complex64)
+            if use_cuda:
+                cpi0_list.append(torch.as_tensor(d0, device=torch_device))
+                cpi1_list.append(torch.as_tensor(d1, device=torch_device))
+            else:
+                cpi0_list.append(d0)
+                cpi1_list.append(d1)
             true_x, true_y = (float(v) for v in target_ds[sample_idx, :2])
-
-            r0 = _esprit_range_from_divide_cpi(
-                divide_dev0,
-                proc_params=proc_params,
-                range_roi=range_roi,
-            )
-            r1 = _esprit_range_from_divide_cpi(
-                divide_dev1,
-                proc_params=proc_params,
-                range_roi=range_roi,
-            )
-            rows.append(
-                _build_eval_row(
-                    sample_idx=int(sample_idx),
-                    session_index=int(session_ds[sample_idx]),
-                    frame_index=int(frame_ds[sample_idx]),
-                    true_x=true_x,
-                    true_y=true_y,
-                    r0=r0,
-                    r1=r1,
-                    dev0_xy=dev0_xy,
-                    dev1_xy=dev1_xy,
-                    range_biases=range_biases,
+            meta.append(
+                (
+                    int(sample_idx),
+                    int(session_ds[sample_idx]),
+                    int(frame_ds[sample_idx]),
+                    true_x,
+                    true_y,
                 )
             )
-    return rows
+
+    n = len(meta)
+    rows_slot: list[dict[str, float | int] | None] = [None] * n
+
+    def run_one(i: int) -> None:
+        sample_idx, sess, frame_i, true_x, true_y = meta[i]
+        r0 = _esprit_range_from_divide_cpi(
+            cpi0_list[i],
+            proc_params=proc_params,
+            range_roi=range_roi,
+            cfar_detector=cfar_detector,
+            device=algo_device if use_cuda else None,
+        )
+        r1 = _esprit_range_from_divide_cpi(
+            cpi1_list[i],
+            proc_params=proc_params,
+            range_roi=range_roi,
+            cfar_detector=cfar_detector,
+            device=algo_device if use_cuda else None,
+        )
+        rows_slot[i] = _build_eval_row(
+            sample_idx=sample_idx,
+            session_index=sess,
+            frame_index=frame_i,
+            true_x=true_x,
+            true_y=true_y,
+            r0=r0,
+            r1=r1,
+            dev0_xy=dev0_xy,
+            dev1_xy=dev1_xy,
+            range_biases=range_biases,
+            **ant,
+        )
+
+    eval_s, n_timed = run_algo_core_timed(
+        n,
+        device=torch_device if use_cuda else None,
+        run_one=run_one,
+    )
+    rows = [r for r in rows_slot if r is not None]
+    return rows, eval_s, n_timed
 
 
 def _evaluate_aggregate_session(
@@ -421,7 +593,10 @@ def _evaluate_aggregate_session(
     session_index: int | None,
     show_progress: bool,
     range_biases: tuple[float, float] | None = None,
+    antenna_kwargs: dict[str, tuple[float, float]] | None = None,
+    cfar_detector: CFARDetector | None = None,
 ) -> list[dict[str, float | int]]:
+    ant = antenna_kwargs or {}
     session_ranges: dict[int, dict[str, list[float]]] = defaultdict(
         lambda: {"r0": [], "r1": [], "true_x": [], "true_y": [], "frame_index": []}
     )
@@ -453,11 +628,13 @@ def _evaluate_aggregate_session(
                 dev0_ds[sample_idx],
                 proc_params=proc_params,
                 range_roi=range_roi,
+                cfar_detector=cfar_detector,
             )
             r1 = _esprit_range_from_divide_cpi(
                 dev1_ds[sample_idx],
                 proc_params=proc_params,
                 range_roi=range_roi,
+                cfar_detector=cfar_detector,
             )
             bucket = session_ranges[sess]
             bucket["r0"].append(r0)
@@ -485,6 +662,7 @@ def _evaluate_aggregate_session(
                 dev0_xy=dev0_xy,
                 dev1_xy=dev1_xy,
                 range_biases=range_biases,
+                **ant,
             )
         )
     return rows
@@ -565,7 +743,7 @@ def _print_summary(rows: list[dict[str, float | int]]) -> None:
         ),
         _stats_table_row("outer", _rmse_stats(rmses[~inner_mask])),
     ]
-    print("\nESPRIT localization RMSE summary:")
+    print("\nESPRIT localization mean error summary:")
     print(
         tabulate(
             table_rows,
@@ -588,10 +766,17 @@ def main() -> None:
     proc_params = grc_cooperative_processing_params()
     _apply_esprit_cli_overrides(proc_params, args)
     range_roi = DEFAULT_RANGE_ROI
-    dev0_xy = (float(args.dev0_xy[0]), float(args.dev0_xy[1]))
-    dev1_xy = (float(args.dev1_xy[0]), float(args.dev1_xy[1]))
+    dev0_xy = _xy_pair(args.dev0_xy)
+    dev1_xy = _xy_pair(args.dev1_xy)
+    antenna_kwargs = _antenna_kwargs_from_args(args)
+    localize_fn = partial(_localize_sample, **antenna_kwargs)
     range_biases = resolve_loaded_range_biases(args)
+    cfar_detector = build_cfar_detector_from_args(args)
+    proc_params["cfar_enabled"] = cfar_detector is not None
+    print_cfar_config(cfar_detector)
 
+    t0 = time.perf_counter()
+    device = str(args.device)
     if args.aggregate_session:
         rows = _evaluate_aggregate_session(
             h5_path,
@@ -603,9 +788,14 @@ def main() -> None:
             session_index=args.session_index,
             show_progress=not args.no_progress,
             range_biases=range_biases,
+            antenna_kwargs=antenna_kwargs,
+            cfar_detector=cfar_detector,
         )
+        eval_s = time.perf_counter() - t0
+        n_eval = len(rows)
+        timing_device = "cpu"
     else:
-        rows = _evaluate_per_frame(
+        rows, eval_s, n_eval = _evaluate_per_frame(
             h5_path,
             dev0_xy=dev0_xy,
             dev1_xy=dev1_xy,
@@ -615,23 +805,41 @@ def main() -> None:
             session_index=args.session_index,
             show_progress=not args.no_progress,
             range_biases=range_biases,
+            antenna_kwargs=antenna_kwargs,
+            cfar_detector=cfar_detector,
+            device=device,
         )
+        timing_device = device
 
     resolve_and_apply_eval_row_calibration(
         rows,
         args,
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
-        localize_fn=_localize_sample,
+        localize_fn=localize_fn,
         calibration_preapplied=range_biases is not None,
+        **antenna_kwargs,
     )
 
     output_csv = args.output_csv.resolve()
     _write_csv(output_csv, rows)
     print(f"output csv: {output_csv}")
+    write_eval_timing_json(
+        timing_json_path_for_csv(output_csv),
+        method="esprit",
+        eval_s=eval_s,
+        n_samples=n_eval,
+        device=timing_device,
+    )
     _print_summary(rows)
 
-    if args.plot_heatmap or args.plot_cdf or args.plot_range_heatmap:
+    if (
+        args.plot_heatmap
+        or args.plot_cdf
+        or args.plot_range_heatmap
+        or args.plot_range_cdf
+        or args.plot_scatter
+    ):
         plot_mod = _load_plot_heatmap_module()
         if args.plot_heatmap:
             plot_mod.plot_rmse_heatmap_combined_from_csv(
@@ -639,33 +847,55 @@ def main() -> None:
                 args.output_heatmap.resolve(),
                 dev0_xy=dev0_xy,
                 dev1_xy=dev1_xy,
-                title_prefix="Cooperative Monostatic ESPRIT Localization RMSE",
+                title_prefix="Cooperative Monostatic ESPRIT Localization Mean Error",
             )
             print(f"output heatmap: {args.output_heatmap.resolve()}")
         if args.plot_cdf:
             plot_mod.plot_rmse_cdf_from_csv(
                 output_csv,
                 args.output_cdf.resolve(),
-                title="ESPRIT localization RMSE CDF",
+                title="ESPRIT localization mean error CDF",
             )
             print(f"output cdf: {args.output_cdf.resolve()}")
-        if args.plot_range_heatmap:
-            range_plot_mod = _load_plot_range_heatmap_module()
-            import pandas as pd
-
-            from isac_imp.cooperative_monostatic_range_calibration import (
-                dataframe_for_range_mae,
-            )
-
-            plot_df = dataframe_for_range_mae(pd.DataFrame(rows))
-            range_plot_mod.plot_range_mae_heatmap_dual_dev_from_df(
-                plot_df,
-                args.output_range_heatmap.resolve(),
-                method="esprit",
+        if args.plot_scatter:
+            plot_mod.plot_xy_estimate_scatter_from_csv(
+                output_csv,
+                args.output_scatter.resolve(),
                 dev0_xy=dev0_xy,
                 dev1_xy=dev1_xy,
             )
-            print(f"output range heatmap: {args.output_range_heatmap.resolve()}")
+            print(f"output scatter: {args.output_scatter.resolve()}")
+        if args.plot_range_heatmap or args.plot_range_cdf:
+            range_plot_mod = _load_plot_range_heatmap_module()
+            if args.plot_range_heatmap:
+                import pandas as pd
+
+                from isac_imp.cooperative_monostatic_range_calibration import (
+                    dataframe_for_range_mae,
+                )
+
+                plot_df = dataframe_for_range_mae(pd.DataFrame(rows))
+                range_plot_mod.plot_range_mae_heatmap_dual_dev_from_df(
+                    plot_df,
+                    args.output_range_heatmap.resolve(),
+                    method="esprit",
+                    dev0_xy=dev0_xy,
+                    dev1_xy=dev1_xy,
+                )
+                print(f"output range heatmap: {args.output_range_heatmap.resolve()}")
+            if args.plot_range_cdf:
+                summaries = range_plot_mod.plot_range_abs_error_cdf_dual_dev_from_csv(
+                    output_csv,
+                    method="esprit",
+                    output_dev0=args.output_range_cdf_dev0.resolve(),
+                    output_dev1=args.output_range_cdf_dev1.resolve(),
+                    tx0_xy=antenna_kwargs["tx0_xy"],
+                    rx0_xy=antenna_kwargs["rx0_xy"],
+                    tx1_xy=antenna_kwargs["tx1_xy"],
+                    rx1_xy=antenna_kwargs["rx1_xy"],
+                )
+                print(f"output range cdf dev0: {summaries['dev0']['output_png']}")
+                print(f"output range cdf dev1: {summaries['dev1']['output_png']}")
 
 
 if __name__ == "__main__":

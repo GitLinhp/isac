@@ -1,0 +1,4 @@
+method,global_mean_err_m,inner_mean_err_m,outer_mean_err_m,n_samples,eval_s,mean_ms_per_sample,device,csv_path
+music,0.937073609707677,0.5987574453838389,1.3624726246426897,10752,19.5714070469985,1.821612718447366,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_rmse.csv
+esprit,0.9656268320634553,0.627168569988774,1.391204520823746,10752,27.76983244800067,2.5846828413999137,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/esprit/esprit_rmse.csv
+cnn,0.607184111912848,0.37082737494194123,0.9043792615493709,10752,6.544526748999488,0.6091331672560952,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/cnn/cnn_rmse.csv

@@ -20,7 +20,11 @@ from matplotlib.ticker import PercentFormatter
 from scipy.interpolate import griddata
 
 from isac import PROJECT_ROOT
-from isac_imp.record_target_metadata import INNER_RADIUS_CM, is_inner_target_xy_m
+from isac_imp.record_target_metadata import (
+    INNER_RADIUS_CM,
+    is_inner_target_xy_m,
+    is_subregion_corner_xy_m,
+)
 
 DEFAULT_GRID_MIN_M = -1.0
 DEFAULT_GRID_MAX_M = 1.0
@@ -279,6 +283,9 @@ def interpolate_outer_rmse_gaps(
     source_mask = np.isfinite(z_out)
     points = np.column_stack([xx[source_mask], yy[source_mask]])
     values = z_out[source_mask]
+    if points.shape[0] < 4:
+        # Delaunay/linear griddata needs ≥4 non-collinear points; leave gaps as NaN.
+        return z_out, 0
     query = np.column_stack([xx[fill_mask], yy[fill_mask]])
     interp = griddata(points, values, query, method="linear")
     still_nan = ~np.isfinite(interp)
@@ -332,6 +339,8 @@ def _save_rmse_heatmap_figure(
     cmap: str | Colormap,
     dpi: int,
     show: bool,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> dict[str, float | int]:
     valid = z[np.isfinite(z)]
     global_mean = float(valid.mean()) if valid.size else float("nan")
@@ -348,9 +357,11 @@ def _save_rmse_heatmap_figure(
         z,
         cmap=cmap_obj,
         shading="flat",
+        vmin=vmin,
+        vmax=vmax,
     )
     cbar = fig.colorbar(mesh, ax=ax)
-    cbar.set_label("RMSE (m)")
+    cbar.set_label("Mean error (m)")
 
     ax.scatter(
         [dev0_xy[0]],
@@ -360,7 +371,6 @@ def _save_rmse_heatmap_figure(
         c="white",
         edgecolors="black",
         linewidths=0.8,
-        label=f"dev0 ({dev0_xy[0]:.1f}, {dev0_xy[1]:.1f}) m",
         zorder=3,
     )
     ax.scatter(
@@ -371,17 +381,15 @@ def _save_rmse_heatmap_figure(
         c="white",
         edgecolors="black",
         linewidths=0.8,
-        label=f"dev1 ({dev1_xy[0]:.1f}, {dev1_xy[1]:.1f}) m",
         zorder=3,
     )
 
     _apply_axis_ticks(ax, xs, ys)
-    ax.set_xlabel("Target x (m)")
-    ax.set_ylabel("Target y (m)")
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
     ax.set_aspect("equal", adjustable="box")
     ax.grid(True, alpha=0.25, linewidth=0.5)
-    ax.legend(loc="upper right", fontsize=9)
-    ax.set_title(title)
+    _ = title  # kept for API compatibility; figure has no title
 
     fig.tight_layout()
     fig.savefig(output_png, dpi=dpi, bbox_inches="tight")
@@ -391,7 +399,7 @@ def _save_rmse_heatmap_figure(
 
     return {
         "filled_cells": filled_cells,
-        "global_mean_rmse_m": global_mean,
+        "global_mean_err_m": global_mean,
     }
 
 
@@ -404,6 +412,8 @@ def plot_rmse_heatmap_from_csv(
     cmap: str | Colormap = DEFAULT_CMAP,
     dpi: int = 150,
     show: bool = False,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> dict[str, float | int]:
     """读取 RMSE CSV，绘制目标位置热力图并保存 PNG。"""
     df = pd.read_csv(input_csv)
@@ -421,14 +431,16 @@ def plot_rmse_heatmap_from_csv(
         x_edges=_axis_edges(xs),
         y_edges=_axis_edges(ys),
         title=(
-            "Cooperative Monostatic MUSIC Localization RMSE\n"
-            f"cells={filled_cells}, global mean RMSE={title_mean} m"
+            "Cooperative Monostatic MUSIC Localization Mean Error\n"
+            f"cells={filled_cells}, global mean error={title_mean} m"
         ),
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
         cmap=cmap,
         dpi=dpi,
         show=show,
+        vmin=vmin,
+        vmax=vmax,
     )
     return {
         **summary,
@@ -445,6 +457,8 @@ def plot_rmse_heatmap_outer_from_csv(
     cmap: str | Colormap = DEFAULT_CMAP,
     dpi: int = 150,
     show: bool = False,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> dict[str, float | int]:
     """读取 RMSE CSV，绘制外侧 20 cm 均匀网格热力图并保存 PNG。"""
     df = pd.read_csv(input_csv)
@@ -462,14 +476,17 @@ def plot_rmse_heatmap_outer_from_csv(
         x_edges=_uniform_axis_edges(xs, OUTER_GRID_STEP_M),
         y_edges=_uniform_axis_edges(ys, OUTER_GRID_STEP_M),
         title=(
-            "Cooperative Monostatic MUSIC Localization RMSE (outer, 20 cm grid)\n"
-            f"cells={filled_cells}, outer mean RMSE={title_mean} m"
+            "Cooperative Monostatic MUSIC Localization Mean Error "
+            "(outer, 20 cm grid)\n"
+            f"cells={filled_cells}, outer mean error={title_mean} m"
         ),
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
         cmap=cmap,
         dpi=dpi,
         show=show,
+        vmin=vmin,
+        vmax=vmax,
     )
     return {
         **summary,
@@ -486,7 +503,9 @@ def plot_rmse_heatmap_combined_from_csv(
     cmap: str | Colormap = DEFAULT_CMAP,
     dpi: int = 150,
     show: bool = False,
-    title_prefix: str = "Cooperative Monostatic MUSIC Localization RMSE",
+    title_prefix: str = "Cooperative Monostatic MUSIC Localization Mean Error",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> dict[str, float | int]:
     """读取 RMSE CSV，绘制全区域 10 cm 统一网格热力图（外侧插值）。"""
     df = pd.read_csv(input_csv)
@@ -506,13 +525,15 @@ def plot_rmse_heatmap_combined_from_csv(
         title=(
             f"{title_prefix}\n"
             f"(uniform 10 cm grid, outer interpolated), cells={filled_cells}, "
-            f"mean RMSE={title_mean} m"
+            f"mean error={title_mean} m"
         ),
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
         cmap=cmap,
         dpi=dpi,
         show=show,
+        vmin=vmin,
+        vmax=vmax,
     )
     return {
         **summary,
@@ -531,7 +552,7 @@ def _empirical_cdf(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _split_rmse_by_region(df: pd.DataFrame) -> dict[str, np.ndarray]:
-    """按 global / inner / outer 拆分 ``rmse_xy_m`` 数组。"""
+    """按 global / inner / outer / no_corner 拆分 ``rmse_xy_m`` 数组。"""
     if "true_x_m" not in df.columns or "true_y_m" not in df.columns:
         raise ValueError("CSV must contain true_x_m and true_y_m columns")
     if "rmse_xy_m" not in df.columns:
@@ -544,10 +565,17 @@ def _split_rmse_by_region(df: pd.DataFrame) -> dict[str, np.ndarray]:
         ),
         axis=1,
     ).to_numpy(dtype=bool)
+    no_corner_mask = ~df.apply(
+        lambda row: is_subregion_corner_xy_m(
+            float(row["true_x_m"]), float(row["true_y_m"])
+        ),
+        axis=1,
+    ).to_numpy(dtype=bool)
     return {
         "global": rmses,
         "inner": rmses[inner_mask],
         "outer": rmses[~inner_mask],
+        "no_corner": rmses[no_corner_mask],
     }
 
 
@@ -555,7 +583,7 @@ def plot_rmse_cdf_from_csv(
     input_csv: Path,
     output_png: Path,
     *,
-    title: str = "Localization RMSE CDF",
+    title: str = "Localization mean error CDF",
     dpi: int = 150,
     show: bool = False,
 ) -> dict[str, int | float | str]:
@@ -573,13 +601,13 @@ def plot_rmse_cdf_from_csv(
     curves_plotted = 0
     summary: dict[str, int | float | str] = {"total_rows": int(len(df))}
 
-    for region, values in by_region.items():
+    for region, style in curve_styles.items():
+        values = by_region[region]
         valid_count = int(np.isfinite(values).sum())
         summary[f"{region}_valid"] = valid_count
         x_cdf, y_cdf = _empirical_cdf(values)
         if x_cdf.size == 0:
             continue
-        style = curve_styles[region]
         ax.plot(
             x_cdf,
             y_cdf,
@@ -592,9 +620,9 @@ def plot_rmse_cdf_from_csv(
     if curves_plotted == 0:
         raise ValueError(f"no finite rmse_xy_m values in {input_csv}")
 
-    ax.set_xlabel("RMSE (m)")
+    ax.set_xlabel("Mean error (m)")
     ax.set_ylabel("CDF")
-    ax.set_title(title)
+    _ = title  # kept for API compatibility; figure has no title
     ax.set_ylim(0.0, 1.0)
     ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
     ax.grid(True, alpha=0.25, linewidth=0.5)
@@ -611,6 +639,211 @@ def plot_rmse_cdf_from_csv(
     summary["curves_plotted"] = curves_plotted
     summary["output_png"] = str(output_png)
     return summary
+
+
+_CDF_COMPARE_COLORS = {
+    "music": "#1f77b4",
+    "esprit": "#ff7f0e",
+    "cnn": "#2ca02c",
+}
+_CDF_COMPARE_DISPLAY_LABELS = {
+    "music": "MUSIC",
+    "esprit": "ESPRIT",
+    "cnn": "STP-CNN",
+}
+_CDF_COMPARE_FALLBACK_COLORS = (
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+)
+
+
+def plot_rmse_cdf_compare_from_csvs(
+    series: list[tuple[str, Path]],
+    output_png: Path,
+    *,
+    region: str = "global",
+    dpi: int = 150,
+    show: bool = False,
+) -> dict[str, int | float | str]:
+    """从多份 RMSE CSV 绘制同区域（默认 global）多方法 CDF 对比曲线。"""
+    region_key = str(region).strip().lower()
+    if region_key not in {"global", "inner", "outer", "no_corner"}:
+        raise ValueError(
+            f"region must be global|inner|outer|no_corner, got {region!r}"
+        )
+    if not series:
+        raise ValueError("series must contain at least one (label, csv_path)")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    curves_plotted = 0
+    summary: dict[str, int | float | str] = {
+        "region": region_key,
+        "n_series": len(series),
+    }
+
+    for idx, (label, csv_path) in enumerate(series):
+        df = pd.read_csv(csv_path)
+        by_region = _split_rmse_by_region(df)
+        values = by_region[region_key]
+        valid_count = int(np.isfinite(values).sum())
+        summary[f"{label}_valid"] = valid_count
+        x_cdf, y_cdf = _empirical_cdf(values)
+        if x_cdf.size == 0:
+            continue
+        color = _CDF_COMPARE_COLORS.get(
+            str(label).strip().lower(),
+            _CDF_COMPARE_FALLBACK_COLORS[idx % len(_CDF_COMPARE_FALLBACK_COLORS)],
+        )
+        label_key = str(label).strip().lower()
+        display_label = _CDF_COMPARE_DISPLAY_LABELS.get(
+            label_key, str(label).strip().upper()
+        )
+        ax.plot(
+            x_cdf,
+            y_cdf,
+            linestyle="-",
+            linewidth=1.8,
+            color=color,
+            label=display_label,
+        )
+        curves_plotted += 1
+
+    if curves_plotted == 0:
+        raise ValueError(
+            f"no finite rmse_xy_m values for region={region_key} in any series"
+        )
+
+    ax.set_xlabel("Mean error (m)")
+    ax.set_ylabel("CDF")
+    ax.set_ylim(0.0, 1.0)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
+    ax.grid(True, alpha=0.25, linewidth=0.5)
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+
+    output_png = output_png.resolve()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_png, dpi=int(dpi), bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+    summary["curves_plotted"] = curves_plotted
+    summary["output_png"] = str(output_png)
+    return summary
+
+
+def plot_xy_estimate_scatter_from_csv(
+    input_csv: Path,
+    output_png: Path,
+    *,
+    dev0_xy: tuple[float, float] = (0.0, -2.0),
+    dev1_xy: tuple[float, float] = (-2.0, 0.0),
+    cmap: str | Colormap = DEFAULT_CMAP,
+    dpi: int = 150,
+    show: bool = False,
+    s: float = 8.0,
+    alpha: float = 0.35,
+) -> dict[str, int | float | str]:
+    """从 RMSE CSV 绘制估计位置 (est_x, est_y) 散点图，按 rmse 着色。"""
+    df = pd.read_csv(input_csv)
+    required = ("est_x_m", "est_y_m", "rmse_xy_m", "true_x_m", "true_y_m")
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"CSV must contain columns: {', '.join(missing)}")
+
+    est_x = df["est_x_m"].to_numpy(dtype=np.float64)
+    est_y = df["est_y_m"].to_numpy(dtype=np.float64)
+    rmse = df["rmse_xy_m"].to_numpy(dtype=np.float64)
+    valid = np.isfinite(est_x) & np.isfinite(est_y) & np.isfinite(rmse)
+    if not valid.any():
+        raise ValueError(f"no finite est_x/est_y/rmse values in {input_csv}")
+
+    true_xy = np.unique(
+        np.column_stack(
+            [
+                df["true_x_m"].to_numpy(dtype=np.float64),
+                df["true_y_m"].to_numpy(dtype=np.float64),
+            ]
+        ),
+        axis=0,
+    )
+
+    xs = ys = unified_grid_axis_m()
+    output_png = output_png.resolve()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(7.5, 6.5))
+    ax.scatter(
+        true_xy[:, 0],
+        true_xy[:, 1],
+        s=12,
+        c="#b0b0b0",
+        marker=".",
+        linewidths=0,
+        zorder=1,
+        label="true grid",
+    )
+    sc = ax.scatter(
+        est_x[valid],
+        est_y[valid],
+        c=rmse[valid],
+        s=float(s),
+        alpha=float(alpha),
+        cmap=cmap,
+        linewidths=0,
+        zorder=2,
+        label="estimates",
+    )
+    cbar = fig.colorbar(sc, ax=ax)
+    cbar.set_label("Mean error (m)")
+
+    ax.scatter(
+        [dev0_xy[0]],
+        [dev0_xy[1]],
+        marker="^",
+        s=80,
+        c="white",
+        edgecolors="black",
+        linewidths=0.8,
+        zorder=3,
+        label="dev0",
+    )
+    ax.scatter(
+        [dev1_xy[0]],
+        [dev1_xy[1]],
+        marker="s",
+        s=70,
+        c="white",
+        edgecolors="black",
+        linewidths=0.8,
+        zorder=3,
+        label="dev1",
+    )
+
+    _apply_axis_ticks(ax, xs, ys)
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, alpha=0.25, linewidth=0.5)
+    ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+
+    fig.tight_layout()
+    fig.savefig(output_png, dpi=int(dpi), bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+    return {
+        "n_valid": int(valid.sum()),
+        "n_true_grid": int(true_xy.shape[0]),
+        "mean_rmse_m": float(np.mean(rmse[valid])),
+        "output_png": str(output_png),
+    }
 
 
 def _default_output_png() -> Path:

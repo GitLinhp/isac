@@ -7,14 +7,35 @@ import json
 import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
 
+from isac.sensing.localization import path_sum_xy
+from isac_imp.cooperative_monostatic_pipeline import (
+    DEFAULT_DEV0_RX_XY,
+    DEFAULT_DEV0_TX_XY,
+    DEFAULT_DEV1_RX_XY,
+    DEFAULT_DEV1_TX_XY,
+)
+
 DEFAULT_CALIB_SEARCH_MIN_M = -2.0
 DEFAULT_CALIB_SEARCH_MAX_M = 2.0
 DEFAULT_CALIB_STEP_M = 0.01
+
+
+def _xy_tuple(xy: Sequence[float]) -> tuple[float, float]:
+    return (float(xy[0]), float(xy[1]))
+
+
+def _midpoint_xy(
+    tx_xy: Sequence[float], rx_xy: Sequence[float]
+) -> tuple[float, float]:
+    return (
+        0.5 * (float(tx_xy[0]) + float(rx_xy[0])),
+        0.5 * (float(tx_xy[1]) + float(rx_xy[1])),
+    )
 
 
 @dataclass(frozen=True)
@@ -64,6 +85,10 @@ class RangeBiasCalibResult:
     step_m: float
     dev0_xy: tuple[float, float]
     dev1_xy: tuple[float, float]
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY
 
     @property
     def dev0(self) -> DevRangeBiasFit:
@@ -88,10 +113,19 @@ def true_monostatic_range_m(
     target_xy: tuple[float, float],
     dev_xy: tuple[float, float],
 ) -> float:
-    """目标到单站传感器的几何距离 (m)。"""
+    """目标到单站共址传感器的几何距离 (m)。"""
     dx = float(target_xy[0]) - float(dev_xy[0])
     dy = float(target_xy[1]) - float(dev_xy[1])
     return math.hypot(dx, dy)
+
+
+def true_quasi_monostatic_range_m(
+    target_xy: Sequence[float],
+    tx_xy: Sequence[float],
+    rx_xy: Sequence[float],
+) -> float:
+    """准单基地等效距离 ``(|T−TX| + |T−RX|) / 2`` (m)。"""
+    return 0.5 * path_sum_xy(target_xy, tx_xy, rx_xy)
 
 
 def target_in_calib_roi(
@@ -163,19 +197,33 @@ def fit_range_bias_1d(
 def fit_dual_dev_range_biases(
     df: pd.DataFrame,
     *,
-    dev0_xy: tuple[float, float],
-    dev1_xy: tuple[float, float],
+    tx0_xy: Sequence[float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: Sequence[float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: Sequence[float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: Sequence[float] = DEFAULT_DEV1_RX_XY,
+    dev0_xy: Sequence[float] | None = None,
+    dev1_xy: Sequence[float] | None = None,
     roi_dev0: RangeBiasCalibRoi = DEFAULT_CALIB_ROI_DEV0,
     roi_dev1: RangeBiasCalibRoi = DEFAULT_CALIB_ROI_DEV1,
     search_min: float = DEFAULT_CALIB_SEARCH_MIN_M,
     search_max: float = DEFAULT_CALIB_SEARCH_MAX_M,
     step: float = DEFAULT_CALIB_STEP_M,
 ) -> RangeBiasCalibResult:
-    """在各自 ROI 内独立拟合 dev0/dev1 距离偏置。"""
+    """在各自 ROI 内独立拟合 dev0/dev1 距离偏置。
+
+    真值用准单基地等效距离 ``path_sum(TX,RX,T)/2``（与椭圆定位一致）。
+    """
     required = ("true_x_m", "true_y_m", "r_dev0_m", "r_dev1_m")
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"DataFrame 缺少列: {', '.join(missing)}")
+
+    tx0 = _xy_tuple(tx0_xy)
+    rx0 = _xy_tuple(rx0_xy)
+    tx1 = _xy_tuple(tx1_xy)
+    rx1 = _xy_tuple(rx1_xy)
+    mid0 = _xy_tuple(dev0_xy) if dev0_xy is not None else _midpoint_xy(tx0, rx0)
+    mid1 = _xy_tuple(dev1_xy) if dev1_xy is not None else _midpoint_xy(tx1, rx1)
 
     true_x = df["true_x_m"].to_numpy(dtype=np.float64)
     true_y = df["true_y_m"].to_numpy(dtype=np.float64)
@@ -184,14 +232,14 @@ def fit_dual_dev_range_biases(
 
     true_r0 = np.array(
         [
-            true_monostatic_range_m((float(x), float(y)), dev0_xy)
+            true_quasi_monostatic_range_m((float(x), float(y)), tx0, rx0)
             for x, y in zip(true_x, true_y, strict=True)
         ],
         dtype=np.float64,
     )
     true_r1 = np.array(
         [
-            true_monostatic_range_m((float(x), float(y)), dev1_xy)
+            true_quasi_monostatic_range_m((float(x), float(y)), tx1, rx1)
             for x, y in zip(true_x, true_y, strict=True)
         ],
         dtype=np.float64,
@@ -218,8 +266,12 @@ def fit_dual_dev_range_biases(
         search_min_m=float(search_min),
         search_max_m=float(search_max),
         step_m=float(step),
-        dev0_xy=dev0_xy,
-        dev1_xy=dev1_xy,
+        dev0_xy=mid0,
+        dev1_xy=mid1,
+        tx0_xy=tx0,
+        rx0_xy=rx0,
+        tx1_xy=tx1,
+        rx1_xy=rx1,
     )
 
 
@@ -339,9 +391,24 @@ def save_range_bias_calib(path: str | Path, result: RangeBiasCalibResult) -> Pat
         "step_m": result.step_m,
         "dev0_xy": list(result.dev0_xy),
         "dev1_xy": list(result.dev1_xy),
+        "tx0_xy": list(result.tx0_xy),
+        "rx0_xy": list(result.rx0_xy),
+        "tx1_xy": list(result.tx1_xy),
+        "rx1_xy": list(result.rx1_xy),
     }
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return out
+
+
+def _xy_from_payload(
+    data: dict[str, Any],
+    key: str,
+    default: tuple[float, float],
+) -> tuple[float, float]:
+    if key not in data:
+        return default
+    xy = data[key]
+    return (float(xy[0]), float(xy[1]))
 
 
 def load_range_bias_calib(path: str | Path) -> RangeBiasCalibResult:
@@ -363,6 +430,10 @@ def load_range_bias_calib(path: str | Path) -> RangeBiasCalibResult:
         step_m=float(data.get("step_m", DEFAULT_CALIB_STEP_M)),
         dev0_xy=(float(data["dev0_xy"][0]), float(data["dev0_xy"][1])),
         dev1_xy=(float(data["dev1_xy"][0]), float(data["dev1_xy"][1])),
+        tx0_xy=_xy_from_payload(data, "tx0_xy", DEFAULT_DEV0_TX_XY),
+        rx0_xy=_xy_from_payload(data, "rx0_xy", DEFAULT_DEV0_RX_XY),
+        tx1_xy=_xy_from_payload(data, "tx1_xy", DEFAULT_DEV1_TX_XY),
+        rx1_xy=_xy_from_payload(data, "rx1_xy", DEFAULT_DEV1_RX_XY),
     )
 
 
@@ -489,6 +560,10 @@ def resolve_and_apply_eval_row_calibration(
     dev1_xy: tuple[float, float],
     localize_fn,
     calibration_preapplied: bool = False,
+    tx0_xy: Sequence[float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: Sequence[float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: Sequence[float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: Sequence[float] = DEFAULT_DEV1_RX_XY,
 ) -> RangeBiasCalibResult | None:
     """评估行列表：拟合/加载偏置，写入 cal 列并重算 xy 定位。"""
     df = pd.DataFrame(rows)
@@ -513,6 +588,10 @@ def resolve_and_apply_eval_row_calibration(
     opts = calib_options_from_args(args)
     result = fit_dual_dev_range_biases(
         df,
+        tx0_xy=tx0_xy,
+        rx0_xy=rx0_xy,
+        tx1_xy=tx1_xy,
+        rx1_xy=rx1_xy,
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
         **opts,
@@ -537,6 +616,10 @@ def resolve_range_bias_calibration(
     *,
     dev0_xy: tuple[float, float],
     dev1_xy: tuple[float, float],
+    tx0_xy: Sequence[float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: Sequence[float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: Sequence[float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: Sequence[float] = DEFAULT_DEV1_RX_XY,
 ) -> tuple[pd.DataFrame, RangeBiasCalibResult | None]:
     """按 CLI 拟合或加载偏置，返回带 cal 列的 DataFrame 与校准结果。"""
     if args.calib_json is not None:
@@ -557,6 +640,10 @@ def resolve_range_bias_calibration(
     opts = calib_options_from_args(args)
     result = fit_dual_dev_range_biases(
         df,
+        tx0_xy=tx0_xy,
+        rx0_xy=rx0_xy,
+        tx1_xy=tx1_xy,
+        rx1_xy=rx1_xy,
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
         **opts,

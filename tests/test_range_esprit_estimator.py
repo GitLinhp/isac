@@ -127,3 +127,41 @@ def test_boundary_bin_last_in_roi(estimator: RangeEspritEstimator) -> None:
     assert peaks.peak_ranges_m.size == 1
     expected_m = roi_last_bin * step
     assert abs(peaks.peak_ranges_m[0] - expected_m) < step
+
+
+def test_esprit_cfar_excludes_below_threshold(estimator: RangeEspritEstimator) -> None:
+    vlen = 512
+    step = 0.1
+    profile = _synthetic_profile([80, 200], vlen=vlen, amplitude=8.0, width=1.5)
+    # CFAR 与 ROI 幅度谱同长（0–50 m → 501 bins）；挡住远峰 bin 200。
+    cfar = np.full(501, 1.0, dtype=np.float64)
+    cfar[190:210] = 100.0
+
+    peaks = estimator(
+        profile,
+        range_bin_step=step,
+        range_roi=(0.0, 50.0),
+        num_sources=2,
+        cfar=cfar,
+    )
+
+    assert peaks.peak_ranges_m.size >= 1
+    assert np.all(np.abs(peaks.peak_ranges_m - 20.0) > step)
+    assert np.any(np.abs(peaks.peak_ranges_m - 8.0) < step)
+
+
+def test_esprit_cfar_all_blocked_returns_empty(estimator: RangeEspritEstimator) -> None:
+    vlen = 512
+    step = 0.1
+    profile = _synthetic_profile([80], vlen=vlen, amplitude=8.0, width=1.5)
+    cfar = np.full(501, 1e6, dtype=np.float64)
+
+    peaks = estimator(
+        profile,
+        range_bin_step=step,
+        range_roi=(0.0, 50.0),
+        num_sources=1,
+        cfar=cfar,
+    )
+
+    assert peaks.peak_ranges_m.size == 0

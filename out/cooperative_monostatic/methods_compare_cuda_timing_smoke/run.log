@@ -1,0 +1,30 @@
+
+=== music ===
+
+>>> /opt/miniconda3/envs/ISAC/bin/python /home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_music_rmse.py --h5-path /home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5 --output-csv /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_rmse.csv --calibrate-range --write-calib-json /home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_range_bias_calib.json --device cuda:0 --max-samples 128
+CFAR: off
+MUSIC preload:   0%|          | 0/128 [00:00<?, ?frame/s]MUSIC preload: 100%|██████████| 128/128 [00:00<00:00, 5458.06frame/s]
+Traceback (most recent call last):
+  File "/home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_music_rmse.py", line 820, in <module>
+    main()
+  File "/home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_music_rmse.py", line 753, in main
+    resolve_and_apply_eval_row_calibration(
+  File "/home/lhp/projects/isac/src/isac_imp/cooperative_monostatic_range_calibration.py", line 589, in resolve_and_apply_eval_row_calibration
+    result = fit_dual_dev_range_biases(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhp/projects/isac/src/isac_imp/cooperative_monostatic_range_calibration.py", line 250, in fit_dual_dev_range_biases
+    bias0, mae0 = fit_range_bias_1d(
+                  ^^^^^^^^^^^^^^^^^^
+  File "/home/lhp/projects/isac/src/isac_imp/cooperative_monostatic_range_calibration.py", line 185, in fit_range_bias_1d
+    raise ValueError("calibration ROI 内无有效距离样本")
+ValueError: calibration ROI 内无有效距离样本
+Traceback (most recent call last):
+  File "/home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_methods_compare.py", line 662, in <module>
+    main()
+  File "/home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_methods_compare.py", line 605, in main
+    _run(cmd)
+  File "/home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_methods_compare.py", line 279, in _run
+    subprocess.run(cmd, cwd=PROJECT_ROOT, check=True)
+  File "/opt/miniconda3/envs/ISAC/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/opt/miniconda3/envs/ISAC/bin/python', '/home/lhp/projects/isac/script/experiment/run_cooperative_monostatic_music_rmse.py', '--h5-path', '/home/lhp/projects/isac/data/experiment/cooperative_monostatic/cooperative_monostatic_dataset.h5', '--output-csv', '/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_rmse.csv', '--calibrate-range', '--write-calib-json', '/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_cuda_timing_smoke/music/music_range_bias_calib.json', '--device', 'cuda:0', '--max-samples', '128']' returned non-zero exit status 1.

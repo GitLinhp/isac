@@ -359,8 +359,57 @@ def test_split_rmse_by_region(plot_mod, tmp_path: Path) -> None:
     assert by_region["global"].size == 3
     assert by_region["inner"].size == 1
     assert by_region["outer"].size == 2
+    # synthetic outer points (-1,-1) and (0.8,-0.6) are 4x4 corners
+    assert by_region["no_corner"].size == 1
     assert np.isfinite(by_region["global"]).sum() == 3
     assert by_region["inner"][0] == pytest.approx(0.5)
+    assert by_region["no_corner"][0] == pytest.approx(0.5)
+
+
+def test_split_rmse_by_region_no_corner_keeps_non_corner_outer(
+    plot_mod, tmp_path: Path
+) -> None:
+    csv_path = tmp_path / "rmse.csv"
+    rows = [
+        {
+            "sample_idx": 0,
+            "session_index": 0,
+            "frame_index": 0,
+            "true_x_m": 0.0,
+            "true_y_m": 0.0,
+            "est_x_m": 0.0,
+            "est_y_m": 0.0,
+            "rmse_xy_m": 0.5,
+        },
+        {
+            "sample_idx": 1,
+            "session_index": 1,
+            "frame_index": 0,
+            "true_x_m": -1.0,
+            "true_y_m": -1.0,
+            "est_x_m": -1.0,
+            "est_y_m": -1.0,
+            "rmse_xy_m": 3.0,
+        },
+        {
+            "sample_idx": 2,
+            "session_index": 2,
+            "frame_index": 0,
+            "true_x_m": 0.8,
+            "true_y_m": 0.0,
+            "est_x_m": 0.8,
+            "est_y_m": 0.0,
+            "rmse_xy_m": 1.5,
+        },
+    ]
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    by_region = plot_mod._split_rmse_by_region(pd.read_csv(csv_path))
+
+    assert by_region["global"].size == 3
+    assert by_region["inner"].size == 1
+    assert by_region["outer"].size == 2
+    assert by_region["no_corner"].size == 2
+    assert set(np.round(by_region["no_corner"], 1).tolist()) == {0.5, 1.5}
 
 
 def test_plot_rmse_cdf_from_csv_writes_png(plot_mod, tmp_path: Path) -> None:
@@ -382,3 +431,69 @@ def test_plot_rmse_cdf_from_csv_writes_png(plot_mod, tmp_path: Path) -> None:
     assert summary["outer_valid"] == 2
     assert summary["curves_plotted"] == 3
 
+
+def test_plot_rmse_cdf_compare_no_corner(plot_mod, tmp_path: Path) -> None:
+    music_csv = tmp_path / "music_rmse.csv"
+    esprit_csv = tmp_path / "esprit_rmse.csv"
+    rows = [
+        {
+            "sample_idx": 0,
+            "session_index": 0,
+            "frame_index": 0,
+            "true_x_m": 0.0,
+            "true_y_m": 0.0,
+            "est_x_m": 0.0,
+            "est_y_m": 0.0,
+            "rmse_xy_m": 0.4,
+        },
+        {
+            "sample_idx": 1,
+            "session_index": 1,
+            "frame_index": 0,
+            "true_x_m": -1.0,
+            "true_y_m": -1.0,
+            "est_x_m": -1.0,
+            "est_y_m": -1.0,
+            "rmse_xy_m": 2.0,
+        },
+        {
+            "sample_idx": 2,
+            "session_index": 2,
+            "frame_index": 0,
+            "true_x_m": 0.8,
+            "true_y_m": 0.0,
+            "est_x_m": 0.8,
+            "est_y_m": 0.0,
+            "rmse_xy_m": 1.2,
+        },
+    ]
+    pd.DataFrame(rows).to_csv(music_csv, index=False)
+    rows_esprit = [{**r, "rmse_xy_m": float(r["rmse_xy_m"]) + 0.1} for r in rows]
+    pd.DataFrame(rows_esprit).to_csv(esprit_csv, index=False)
+
+    png_path = tmp_path / "compare_no_corner.png"
+    summary = plot_mod.plot_rmse_cdf_compare_from_csvs(
+        [("music", music_csv), ("esprit", esprit_csv)],
+        png_path,
+        region="no_corner",
+    )
+
+    assert png_path.is_file()
+    assert png_path.stat().st_size > 0
+    assert summary["region"] == "no_corner"
+    assert summary["music_valid"] == 2
+    assert summary["esprit_valid"] == 2
+    assert summary["curves_plotted"] == 2
+
+
+def test_plot_rmse_cdf_compare_rejects_unknown_region(
+    plot_mod, tmp_path: Path
+) -> None:
+    csv_path = tmp_path / "rmse.csv"
+    _synthetic_inner_outer_rmse_csv(csv_path)
+    with pytest.raises(ValueError, match="no_corner"):
+        plot_mod.plot_rmse_cdf_compare_from_csvs(
+            [("music", csv_path)],
+            tmp_path / "bad.png",
+            region="side",
+        )

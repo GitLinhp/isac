@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import Colormap
+from matplotlib.ticker import PercentFormatter
 
 from isac import PROJECT_ROOT
 from isac.sensing.detection.cfar import CFARDetector
@@ -36,7 +37,7 @@ from isac_imp.cooperative_monostatic_range_calibration import (
     dataframe_for_range_mae,
     format_calib_summary,
     resolve_range_bias_calibration,
-    true_monostatic_range_m,
+    true_quasi_monostatic_range_m,
 )
 from isac_imp.cooperative_monostatic_pipeline import (
     DEFAULT_CFAR_DETECTOR,
@@ -44,6 +45,12 @@ from isac_imp.cooperative_monostatic_pipeline import (
     DEFAULT_CFAR_PFA,
     DEFAULT_CFAR_TRAILING,
     DEFAULT_CFAR_TYPE,
+    DEFAULT_DEV0_RX_XY,
+    DEFAULT_DEV0_TX_XY,
+    DEFAULT_DEV0_XY,
+    DEFAULT_DEV1_RX_XY,
+    DEFAULT_DEV1_TX_XY,
+    DEFAULT_DEV1_XY,
     DEFAULT_ESPRIT_NUM_SOURCES,
     DEFAULT_ESPRIT_SUBARRAY_SIZE,
     DEFAULT_ESPRIT_WINDOW_SIZE,
@@ -72,8 +79,12 @@ RANGE_EVAL_COLUMNS = (
 class RangeEvalOptions:
     """H5 距离估计评估选项（与 RMSE 评估脚本对齐）。"""
 
-    dev0_xy: tuple[float, float] = (0.0, -2.0)
-    dev1_xy: tuple[float, float] = (-2.0, 0.0)
+    dev0_xy: tuple[float, float] = DEFAULT_DEV0_XY
+    dev1_xy: tuple[float, float] = DEFAULT_DEV1_XY
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY
     aggregate_session: bool = False
     max_samples: int | None = None
     session_index: int | None = None
@@ -130,23 +141,32 @@ def _validate_range_csv_columns(df: pd.DataFrame) -> None:
 def add_per_dev_range_abs_errors(
     df: pd.DataFrame,
     *,
-    dev0_xy: tuple[float, float],
-    dev1_xy: tuple[float, float],
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
+    **_unused: object,
 ) -> pd.DataFrame:
-    """为每条样本增加 ``abs_err_r_dev0_m`` / ``abs_err_r_dev1_m``。"""
+    """为每条样本增加 ``abs_err_r_dev0_m`` / ``abs_err_r_dev1_m``。
+
+    真值用 ``path_sum(TX,RX,T)/2``。``dev0_xy`` / ``dev1_xy`` 若传入则忽略（兼容旧关键字）。
+    """
+    del _unused
     _validate_range_csv_columns(df)
     out = df.copy()
     true_r0 = out.apply(
-        lambda row: true_monostatic_range_m(
+        lambda row: true_quasi_monostatic_range_m(
             (float(row["true_x_m"]), float(row["true_y_m"])),
-            dev0_xy,
+            tx0_xy,
+            rx0_xy,
         ),
         axis=1,
     )
     true_r1 = out.apply(
-        lambda row: true_monostatic_range_m(
+        lambda row: true_quasi_monostatic_range_m(
             (float(row["true_x_m"]), float(row["true_y_m"])),
-            dev1_xy,
+            tx1_xy,
+            rx1_xy,
         ),
         axis=1,
     )
@@ -283,8 +303,12 @@ def plot_range_mae_heatmap_dual_dev_from_df(
     output_png: Path,
     *,
     method: MethodName = "music",
-    dev0_xy: tuple[float, float] = (0.0, -2.0),
-    dev1_xy: tuple[float, float] = (-2.0, 0.0),
+    dev0_xy: tuple[float, float] = DEFAULT_DEV0_XY,
+    dev1_xy: tuple[float, float] = DEFAULT_DEV1_XY,
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
     cmap: str | Colormap = "RdYlGn_r",
     dpi: int = 150,
     show: bool = False,
@@ -293,7 +317,13 @@ def plot_range_mae_heatmap_dual_dev_from_df(
 ) -> dict[str, float | int | str]:
     """从含 ``r_dev0_m`` / ``r_dev1_m`` 的 DataFrame 绘制 dev0/dev1 距离 MAE 1×2 热力图。"""
     heatmap_mod = _load_heatmap_module()
-    work = add_per_dev_range_abs_errors(df, dev0_xy=dev0_xy, dev1_xy=dev1_xy)
+    work = add_per_dev_range_abs_errors(
+        df,
+        tx0_xy=tx0_xy,
+        rx0_xy=rx0_xy,
+        tx1_xy=tx1_xy,
+        rx1_xy=rx1_xy,
+    )
 
     xs, ys, z0, interp0 = heatmap_mod.build_rmse_grid_10cm_interpolated(
         work, value_col=ABS_ERR_COL_DEV0
@@ -429,6 +459,250 @@ def plot_range_mae_heatmap_dual_dev_from_csv(
         show=show,
         data_source=str(input_csv),
     )
+
+
+DeviceName = Literal["dev0", "dev1"]
+
+
+def plot_range_abs_error_cdf_from_df(
+    df: pd.DataFrame,
+    output_png: Path,
+    *,
+    device: DeviceName,
+    method: MethodName = "music",
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
+    dpi: int = 150,
+    show: bool = False,
+) -> dict[str, int | float | str]:
+    """从含距离列的 DataFrame 绘制单设备距离绝对误差 global CDF。"""
+    del method  # kept for API symmetry with heatmap helpers
+    heatmap_mod = _load_heatmap_module()
+    work = dataframe_for_range_mae(df)
+    work = add_per_dev_range_abs_errors(
+        work,
+        tx0_xy=tx0_xy,
+        rx0_xy=rx0_xy,
+        tx1_xy=tx1_xy,
+        rx1_xy=rx1_xy,
+    )
+    value_col = ABS_ERR_COL_DEV0 if device == "dev0" else ABS_ERR_COL_DEV1
+    values = work[value_col].to_numpy(dtype=np.float64)
+    valid_count = int(np.isfinite(values).sum())
+    x_cdf, y_cdf = heatmap_mod._empirical_cdf(values)
+    if x_cdf.size == 0:
+        raise ValueError(f"no finite {value_col} values for device={device}")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(
+        x_cdf,
+        y_cdf,
+        linestyle="-",
+        linewidth=1.8,
+        label=str(device),
+    )
+    ax.set_xlabel("Range error (m)")
+    ax.set_ylabel("CDF")
+    ax.set_ylim(0.0, 1.0)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
+    ax.grid(True, alpha=0.25, linewidth=0.5)
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+
+    output_png = output_png.resolve()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_png, dpi=int(dpi), bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+    return {
+        "device": device,
+        "total_rows": int(len(work)),
+        "valid": valid_count,
+        "output_png": str(output_png),
+    }
+
+
+def plot_range_abs_error_cdf_from_csv(
+    input_csv: Path,
+    output_png: Path,
+    *,
+    device: DeviceName,
+    method: MethodName = "music",
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
+    dpi: int = 150,
+    show: bool = False,
+) -> dict[str, int | float | str]:
+    """读取 RMSE CSV，绘制单设备距离绝对误差 global CDF。"""
+    input_csv = input_csv.resolve()
+    df = pd.read_csv(input_csv)
+    return plot_range_abs_error_cdf_from_df(
+        df,
+        output_png,
+        device=device,
+        method=method,
+        tx0_xy=tx0_xy,
+        rx0_xy=rx0_xy,
+        tx1_xy=tx1_xy,
+        rx1_xy=rx1_xy,
+        dpi=dpi,
+        show=show,
+    )
+
+
+def plot_range_abs_error_cdf_dual_dev_from_csv(
+    input_csv: Path,
+    *,
+    method: MethodName = "music",
+    output_dev0: Path | None = None,
+    output_dev1: Path | None = None,
+    out_dir: Path | None = None,
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
+    dpi: int = 150,
+    show: bool = False,
+) -> dict[str, dict[str, int | float | str]]:
+    """一次写出 dev0 / dev1 两张距离绝对误差 CDF。"""
+    input_csv = input_csv.resolve()
+    if out_dir is None:
+        out_dir = input_csv.parent
+    out_dir = out_dir.resolve()
+    if output_dev0 is None:
+        output_dev0 = out_dir / f"{method}_range_dev0_cdf.png"
+    if output_dev1 is None:
+        output_dev1 = out_dir / f"{method}_range_dev1_cdf.png"
+
+    df = pd.read_csv(input_csv)
+    common = {
+        "method": method,
+        "tx0_xy": tx0_xy,
+        "rx0_xy": rx0_xy,
+        "tx1_xy": tx1_xy,
+        "rx1_xy": rx1_xy,
+        "dpi": dpi,
+        "show": show,
+    }
+    summary0 = plot_range_abs_error_cdf_from_df(
+        df, output_dev0, device="dev0", **common
+    )
+    summary1 = plot_range_abs_error_cdf_from_df(
+        df, output_dev1, device="dev1", **common
+    )
+    return {"dev0": summary0, "dev1": summary1}
+
+
+_RANGE_CDF_COMPARE_COLORS = {
+    "music": "#1f77b4",
+    "esprit": "#ff7f0e",
+}
+_RANGE_CDF_COMPARE_FALLBACK_COLORS = (
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+)
+_RANGE_CDF_DEV_LINESTYLES: dict[DeviceName, str] = {
+    "dev0": "-",
+    "dev1": "--",
+}
+
+
+def plot_range_abs_error_cdf_compare_from_csvs(
+    series: list[tuple[str, Path, DeviceName]],
+    output_png: Path,
+    *,
+    tx0_xy: tuple[float, float] = DEFAULT_DEV0_TX_XY,
+    rx0_xy: tuple[float, float] = DEFAULT_DEV0_RX_XY,
+    tx1_xy: tuple[float, float] = DEFAULT_DEV1_TX_XY,
+    rx1_xy: tuple[float, float] = DEFAULT_DEV1_RX_XY,
+    dpi: int = 150,
+    show: bool = False,
+) -> dict[str, int | float | str]:
+    """从多份 RMSE CSV 绘制 MUSIC/ESPRIT × dev0/dev1 距离绝对误差 CDF 对比。"""
+    if not series:
+        raise ValueError("series must contain at least one (label, csv_path, device)")
+
+    heatmap_mod = _load_heatmap_module()
+    fig, ax = plt.subplots(figsize=(7, 5))
+    curves_plotted = 0
+    summary: dict[str, int | float | str] = {"n_series": len(series)}
+    # Cache per-CSV abs-error columns so each file is processed once.
+    work_by_csv: dict[Path, pd.DataFrame] = {}
+
+    for idx, (label, csv_path, device) in enumerate(series):
+        device_key: DeviceName = device  # type: ignore[assignment]
+        if device_key not in ("dev0", "dev1"):
+            raise ValueError(f"device must be dev0|dev1, got {device!r}")
+        csv_resolved = Path(csv_path).resolve()
+        if csv_resolved not in work_by_csv:
+            df = pd.read_csv(csv_resolved)
+            work = dataframe_for_range_mae(df)
+            work = add_per_dev_range_abs_errors(
+                work,
+                tx0_xy=tx0_xy,
+                rx0_xy=rx0_xy,
+                tx1_xy=tx1_xy,
+                rx1_xy=rx1_xy,
+            )
+            work_by_csv[csv_resolved] = work
+        work = work_by_csv[csv_resolved]
+        value_col = ABS_ERR_COL_DEV0 if device_key == "dev0" else ABS_ERR_COL_DEV1
+        values = work[value_col].to_numpy(dtype=np.float64)
+        valid_count = int(np.isfinite(values).sum())
+        key = f"{str(label).strip().lower()}_{device_key}"
+        summary[f"{key}_valid"] = valid_count
+        x_cdf, y_cdf = heatmap_mod._empirical_cdf(values)
+        if x_cdf.size == 0:
+            continue
+        method_key = str(label).strip().lower()
+        color = _RANGE_CDF_COMPARE_COLORS.get(
+            method_key,
+            _RANGE_CDF_COMPARE_FALLBACK_COLORS[
+                idx % len(_RANGE_CDF_COMPARE_FALLBACK_COLORS)
+            ],
+        )
+        linestyle = _RANGE_CDF_DEV_LINESTYLES[device_key]
+        ax.plot(
+            x_cdf,
+            y_cdf,
+            linestyle=linestyle,
+            linewidth=1.8,
+            color=color,
+            label=f"{str(label).strip().upper()} {device_key}",
+        )
+        curves_plotted += 1
+
+    if curves_plotted == 0:
+        raise ValueError("no finite range abs-error values in any series")
+
+    ax.set_xlabel("Range error (m)")
+    ax.set_ylabel("CDF")
+    ax.set_ylim(0.0, 1.0)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
+    ax.grid(True, alpha=0.25, linewidth=0.5)
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+
+    output_png = output_png.resolve()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_png, dpi=int(dpi), bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+    summary["curves_plotted"] = curves_plotted
+    summary["output_png"] = str(output_png)
+    return summary
 
 
 def _range_eval_options_from_args(args: argparse.Namespace) -> RangeEvalOptions:
@@ -680,6 +954,10 @@ def main() -> None:
         args,
         dev0_xy=dev0_xy,
         dev1_xy=dev1_xy,
+        tx0_xy=DEFAULT_DEV0_TX_XY,
+        rx0_xy=DEFAULT_DEV0_RX_XY,
+        tx1_xy=DEFAULT_DEV1_TX_XY,
+        rx1_xy=DEFAULT_DEV1_RX_XY,
     )
     if args.write_csv is not None and args.h5_path is not None:
         write_csv = args.write_csv.resolve()

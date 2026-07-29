@@ -1,0 +1,8 @@
+exp_id,description,base_channels,lr,dropout,pool_mode,region_embed_dim,checkpoint,val_local_rmse,val_global_rmse,epoch
+fine_baseline,bc64 lr5e-5 embed32 attn,64,5e-05,0.3,attention,32,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_baseline/best_model.pth,0.19363981983878395,0.18391500689766624,11
+fine_lr1e4,bc64 lr1e-4 embed32,64,0.0001,0.3,attention,32,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_lr1e4/best_model.pth,0.19165658343922007,0.18208157322623514,18
+fine_lr2e5,bc64 lr2e-5 embed32,64,2e-05,0.3,attention,32,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_lr2e5/best_model.pth,0.19244419780644503,0.18360173707658595,37
+fine_bc32,bc32 lr5e-5 embed32,32,5e-05,0.3,attention,32,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_bc32/best_model.pth,0.19564571261405944,0.18476151921532372,51
+fine_embed16,bc64 embed16,64,5e-05,0.3,attention,16,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_embed16/best_model.pth,0.19902895017103717,0.18960183295336636,55
+fine_embed64,bc64 embed64,64,5e-05,0.3,attention,64,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_embed64/best_model.pth,0.19479013773528012,0.1841165272214196,4
+fine_drop01,bc64 dropout=0.1,64,5e-05,0.1,attention,32,/home/lhp/projects/isac/models/two_stage_tune/fine/fine_drop01/best_model.pth,0.1930639692328193,0.1831761631640521,20

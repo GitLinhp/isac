@@ -1,8 +1,9 @@
-"""Cooperative monostatic CNN RMSE 评估脚本测试。"""
+"""Cooperative monostatic CNN 定位评估脚本测试。"""
 
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import h5py
@@ -20,6 +21,11 @@ from isac_imp.data_collection.cooperative_monostatic_dataset import (
 )
 
 _VLEN = 32768
+_EXPERIMENT_DIR = (
+    Path(__file__).resolve().parents[1] / "script" / "experiment"
+)
+if str(_EXPERIMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(_EXPERIMENT_DIR))
 
 
 def _load_eval_module():
@@ -73,26 +79,32 @@ def fixture_eval_mod():
     return _load_eval_module()
 
 
-def test_rmse_stats_counts_nan(eval_mod) -> None:
+def test_rmse_stats_counts_nan() -> None:
+    from cooperative_monostatic_eval_report import rmse_stats
+
     rmses = np.array([1.0, 2.0, np.nan], dtype=np.float64)
-    stats = eval_mod._rmse_stats(rmses)
+    stats = rmse_stats(rmses)
     assert stats["samples"] == 3
     assert stats["valid"] == 2
     assert stats["nan"] == 1
     assert stats["mean"] == pytest.approx(1.5)
 
 
-def test_print_summary_inner_outer(capsys, eval_mod) -> None:
+def test_print_summary_inner_outer(capsys) -> None:
+    from cooperative_monostatic_eval_report import print_localization_rmse_summary
+
     rows = [
         {"true_x_m": 0.0, "true_y_m": 0.0, "rmse_xy_m": 1.0},
         {"true_x_m": 0.2, "true_y_m": 0.0, "rmse_xy_m": 2.0},
         {"true_x_m": 0.8, "true_y_m": 0.0, "rmse_xy_m": 3.0},
         {"true_x_m": 0.0, "true_y_m": 0.8, "rmse_xy_m": float("nan")},
     ]
-    eval_mod._print_summary(rows)
+    print_localization_rmse_summary(
+        rows, title="CNN localization mean error summary"
+    )
     out = capsys.readouterr().out
 
-    assert "CNN localization RMSE summary" in out
+    assert "CNN localization mean error summary" in out
     assert "global" in out
     assert "inner (|x|,|y| <= 0.5 m)" in out
     assert "outer" in out
@@ -118,6 +130,8 @@ def test_evaluate_per_frame_smoke(tmp_path: Path, eval_mod) -> None:
         batch_size=2,
         show_progress=False,
     )
+    if isinstance(rows, tuple):
+        rows = rows[0]
     assert len(rows) == 4
     for row in rows:
         assert np.isfinite(row["est_x_m"])

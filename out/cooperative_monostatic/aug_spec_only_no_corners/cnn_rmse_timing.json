@@ -1,0 +1,6 @@
+{
+  "method": "cnn",
+  "eval_s": 0.37824440898839384,
+  "n_samples": 8914,
+  "mean_ms_per_sample": 0.042432623848821384
+}

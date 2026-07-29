@@ -1,0 +1,4 @@
+method,global_rmse_m,inner_rmse_m,outer_rmse_m,n_samples,csv_path
+music,2.3040870013395796,nan,2.3040870013395796,64,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/music/music_rmse.csv
+esprit,2.3040870013395796,nan,2.3040870013395796,64,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/esprit/esprit_rmse.csv
+cnn,1.528016755840301,nan,1.528016755840301,64,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_smoke/cnn/cnn_rmse.csv

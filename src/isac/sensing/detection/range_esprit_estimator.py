@@ -13,10 +13,9 @@ import numpy as np
 
 from .range_music_estimator import (
     DEFAULT_SUBARRAY_SIZE,
-    MAX_CANDIDATES,
     MAX_PEAKS,
-    MIN_PEAK_THRESHOLD,
     _compute_roi_slice,
+    _local_maxima_candidates_1d,
 )
 
 DEFAULT_WINDOW_SIZE = 32
@@ -52,43 +51,6 @@ def _wrap_bin(bin_val: float, num_bins: int) -> float:
     if b < 0:
         b += float(num_bins)
     return b
-
-
-def _local_maxima_candidates_1d(
-    magnitude: np.ndarray,
-    *,
-    max_candidates: int = MAX_CANDIDATES,
-    min_peak_ratio: float = MIN_PEAK_THRESHOLD,
-) -> np.ndarray:
-    """1D 局部极大值候选 bin（含边界）。"""
-    n = magnitude.size
-    if n < 3:
-        top = min(max_candidates, n)
-        return np.argsort(magnitude)[-top:].astype(np.float64)
-
-    peaks: list[int] = []
-    gate = magnitude.max() * min_peak_ratio
-    if magnitude[0] >= gate and magnitude[0] >= magnitude[1]:
-        peaks.append(0)
-    for i in range(1, n - 1):
-        if (
-            magnitude[i] >= gate
-            and magnitude[i] >= magnitude[i - 1]
-            and magnitude[i] >= magnitude[i + 1]
-        ):
-            peaks.append(i)
-    if magnitude[n - 1] >= gate and magnitude[n - 1] >= magnitude[n - 2]:
-        peaks.append(n - 1)
-
-    if not peaks:
-        top = min(max_candidates, n)
-        return np.argsort(magnitude)[-top:].astype(np.float64)
-
-    peak_arr = np.asarray(peaks, dtype=np.int64)
-    mags = magnitude[peak_arr]
-    order = np.argsort(mags)[::-1]
-    selected = peak_arr[order[: min(max_candidates, peak_arr.size)]]
-    return selected.astype(np.float64)
 
 
 def _hankel_matrix(spectrum: np.ndarray, subarray_size: int) -> Optional[np.ndarray]:
@@ -209,6 +171,7 @@ class RangeEspritEstimator:
         num_sources: Optional[int] = 1,
         subarray_size: int = DEFAULT_SUBARRAY_SIZE,
         window_size: int = DEFAULT_WINDOW_SIZE,
+        cfar: np.ndarray | None = None,
     ) -> RangeEspritPeaks:
         profile = np.asarray(profile_complex, dtype=np.complex64).reshape(-1)
         vlen = profile.size
@@ -231,7 +194,7 @@ class RangeEspritEstimator:
             return RangeEspritPeaks.empty()
 
         magnitude = np.abs(spectrum)
-        candidates = _local_maxima_candidates_1d(magnitude)
+        candidates = _local_maxima_candidates_1d(magnitude, cfar=cfar)
         refined = _refine_candidates_esprit(
             spectrum,
             candidates,

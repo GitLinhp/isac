@@ -51,14 +51,12 @@ def test_localize_with_bias_matches_manual_calibrated_ranges() -> None:
         r1_raw,
         bias_dev0_m=bias0,
         bias_dev1_m=bias1,
-        y_hint=TRUE_XY[1],
     )
     est_manual = localize_xy_from_two_ranges(
         DEV0_XY,
         r0_cal,
         DEV1_XY,
         r1_cal,
-        y_hint=TRUE_XY[1],
     )
 
     assert est_bias[0] == pytest.approx(est_manual[0])
