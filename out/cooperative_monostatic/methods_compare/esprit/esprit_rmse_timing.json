@@ -1,8 +1,8 @@
 {
   "method": "esprit",
-  "eval_s": 27.450382987997727,
+  "eval_s": 27.627143040997908,
   "n_samples": 10744,
-  "mean_ms_per_sample": 2.554950017497927,
+  "mean_ms_per_sample": 2.5714019956252705,
   "timing_scope": "algo_core",
   "device": "cuda:0"
 }

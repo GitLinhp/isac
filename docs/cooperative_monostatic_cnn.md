@@ -6,7 +6,7 @@
 
 `models/cnn_improve_next/aug_spec_only/best_model.pth`
 
-架构示意图（对标多视图语义通信 Encoder / Joint Decoder 论文图风格）：
+架构示意图（对标 Fu *et al.* IEEE Commun. Lett. 2025 DMISC **Fig. 2** 读图惯例）：
 
 ![STP-CNN architecture](figures/stp_cnn_architecture.png)
 
@@ -126,9 +126,9 @@ flowchart TB
 - 输入：float `(B, 4, L)`，或复数双站谱（内部转特征）
 - 输出：`(B, 2)`，单位 m，对应全局目标坐标
 
-### 4.3 STP-CNN 结构图（对标多视图语义通信架构）
+### 4.3 STP-CNN 结构图（对标 DMISC Fig. 2）
 
-与参考多视图语义通信图的对应关系：
+与参考多视图语义通信图（Fu *et al.*, Fig. 2）的对应关系：
 
 | 参考图概念 | STP-CNN 对应 |
 | --- | --- |

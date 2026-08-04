@@ -400,9 +400,7 @@ def plot_range_mae_heatmap_dual_dev_from_df(
     ax0.set_title(f"{bs_display_name('dev0')} Range MAE\ncells={filled0}, mean MAE={mean0_s} m")
     ax1.set_title(f"{bs_display_name('dev1')} Range MAE\ncells={filled1}, mean MAE={mean1_s} m")
 
-    fig.subplots_adjust(right=0.88)
-    cbar = fig.colorbar(mesh0, ax=[ax0, ax1], fraction=0.035, pad=0.02)
-    cbar.set_label("MAE (m)")
+    heatmap_mod._attach_aligned_colorbar(fig, mesh0, ax1, label="Range MAE")
 
     title_prefix = _method_title_prefix(method)
     source_line = f"\nsource: {data_source}" if data_source else ""
@@ -505,7 +503,7 @@ def plot_range_abs_error_cdf_from_df(
         linewidth=1.8,
         label=bs_display_name(device),
     )
-    ax.set_xlabel("Range error (m)")
+    ax.set_xlabel("Range MAE")
     ax.set_ylabel("CDF")
     ax.set_ylim(0.0, 1.0)
     ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
@@ -687,7 +685,7 @@ def plot_range_abs_error_cdf_compare_from_csvs(
     if curves_plotted == 0:
         raise ValueError("no finite range abs-error values in any series")
 
-    ax.set_xlabel("Range error (m)")
+    ax.set_xlabel("Range MAE")
     ax.set_ylabel("CDF")
     ax.set_ylim(0.0, 1.0)
     ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))

@@ -1,4 +1,4 @@
 method,global_mean_err_m,inner_mean_err_m,outer_mean_err_m,n_samples,eval_s,mean_ms_per_sample,device,csv_path
-music,0.937073609707677,0.5987574453838389,1.3624726246426897,10752,19.450265136008966,1.810337410276337,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare/music/music_rmse.csv
-esprit,0.9656268320634553,0.627168569988774,1.391204520823746,10752,27.450382987997727,2.554950017497927,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare/esprit/esprit_rmse.csv
-cnn,0.5785904449150969,0.3549114948485078,0.8598445351835835,10752,6.351356990999193,0.5911538524757254,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare/cnn/cnn_rmse.csv
+music,0.937073609707677,0.5987574453838389,1.3624726246426897,10752,19.74359648002428,1.8376392851846872,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare/music/music_rmse.csv
+esprit,0.9656268320634553,0.627168569988774,1.391204520823746,10752,27.627143040997908,2.5714019956252705,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare/esprit/esprit_rmse.csv
+cnn,0.5785904449150969,0.3549114948485078,0.8598445351835835,10752,6.377577061997727,0.5935942909528785,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare/cnn/cnn_rmse.csv

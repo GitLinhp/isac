@@ -231,9 +231,9 @@ def plot_scene_schematic(
         linewidths=0.8,
     )
 
-    # 仅标注站点名称；TX/RX 用颜色区分，不标具体收发名
+    # 仅标注站点名称与载波频率；TX/RX 用颜色区分，不标具体收发名
     ax.annotate(
-        "BS-0",
+        "BS-0\n6.0 GHz",
         xy=dev0,
         xytext=(10, 12),
         textcoords="offset points",
@@ -243,7 +243,7 @@ def plot_scene_schematic(
         zorder=6,
     )
     ax.annotate(
-        "BS-1",
+        "BS-1\n3.5 GHz",
         xy=dev1,
         xytext=(10, 8),
         textcoords="offset points",
@@ -284,19 +284,19 @@ def plot_scene_schematic(
             facecolor=_ZONE_COLORS["center"],
             edgecolor="none",
             alpha=_ZONE_ALPHA,
-            label="Center",
+            label="Center Zone",
         ),
         Patch(
             facecolor=_ZONE_COLORS["side"],
             edgecolor="none",
             alpha=_ZONE_ALPHA,
-            label="Side",
+            label="Side Zone",
         ),
         Patch(
             facecolor=_ZONE_COLORS["corner"],
             edgecolor="none",
             alpha=_ZONE_ALPHA,
-            label="Corner",
+            label="Corner Zone",
         ),
         plt.Line2D(
             [0],

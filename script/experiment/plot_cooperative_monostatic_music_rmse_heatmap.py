@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import Colormap
 from matplotlib.ticker import PercentFormatter
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
 
 from isac import PROJECT_ROOT
@@ -91,7 +92,9 @@ def _apply_axis_ticks(
 
 
 def _default_output_outer_png() -> Path:
-    return PROJECT_ROOT / "out" / "cooperative_monostatic" / "music_rmse_heatmap_outer.png"
+    return (
+        PROJECT_ROOT / "out" / "cooperative_monostatic" / "music_rmse_heatmap_outer.png"
+    )
 
 
 def outer_grid_axis_m(
@@ -134,9 +137,8 @@ def build_rmse_grid(
 
     xs = np.sort(df["true_x_m"].unique()).astype(np.float64)
     ys = np.sort(df["true_y_m"].unique()).astype(np.float64)
-    grouped = (
-        df.groupby(["true_y_m", "true_x_m"], as_index=False)["rmse_xy_m"]
-        .mean(numeric_only=True)
+    grouped = df.groupby(["true_y_m", "true_x_m"], as_index=False)["rmse_xy_m"].mean(
+        numeric_only=True
     )
     pivot = grouped.pivot(index="true_y_m", columns="true_x_m", values="rmse_xy_m")
     pivot = pivot.reindex(index=ys, columns=xs)
@@ -169,10 +171,9 @@ def build_rmse_grid_outer(
     ].copy()
     outer_df["true_x_m"] = outer_df["true_x_m"].map(lambda v: _snap_to_grid_axis(v, xs))
     outer_df["true_y_m"] = outer_df["true_y_m"].map(lambda v: _snap_to_grid_axis(v, ys))
-    grouped = (
-        outer_df.groupby(["true_y_m", "true_x_m"], as_index=False)["rmse_xy_m"]
-        .mean(numeric_only=True)
-    )
+    grouped = outer_df.groupby(["true_y_m", "true_x_m"], as_index=False)[
+        "rmse_xy_m"
+    ].mean(numeric_only=True)
     grouped["true_x_m"] = grouped["true_x_m"].round(GRID_COORD_DECIMALS)
     grouped["true_y_m"] = grouped["true_y_m"].round(GRID_COORD_DECIMALS)
     pivot = grouped.pivot(index="true_y_m", columns="true_x_m", values="rmse_xy_m")
@@ -205,10 +206,9 @@ def build_rmse_grid_inner(
     ].copy()
     inner_df["true_x_m"] = inner_df["true_x_m"].map(lambda v: _snap_to_grid_axis(v, xs))
     inner_df["true_y_m"] = inner_df["true_y_m"].map(lambda v: _snap_to_grid_axis(v, ys))
-    grouped = (
-        inner_df.groupby(["true_y_m", "true_x_m"], as_index=False)["rmse_xy_m"]
-        .mean(numeric_only=True)
-    )
+    grouped = inner_df.groupby(["true_y_m", "true_x_m"], as_index=False)[
+        "rmse_xy_m"
+    ].mean(numeric_only=True)
     grouped["true_x_m"] = grouped["true_x_m"].round(GRID_COORD_DECIMALS)
     grouped["true_y_m"] = grouped["true_y_m"].round(GRID_COORD_DECIMALS)
     pivot = grouped.pivot(index="true_y_m", columns="true_x_m", values="rmse_xy_m")
@@ -326,6 +326,15 @@ def _cmap_with_bad(cmap: str | Colormap):
     return cmap_obj
 
 
+def _attach_aligned_colorbar(fig, mappable, ax, *, label: str):
+    """在主 axes 右侧附加与其等高的 colorbar（兼容 set_aspect equal）。"""
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.12)
+    cbar = fig.colorbar(mappable, cax=cax)
+    cbar.set_label(label)
+    return cbar
+
+
 def _save_rmse_heatmap_figure(
     xs: np.ndarray,
     ys: np.ndarray,
@@ -361,8 +370,6 @@ def _save_rmse_heatmap_figure(
         vmin=vmin,
         vmax=vmax,
     )
-    cbar = fig.colorbar(mesh, ax=ax)
-    cbar.set_label("Mean error (m)")
 
     ax.scatter(
         [dev0_xy[0]],
@@ -390,6 +397,7 @@ def _save_rmse_heatmap_figure(
     ax.set_ylabel("y (m)")
     ax.set_aspect("equal", adjustable="box")
     ax.grid(True, alpha=0.25, linewidth=0.5)
+    _attach_aligned_colorbar(fig, mesh, ax, label="Positioning MAE")
     _ = title  # kept for API compatibility; figure has no title
 
     fig.tight_layout()
@@ -621,7 +629,7 @@ def plot_rmse_cdf_from_csv(
     if curves_plotted == 0:
         raise ValueError(f"no finite rmse_xy_m values in {input_csv}")
 
-    ax.set_xlabel("Mean error (m)")
+    ax.set_xlabel("Positioning MAE")
     ax.set_ylabel("CDF")
     _ = title  # kept for API compatibility; figure has no title
     ax.set_ylim(0.0, 1.0)
@@ -650,7 +658,7 @@ _CDF_COMPARE_COLORS = {
 _CDF_COMPARE_DISPLAY_LABELS = {
     "music": "MUSIC",
     "esprit": "ESPRIT",
-    "cnn": "STP-CNN",
+    "cnn": "CMTP",
 }
 _CDF_COMPARE_FALLBACK_COLORS = (
     "#1f77b4",
@@ -673,9 +681,7 @@ def plot_rmse_cdf_compare_from_csvs(
     """从多份 RMSE CSV 绘制同区域（默认 global）多方法 CDF 对比曲线。"""
     region_key = str(region).strip().lower()
     if region_key not in {"global", "inner", "outer", "no_corner"}:
-        raise ValueError(
-            f"region must be global|inner|outer|no_corner, got {region!r}"
-        )
+        raise ValueError(f"region must be global|inner|outer|no_corner, got {region!r}")
     if not series:
         raise ValueError("series must contain at least one (label, csv_path)")
 
@@ -718,7 +724,7 @@ def plot_rmse_cdf_compare_from_csvs(
             f"no finite rmse_xy_m values for region={region_key} in any series"
         )
 
-    ax.set_xlabel("Mean error (m)")
+    ax.set_xlabel("Positioning MAE")
     ax.set_ylabel("CDF")
     ax.set_ylim(0.0, 1.0)
     ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
@@ -800,8 +806,6 @@ def plot_xy_estimate_scatter_from_csv(
         zorder=2,
         label="estimates",
     )
-    cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label("Mean error (m)")
 
     ax.scatter(
         [dev0_xy[0]],
@@ -832,6 +836,7 @@ def plot_xy_estimate_scatter_from_csv(
     ax.set_aspect("equal", adjustable="box")
     ax.grid(True, alpha=0.25, linewidth=0.5)
     ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    _attach_aligned_colorbar(fig, sc, ax, label="Positioning MAE")
 
     fig.tight_layout()
     fig.savefig(output_png, dpi=int(dpi), bbox_inches="tight")

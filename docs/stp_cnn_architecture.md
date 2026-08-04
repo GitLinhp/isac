@@ -2,6 +2,8 @@
 
 本文档对照架构示意图，按模块从左到右说明当前最佳配置下的 **STP-CNN**（实现类 `CooperativeMonostaticCNN`，`late` + `attention`）。训练配方与评测数字见 [`cooperative_monostatic_cnn.md`](cooperative_monostatic_cnn.md)。
 
+图风格对标 Fu *et al.*, IEEE Commun. Lett., 2025（DMISC）**Fig. 2**：左右 Spectral Encoder / Joint Localization Decoder、并行支路、虚线内嵌展开块；记号 `Conv(c,k,s)`，\(\downarrow\) 为距离维下采样（本模型无上采样重建）。
+
 ![STP-CNN architecture](figures/stp_cnn_architecture.png)
 
 生成命令：`python script/docs/plot_stp_cnn_architecture.py`
@@ -15,13 +17,14 @@
 | 名称 | STP-CNN（`CooperativeMonostaticCNN`） |
 | 配置 | `fusion_mode=late`，`pool_mode=attention` |
 | 任务 | 双站 ROI 距离谱 → 目标平面坐标 `(x, y)`（单位 m） |
-| 编码器 | 两站共享权重的 1D 卷积骨干（DSSE） |
-| 解码 / 融合 | 晚融合回归头（LFRH）；联合决策，无重建 Decoder |
+| 编码器 | Spectral Encoder / DSSE（两站共享 \(\theta\)） |
+| 解码 / 融合 | Joint Localization Decoder / LFRH（Concat + MLP；无 DeConv） |
 | 参数量 | 约 `5.0×10⁵`（503 939） |
 | 训练配方标签 | `aug_spec_only` |
 | 默认权重 | `models/cnn_improve_next/aug_spec_only/best_model.pth` |
+| 与 DMISC Fig.2 对应 | \(\mathrm{CB}\!\to\!\) Stem+ResBlocks；\(\mathrm{SB}\!\to\!\) RAP；无信道 \(w_n\)；Decoder 为定位头而非图像重建 |
 
-图左为 **Dual-Station Shared Spectral Encoder (DSSE)**，图右为 **Late Fusion Regression Head (LFRH)**。
+图左为 **Spectral Encoder (DSSE)**，图右为 **Joint Localization Decoder (LFRH)**；底部虚线框为 CB₀ / ResBlock / RAP 内部结构。
 
 ---
 
