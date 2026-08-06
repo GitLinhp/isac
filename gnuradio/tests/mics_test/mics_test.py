@@ -89,12 +89,12 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.n_carriers = n_carriers = fft_len - 2
         self.zeropadding_fac = zeropadding_fac = 2
         self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
-        self.record_output_dir = record_output_dir = "/home/caict/Desktop/isac/gnuradio/tests/mics_test/dataset/run_001"
         self.record_enable = record_enable = False
         self.packet_len = packet_len = transpose_len * n_carriers // 4
         self.wait_to_start = wait_to_start = 0.03
         self.samp_rate_0 = samp_rate_0 = int(fft_len * subcarrier_spacing)
         self.record_output_index = record_output_index = 0 if record_enable else 1
+        self.record_output_dir = record_output_dir = "/home/caict/Desktop/isac/gnuradio/tests/mics_test/dataset/run_001"
         self.record_max_frames = record_max_frames = 100
         self.record_file_path = record_file_path = "/dev/null"
         self.range_roi = range_roi = (0.0, 30.0)
@@ -151,7 +151,7 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._RX_gain_win)
         self.sionna_resource_grid_tx_0 = sionna_resource_grid_tx_0.SionnaResourceGridTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
         self.sionna_resource_grid_tx_0.set_min_output_buffer((4*transpose_len))
-        self.range_profile_record_limiter_0 = range_profile_record_limiter_0.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames))
+        self.range_profile_record_limiter_0 = range_profile_record_limiter_0.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=, file_sink_attr=, record_file_path_attr=, record_base_name=)
         self.range_profile_plot_0 = range_profile_plot_0.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
         self.range_music_block_0 = range_music_block_0.RangeMusicBlock(vlen_in=fft_len*zeropadding_fac, range_bin_step=range_bin_step, range_roi=range_roi, num_sources=1, music_enable=music_enable, subarray_size=16, threshold=0.1)
         self.radar_usrp_echotimer_cc_0 = radar.usrp_echotimer_cc(int(samp_rate), freq, int(num_delay_samp), address, 0, '', 'external', 'external', 'TX/RX', TX_gain, 0.2, wait_to_start, 0, address, 0, '', 'external', 'external', 'RX1', RX_gain, 0.2, wait_to_start, 0, "packet_len")
@@ -358,13 +358,6 @@ class mics_test(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
-    def get_record_output_dir(self):
-        return self.record_output_dir
-
-    def set_record_output_dir(self, record_output_dir):
-        self.record_output_dir = record_output_dir
-        self.set_record_file_path("/dev/null")
-
     def get_record_enable(self):
         return self.record_enable
 
@@ -399,6 +392,12 @@ class mics_test(gr.top_block, Qt.QWidget):
     def set_record_output_index(self, record_output_index):
         self.record_output_index = record_output_index
         self.blocks_selector_0.set_output_index(self.record_output_index)
+
+    def get_record_output_dir(self):
+        return self.record_output_dir
+
+    def set_record_output_dir(self, record_output_dir):
+        self.record_output_dir = record_output_dir
 
     def get_record_max_frames(self):
         return self.record_max_frames

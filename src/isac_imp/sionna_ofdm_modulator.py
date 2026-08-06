@@ -1,54 +1,49 @@
-"""Sionna OFDMModulator epy 块：频域符号向量 → 时域+CP 标量流。
+"""Python OFDM 调制 epy 块：频域符号向量 → 时域+CP 标量流。
 
-替换 GNU Radio ``fft_vxx`` (IFFT) + ``digital_ofdm_cyclic_prefixer`` 链：
-
-    SionnaResourceGridTx (fftshift 频域, vlen=fft_len)
-      → SionnaOfdmModulatorBlock (标量时域+CP)
-      → multiply_const / USRP
-
-与 ``system_components.build_from_params`` 相同，使用
-``OFDMModulator(cyclic_prefix_length=cp_len, device=device)``。
-Sionna 内部已 ``ifftshift``；输出乘 ``1/sqrt(fft_len)`` 对齐 GR ``fft_vxx`` 幅度。
-
-按 CPI 批量调用 modulator，并在独立 worker 线程执行 Torch，避免 GR 调度线程 SIGSEGV。
+替换 GNU Radio ``fft_vxx`` (IFFT, shift=True) + ``digital_ofdm_cyclic_prefixer``。
+IFFT 使用 ``1/sqrt(fft_len)`` 与 GR ``fft_vxx`` 一致；``start()`` 再校准 CPI 峰值 ≈ ``target_peak``。
 """
 
 from __future__ import annotations
 
-import os
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
-
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-
 import numpy as np
 import pmt
-import torch
 from gnuradio import gr
-from sionna.phy.ofdm import OFDMModulator
 
 from isac_imp.burst_pack import TPP_DONT
-
-_TORCH_LOCK = threading.Lock()
+from isac_imp.sionna_resource_grid_tx import _build_freq_grid
 
 
 class SionnaOfdmModulatorBlock(gr.basic_block):
     """fftshift 频域 OFDM 符号 (vlen=fft_len) → 时域+CP 标量流。"""
 
+    _FORECAST_MAX = 8191
+
     def __init__(
         self,
         fft_len: int = 2048,
         cp_len: int = 512,
-        device: str = "cpu",
+        burst_len_samples: int = 10240,
+        transpose_len: int = 4,
+        subcarrier_spacing: float = 60e3,
+        num_bits_per_symbol: int = 2,
+        seed: int = 42,
+        target_peak: float = 1.0,
         length_tag_key: str = "packet_len",
+        **_ignored,
     ) -> None:
+        del _ignored
         self._fft_len = int(fft_len)
         self._cp_len = int(cp_len)
-        self._device = str(device)
         self._sym_len = self._fft_len + self._cp_len
-        self._gr_scale = 1.0 / np.sqrt(float(self._fft_len))
+        self._burst_len_samples = int(burst_len_samples)
+        self._transpose_len = int(transpose_len)
+        self._subcarrier_spacing = float(subcarrier_spacing)
+        self._num_bits_per_symbol = int(num_bits_per_symbol)
+        self._seed = int(seed)
+        self._target_peak = float(target_peak)
+        self._ifft_scale = 1.0 / np.sqrt(float(self._fft_len))
+        self._amp_scale = 1.0
 
         gr.basic_block.__init__(
             self,
@@ -57,59 +52,59 @@ class SionnaOfdmModulatorBlock(gr.basic_block):
             out_sig=[np.complex64],
         )
         self._length_tag_key = pmt.intern(length_tag_key)
-        self._modulator: OFDMModulator | None = None
-        self._executor: Optional[ThreadPoolExecutor] = None
-        self._mod_busy = False
+        self._srcid = pmt.intern("sionna_ofdm_modulator")
 
-        self._out_buf: np.ndarray | None = None
-        self._out_idx = 0
-        self._pending_tag: tuple[pmt.pmt, pmt.pmt] | None = None
-        self._cpi_len: int | None = None
-        self._freq_collect: list[np.ndarray] = []
-        self._ready_queue: list[np.ndarray] = []
+        self._sym_buf: np.ndarray | None = None
+        self._sym_pos = 0
+        self._cpi_out_len = 0
+        self._cpi_tag_pending = False
 
         self.set_tag_propagation_policy(TPP_DONT)
-        self.set_min_output_buffer(self._sym_len * 2)
+        self.set_min_output_buffer(self._burst_len_samples)
 
-    def forecast(self, noutput_items: int, ninputs: list) -> list:
-        del ninputs
-        remaining = 0
-        if self._out_buf is not None:
-            remaining = len(self._out_buf) - self._out_idx
-        need_out = max(0, noutput_items - remaining)
-        need_syms = (need_out + self._sym_len - 1) // self._sym_len
-        if self._freq_collect and self._cpi_len is not None:
-            need_syms = max(need_syms, self._cpi_len - len(self._freq_collect))
-        elif self._out_buf is None or self._out_idx >= len(self._out_buf):
-            need_syms = max(need_syms, self._cpi_len or 1)
-        return [need_syms]
+    @property
+    def burst_len_samples(self) -> int:
+        return self._burst_len_samples
+
+    @burst_len_samples.setter
+    def burst_len_samples(self, value: int) -> None:
+        self._burst_len_samples = int(value)
 
     def start(self) -> bool:
-        torch.set_num_threads(1)
-        self._modulator = OFDMModulator(
-            cyclic_prefix_length=self._cp_len,
-            device=self._device,
+        freq, _, _ = _build_freq_grid(
+            fft_len=self._fft_len,
+            transpose_len=self._transpose_len,
+            subcarrier_spacing=self._subcarrier_spacing,
+            cp_len=self._cp_len,
+            num_bits_per_symbol=self._num_bits_per_symbol,
+            device="cpu",
+            seed=self._seed,
         )
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sionna_ofdm_mod")
-        self._mod_busy = False
-        self._reset_state()
-        self._ready_queue = []
-        return True
+        cpi = np.concatenate(
+            [self._modulate_symbol_raw(freq[i]) for i in range(self._transpose_len)]
+        )
+        peak = float(np.max(np.abs(cpi)))
+        self._amp_scale = self._target_peak / peak if peak > 0 else 1.0
+        self._sym_buf = None
+        self._sym_pos = 0
+        self._cpi_tag_pending = False
+        # #region agent log
+        from isac_imp.agent_debug_log import agent_log
 
-    def stop(self) -> bool:
-        if self._executor is not None:
-            self._executor.shutdown(wait=False, cancel_futures=True)
-            self._executor = None
-        self._mod_busy = False
-        self._modulator = None
+        agent_log(
+            "sionna_ofdm_modulator.py:start",
+            "amplitude calibration",
+            {
+                "raw_peak": peak,
+                "amp_scale": self._amp_scale,
+                "ifft_scale": self._ifft_scale,
+                "cal_peak": float(np.max(np.abs(cpi * self._amp_scale))),
+            },
+            hypothesis_id="H5",
+            run_id="post-fix-v3",
+        )
+        # #endregion
         return True
-
-    def _reset_state(self) -> None:
-        self._out_buf = None
-        self._out_idx = 0
-        self._pending_tag = None
-        self._cpi_len = None
-        self._freq_collect = []
 
     def _tag_to_int(self, value: pmt.pmt) -> int:
         try:
@@ -117,91 +112,95 @@ class SionnaOfdmModulatorBlock(gr.basic_block):
         except Exception:
             return int(pmt.to_python(value))
 
-    def _modulate_cpi_sync(self, freq_cpi: np.ndarray) -> np.ndarray:
-        assert self._modulator is not None
-        cpi_len = int(freq_cpi.shape[0])
-        x = torch.from_numpy(
-            np.asarray(freq_cpi, dtype=np.complex64).reshape(1, cpi_len, self._fft_len)
-        )
-        if self._device != "cpu":
-            x = x.to(self._device)
-        with _TORCH_LOCK, torch.inference_mode():
-            y = self._modulator(x)
-        if self._device != "cpu":
-            y = y.cpu()
-        return (
-            y.reshape(-1)
-            .numpy()
-            .astype(np.complex64, copy=False)
-            * np.complex64(self._gr_scale)
+    def _modulate_symbol_raw(self, freq_shifted: np.ndarray) -> np.ndarray:
+        td = np.fft.ifft(np.fft.ifftshift(freq_shifted), norm=None) * self._ifft_scale
+        cp = td[-self._cp_len :]
+        return np.concatenate((cp, td))
+
+    def _modulate_symbol(self, freq_shifted: np.ndarray) -> np.ndarray:
+        return (self._modulate_symbol_raw(freq_shifted) * self._amp_scale).astype(
+            np.complex64, copy=False
         )
 
-    def _on_cpi_ready(self, time_buf: np.ndarray) -> None:
-        self._ready_queue.append(time_buf)
-        self._mod_busy = False
-
-    def _submit_cpi(self, freq_cpi: np.ndarray) -> None:
-        assert self._executor is not None
-        self._mod_busy = True
-        buf = freq_cpi.copy()
-        self._executor.submit(self._run_cpi_job, buf)
-
-    def _run_cpi_job(self, freq_cpi: np.ndarray) -> None:
-        try:
-            time_buf = self._modulate_cpi_sync(freq_cpi)
-        except Exception:
-            self._mod_busy = False
-            raise
-        self._on_cpi_ready(time_buf)
+    def forecast(self, noutput_items: int, ninputs: list) -> list:
+        del ninputs
+        if self._sym_buf is not None:
+            need = self._sym_len - self._sym_pos
+        else:
+            need = max(1, (noutput_items + self._sym_len - 1) // self._sym_len)
+        return [min(max(1, need), self._FORECAST_MAX)]
 
     def general_work(self, input_items, output_items) -> int:
+        inp = input_items[0]
         out = output_items[0]
-        n_produced = 0
+        if len(out) <= 0:
+            return 0
 
-        while n_produced < len(out):
-            if self._out_buf is None or self._out_idx >= len(self._out_buf):
-                if self._ready_queue:
-                    self._out_buf = self._ready_queue.pop(0)
-                    self._out_idx = 0
-                else:
+        in_base = self.nitems_read(0)
+        write_base = self.nitems_written(0)
+        in_consumed = 0
+        out_produced = 0
+
+        while out_produced < len(out):
+            if self._sym_buf is None or self._sym_pos >= self._sym_len:
+                if in_consumed >= len(inp):
                     break
+                abs_in = in_base + in_consumed
+                for tag in self.get_tags_in_range(0, abs_in, abs_in + 1):
+                    if pmt.eq(tag.key, self._length_tag_key):
+                        n_syms = self._tag_to_int(tag.value)
+                        if n_syms > 0:
+                            self._cpi_out_len = n_syms * self._sym_len
+                            self._cpi_tag_pending = True
+                self._sym_buf = self._modulate_symbol(inp[in_consumed])
+                self._sym_pos = 0
+                in_consumed += 1
 
-            if self._pending_tag is not None and self._out_idx == 0:
-                key, val = self._pending_tag
+            if self._cpi_tag_pending and self._sym_pos == 0:
                 self.add_item_tag(
                     0,
-                    self.nitems_written(0) + n_produced,
-                    key,
-                    val,
+                    write_base + out_produced,
+                    self._length_tag_key,
+                    pmt.from_long(self._cpi_out_len),
+                    self._srcid,
                 )
-                self._pending_tag = None
+                self._cpi_tag_pending = False
+                if not hasattr(self, "_dbg_cpi_out"):
+                    self._dbg_cpi_out = 0
+                self._dbg_cpi_out += 1
+                if self._dbg_cpi_out <= 3:
+                    # #region agent log
+                    from isac_imp.agent_debug_log import agent_log
 
-            out[n_produced] = self._out_buf[self._out_idx]
-            self._out_idx += 1
-            n_produced += 1
+                    agent_log(
+                        "sionna_ofdm_modulator.py:general_work",
+                        "CPI tag emitted",
+                        {
+                            "count": self._dbg_cpi_out,
+                            "burst_len": self._cpi_out_len,
+                            "sym_peak": float(np.max(np.abs(self._sym_buf))),
+                        },
+                        hypothesis_id="H5",
+                        run_id="post-fix-v3",
+                    )
+                    # #endregion
 
-            if self._out_idx >= len(self._out_buf):
-                self._out_buf = None
-                self._out_idx = 0
+            n_copy = min(len(out) - out_produced, self._sym_len - self._sym_pos)
+            out[out_produced : out_produced + n_copy] = self._sym_buf[
+                self._sym_pos : self._sym_pos + n_copy
+            ]
+            self._sym_pos += n_copy
+            out_produced += n_copy
+            if self._sym_pos >= self._sym_len:
+                self._sym_buf = None
 
-        while (
-            not self._mod_busy
-            and len(input_items[0]) >= 1
-            and (self._cpi_len is None or len(self._freq_collect) < self._cpi_len)
-        ):
-            in_offset = self.nitems_read(0)
-            freq = np.asarray(input_items[0][0], dtype=np.complex64)
-            for tag in self.get_tags_in_range(0, in_offset, in_offset + 1):
-                if pmt.eq(tag.key, self._length_tag_key):
-                    self._pending_tag = (tag.key, tag.value)
-                    self._cpi_len = self._tag_to_int(tag.value)
+        if in_consumed > 0:
+            self.consume(0, in_consumed)
+        if out_produced > 0:
+            return out_produced
+        if in_consumed > 0:
+            return gr.WORK_CALLED_PRODUCE
+        return 0
 
-            self._freq_collect.append(freq.copy())
-            self.consume(0, 1)
 
-            if self._cpi_len is not None and len(self._freq_collect) >= self._cpi_len:
-                freq_cpi = np.stack(self._freq_collect[: self._cpi_len], axis=0)
-                self._freq_collect = self._freq_collect[self._cpi_len :]
-                self._submit_cpi(freq_cpi)
-
-        return n_produced
+blk = SionnaOfdmModulatorBlock

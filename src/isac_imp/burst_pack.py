@@ -41,6 +41,9 @@ TAG_TX_TIME = pmt.intern("tx_time")  # type: ignore[attr-defined]
 TAG_RX_TIME = pmt.intern("rx_time")  # type: ignore[attr-defined]
 """USRP Source stream tag：接收样点时间轴；PMT 形与 ``tx_time`` 相同。"""
 
+PORT_TX_SCHEDULE = "tx_schedule"
+"""TX→RX 消息口名称：每 CPI 计划发射 epoch（与 ``tx_time`` 同形 PMT）。"""
+
 TPP_DONT = gr.TPP_DONT  # type: ignore[attr-defined]
 """``gr.TPP_DONT`` 再导出；epy 块 ``__init__`` 中设 ``set_tag_propagation_policy``。"""
 
@@ -64,6 +67,18 @@ def make_tx_time_pmt(epoch_s: float):
         pmt.from_uint64(sec),  # type: ignore[attr-defined]
         pmt.from_double(frac),  # type: ignore[attr-defined]
     )
+
+
+def parse_uhd_time_pmt(value: pmt.pmt) -> float:
+    """解析 UHD ``tx_time`` / ``rx_time`` PMT ``(uint64 秒, double 小数秒)`` → epoch 秒。"""
+    sec = float(pmt.to_uint64(pmt.tuple_ref(value, 0)))  # type: ignore[attr-defined]
+    frac = float(pmt.to_double(pmt.tuple_ref(value, 1)))  # type: ignore[attr-defined]
+    return sec + frac
+
+
+def make_tx_schedule_msg(epoch_s: float):
+    """构造 ``tx_schedule`` 消息载荷（与 ``tx_time`` 同形）。"""
+    return make_tx_time_pmt(epoch_s)
 
 
 # ---------------------------------------------------------------------------

@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pmt
 from gnuradio import gr
 from gnuradio.fft import window
 
-from isac_imp.burst_pack import TPP_DONT
+from isac_imp.burst_pack import PORT_TX_SCHEDULE, TPP_DONT, parse_uhd_time_pmt
 
 _N_DB = 10.0
 
@@ -150,12 +151,82 @@ class OfdmRangeProfileBlock(gr.basic_block):
         self._sym_idx = 0
         self._power_acc = np.zeros(self._vlen_out, dtype=np.float64)
         self._complex_acc = np.zeros(self._vlen_out, dtype=np.complex128)
+        self._tx_skip_until_tag = False
+        self._rx_skip_until_tag = False
+        self._align_pending = False
+        self._align_search = max(int(transpose_len) * 8, 32)
+
+        self._schedule_port = pmt.intern(PORT_TX_SCHEDULE)
+        self.message_port_register_in(self._schedule_port)
+        self.set_msg_handler(self._schedule_port, self._on_tx_schedule)
 
     def start(self) -> bool:
         self._sym_idx = 0
         self._power_acc.fill(0.0)
         self._complex_acc.fill(0.0)
+        self._request_stream_resync()
         return True
+
+    def _request_stream_resync(self) -> None:
+        self._tx_skip_until_tag = True
+        self._rx_skip_until_tag = True
+        self._align_pending = True
+        self._sym_idx = 0
+        self._power_acc.fill(0.0)
+        self._complex_acc.fill(0.0)
+
+    def _on_tx_schedule(self, msg: pmt.pmt) -> None:
+        if pmt.is_pair(msg):
+            msg = pmt.cdr(msg)
+        if pmt.is_tuple(msg):
+            parse_uhd_time_pmt(msg)
+        self._request_stream_resync()
+
+    def _consume_to_cpi_boundary(self, port: int, n_avail: int) -> int:
+        """将输入流对齐到最近的 ``packet_len`` tag（CPI 首符号）。"""
+        skip_flag = self._tx_skip_until_tag if port == 0 else self._rx_skip_until_tag
+        if not skip_flag or n_avail <= 0:
+            return 0
+        base = self.nitems_read(port)
+        tag_key = pmt.intern("packet_len")
+        best: int | None = None
+        for tag in self.get_tags_in_range(port, base, base + n_avail):
+            if not pmt.eq(tag.key, tag_key):
+                continue
+            off = int(tag.offset - base)
+            if 0 <= off < n_avail and (best is None or off < best):
+                best = off
+        if best is None:
+            return 0
+        if port == 0:
+            self._tx_skip_until_tag = False
+        else:
+            self._rx_skip_until_tag = False
+        return best
+
+    def _find_rx_align_offset(self, in_tx: np.ndarray, in_rx: np.ndarray) -> tuple[int, float]:
+        """搜索使 TX/RX 频域符号相关性最大的 RX 偏移。"""
+        tlen = self._transpose_len
+        max_off = min(self._align_search, len(in_rx) - tlen + 1)
+        if max_off <= 0 or len(in_tx) < tlen:
+            return 0, 0.0
+        best_off = 0
+        best_score = -1.0
+        tx_batch = in_tx[:tlen]
+        for off in range(max_off):
+            score = 0.0
+            valid = True
+            for k in range(tlen):
+                rx_sym = in_rx[off + k]
+                rx_norm = float(np.linalg.norm(rx_sym))
+                if rx_norm < 1e-9:
+                    valid = False
+                    break
+                score += float(np.abs(np.vdot(tx_batch[k], rx_sym)))
+            if valid and score > best_score:
+                best_score = score
+                best_off = off
+        return best_off, best_score
 
     def forecast(self, noutput_items: int, ninputs) -> list:
         del ninputs
@@ -169,9 +240,53 @@ class OfdmRangeProfileBlock(gr.basic_block):
         out_db = output_items[0]
         out_cx = output_items[1]
 
+        tx_off = 0
+        rx_tag_off = 0
+        align_off = 0
+        align_score = 0.0
+        if self._tx_skip_until_tag and len(in_tx) > 0:
+            tx_off = self._consume_to_cpi_boundary(0, len(in_tx))
+            if tx_off > 0:
+                self.consume(0, tx_off)
+        if self._rx_skip_until_tag and len(in_rx) > 0:
+            rx_tag_off = self._consume_to_cpi_boundary(1, len(in_rx))
+            if rx_tag_off > 0:
+                self.consume(1, rx_tag_off)
+
+        in_tx = in_tx[tx_off:]
+        in_rx = in_rx[rx_tag_off:]
+
+        if (
+            self._align_pending
+            and len(in_tx) >= self._transpose_len
+            and len(in_rx) >= self._transpose_len
+        ):
+            align_off, align_score = self._find_rx_align_offset(in_tx, in_rx)
+            if align_off > 0:
+                self.consume(1, align_off)
+                in_rx = in_rx[align_off:]
+            self._align_pending = False
+            if not hasattr(self, "_dbg_alignments"):
+                self._dbg_alignments = 0
+            self._dbg_alignments += 1
+            if self._dbg_alignments <= 5:
+                from isac_imp.agent_debug_log import agent_log
+
+                agent_log(
+                    "ofdm_range_profile.py:general_work",
+                    "rx align search",
+                    {
+                        "align_off": align_off,
+                        "align_score": align_score,
+                        "tx_off": tx_off,
+                        "rx_tag_off": rx_tag_off,
+                    },
+                    hypothesis_id="H4",
+                    run_id="post-fix-v3",
+                )
+
         n_avail = min(len(in_tx), len(in_rx))
         if n_avail <= 0:
-            self.consume(0, 0)
             self.consume(1, 0)
             return 0
 
@@ -207,6 +322,32 @@ class OfdmRangeProfileBlock(gr.basic_block):
 
         self.consume(0, n_consumed)
         self.consume(1, n_consumed)
+        if n_produced > 0:
+            if not hasattr(self, "_dbg_profiles"):
+                self._dbg_profiles = 0
+            self._dbg_profiles += n_produced
+            if self._dbg_profiles <= 5 or self._dbg_profiles % 20 == 0:
+                from isac_imp.agent_debug_log import agent_log
+
+                vec0 = out_db[0]
+                peak_db = float(np.nanmax(vec0))
+                peak_bin = int(np.nanargmax(vec0))
+                step_hint = 3e8 / (2.0 * self._fft_len * 60e3 * (self._vlen_out // self._fft_len))
+                agent_log(
+                    "ofdm_range_profile.py:general_work",
+                    "range profile produced",
+                    {
+                        "count": self._dbg_profiles,
+                        "peak_db": peak_db,
+                        "peak_bin": peak_bin,
+                        "peak_range_m": peak_bin * step_hint,
+                        "tx_off": tx_off,
+                        "rx_tag_off": rx_tag_off,
+                        "align_off": align_off,
+                    },
+                    hypothesis_id="H4",
+                    run_id="post-fix-v3",
+                )
         return n_produced
 
 

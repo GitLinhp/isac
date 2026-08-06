@@ -146,18 +146,18 @@ class data_playback_monostatic(gr.top_block, Qt.QWidget):
 
     def set_subcarrier_spacing(self, subcarrier_spacing):
         self.subcarrier_spacing = subcarrier_spacing
-        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
+        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
 
     def get_fft_len(self):
         return self.fft_len
 
     def set_fft_len(self, fft_len):
         self.fft_len = fft_len
-        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
-        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
         self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
+        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
 
     def get_zeropadding_fac(self):
         return self.zeropadding_fac

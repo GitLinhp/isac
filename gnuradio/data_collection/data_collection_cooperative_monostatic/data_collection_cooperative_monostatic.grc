@@ -52,7 +52,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2632, 900.0]
+    coordinate: [2440, 932.0]
     rotation: 0
     state: enabled
 - name: RX_gain1
@@ -73,7 +73,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2656, 332.0]
+    coordinate: [2448, 372.0]
     rotation: 0
     state: enabled
 - name: R_max
@@ -85,7 +85,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [160, 0.0]
     rotation: 0
     state: enabled
 - name: TX_gain0
@@ -106,7 +106,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2504, 900.0]
+    coordinate: [2312, 932.0]
     rotation: 0
     state: enabled
 - name: TX_gain1
@@ -127,7 +127,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2536, 332.0]
+    coordinate: [2328, 372.0]
     rotation: 0
     state: enabled
 - name: burst_len_samples
@@ -139,7 +139,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [752, 264.0]
     rotation: 0
     state: enabled
 - name: device
@@ -151,7 +151,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [624, 232.0]
     rotation: 0
     state: enabled
 - name: factor
@@ -163,7 +163,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [408, 208.0]
     rotation: 0
     state: enabled
 - name: fft_len
@@ -175,7 +175,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [304, 256.0]
     rotation: 0
     state: enabled
 - name: freq0
@@ -187,7 +187,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2224, 1080.0]
+    coordinate: [2120, 1112.0]
     rotation: 0
     state: enabled
 - name: freq1
@@ -199,7 +199,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2224, 672.0]
+    coordinate: [2120, 560.0]
     rotation: 0
     state: enabled
 - name: length_tag_key
@@ -211,7 +211,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [168, 264.0]
     rotation: 0
     state: enabled
 - name: min_out_buf_val
@@ -223,7 +223,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [248, 0.0]
     rotation: 0
     state: enabled
 - name: music_enable
@@ -240,7 +240,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1216, 76.0]
+    coordinate: [1216, 12.0]
     rotation: 0
     state: enabled
 - name: n_carriers
@@ -252,7 +252,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [136, 112.0]
     rotation: 0
     state: enabled
 - name: num_delay_samp0
@@ -273,7 +273,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2224, 900.0]
+    coordinate: [2120, 932.0]
     rotation: 0
     state: enabled
 - name: num_delay_samp1
@@ -294,7 +294,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2224, 332.0]
+    coordinate: [2120, 372.0]
     rotation: 0
     state: enabled
 - name: packet_len
@@ -306,7 +306,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [40, 216.0]
     rotation: 0
     state: enabled
 - name: range_bin_step
@@ -318,7 +318,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 8.0]
+    coordinate: [24, 144.0]
     rotation: 0
     state: enabled
 - name: range_roi
@@ -330,7 +330,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [336, 32.0]
+    coordinate: [376, 0.0]
     rotation: 0
     state: enabled
 - name: record_enable
@@ -347,7 +347,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 180.0]
+    coordinate: [1608, 28.0]
     rotation: 0
     state: enabled
 - name: record_file_path_dev0
@@ -359,7 +359,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [912, 200.0]
+    coordinate: [824, 168.0]
     rotation: 0
     state: enabled
 - name: record_file_path_dev1
@@ -371,7 +371,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1056, 56.0]
+    coordinate: [1056, 72.0]
     rotation: 0
     state: enabled
 - name: record_max_frames
@@ -383,7 +383,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [384, 112.0]
+    coordinate: [352, 136.0]
     rotation: 0
     state: enabled
 - name: record_output_dir_dev0
@@ -395,7 +395,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [520, 104.0]
+    coordinate: [512, 144.0]
     rotation: 0
     state: enabled
 - name: record_output_dir_dev1
@@ -431,7 +431,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [784, 64.0]
+    coordinate: [840, 40.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -443,7 +443,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [200, 120.0]
+    coordinate: [216, 80.0]
     rotation: 0
     state: enabled
 - name: subcarrier_spacing
@@ -476,7 +476,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1096, 172.0]
+    coordinate: [1016, 220.0]
     rotation: 0
     state: enabled
 - name: target_pos_y_cm
@@ -497,7 +497,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1304, 196.0]
+    coordinate: [1416, 20.0]
     rotation: 0
     state: enabled
 - name: transpose_len
@@ -509,7 +509,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [640, 128.0]
+    coordinate: [696, 152.0]
     rotation: 0
     state: enabled
 - name: wait_to_start
@@ -550,7 +550,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2384, 1092.0]
+    coordinate: [2248, 1124.0]
     rotation: 0
     state: enabled
 - name: address1
@@ -567,7 +567,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2384, 1092.0]
+    coordinate: [2280, 572.0]
     rotation: 0
     state: enabled
 - name: blocks_file_sink_dev0
@@ -585,7 +585,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [0, 900]
+    coordinate: [1112, 1628.0]
     rotation: 0
     state: enabled
 - name: blocks_file_sink_dev1
@@ -603,7 +603,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [0, 400]
+    coordinate: [1416, 1020.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
@@ -621,7 +621,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1120, 408.0]
+    coordinate: [1144, 416.0]
     rotation: 0
     state: enabled
 - name: blocks_null_sink_rec_dev0
@@ -638,7 +638,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [0, 940]
+    coordinate: [1120, 1752.0]
     rotation: 0
     state: enabled
 - name: blocks_null_sink_rec_dev1
@@ -655,7 +655,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [0, 440]
+    coordinate: [1424, 1144.0]
     rotation: 0
     state: enabled
 - name: blocks_selector_dev0
@@ -678,7 +678,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [100, 900]
+    coordinate: [896, 1692.0]
     rotation: 0
     state: enabled
 - name: blocks_selector_dev1
@@ -701,7 +701,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [100, 400]
+    coordinate: [1208, 1084.0]
     rotation: 0
     state: enabled
 - name: digital_ofdm_cyclic_prefixer_0
@@ -720,7 +720,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 408.0]
+    coordinate: [672, 396.0]
     rotation: 0
     state: enabled
 - name: fft_rx_dev0
@@ -741,8 +741,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1300, 900]
-    rotation: 0
+    coordinate: [1072, 1228.0]
+    rotation: 180
     state: enabled
 - name: fft_rx_dev1
   id: fft_vxx
@@ -762,8 +762,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1300, 400]
-    rotation: 0
+    coordinate: [1064, 604.0]
+    rotation: 180
     state: enabled
 - name: fft_vxx_0
   id: fft_vxx
@@ -783,7 +783,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [600, 408.0]
+    coordinate: [432, 380.0]
     rotation: 0
     state: enabled
 - name: import_mics_test_record_flow_0
@@ -798,7 +798,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1968, 16.0]
+    coordinate: [1784, 32.0]
     rotation: 0
     state: enabled
 - name: ofdm_divide_cpi_dev0
@@ -827,8 +827,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 900]
-    rotation: 0
+    coordinate: [320, 1220.0]
+    rotation: 180
     state: enabled
 - name: ofdm_divide_cpi_dev1
   id: epy_block
@@ -856,8 +856,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 400]
-    rotation: 0
+    coordinate: [472, 628.0]
+    rotation: 180
     state: enabled
 - name: ofdm_range_profile_dev0
   id: epy_block
@@ -886,7 +886,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [900, 900]
+    coordinate: [1080, 1484.0]
     rotation: 0
     state: enabled
 - name: ofdm_range_profile_dev1
@@ -916,7 +916,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [900, 400]
+    coordinate: [1048, 788.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_dev0
@@ -997,7 +997,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1992, 900.0]
+    coordinate: [1952, 1244.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_dev1
@@ -1078,7 +1078,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1900, 400]
+    coordinate: [1904, 660.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
@@ -1175,7 +1175,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1752, 284.0]
+    coordinate: [1432, 292.0]
     rotation: 0
     state: enabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0
@@ -1193,8 +1193,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1500, 400]
-    rotation: 0
+    coordinate: [1424, 628.0]
+    rotation: 180
     state: enabled
 - name: radar_ofdm_cyclic_prefix_remover_cvc_0_0
   id: radar_ofdm_cyclic_prefix_remover_cvc
@@ -1211,8 +1211,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1500, 900]
-    rotation: 0
+    coordinate: [1336, 1252.0]
+    rotation: 180
     state: enabled
 - name: radar_usrp_echotimer_cc_0
   id: radar_usrp_echotimer_cc
@@ -1250,8 +1250,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1768, 452.0]
-    rotation: 0
+    coordinate: [1644.0, 464]
+    rotation: 270
     state: enabled
 - name: radar_usrp_echotimer_cc_0_0
   id: radar_usrp_echotimer_cc
@@ -1289,8 +1289,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1768, 900.0]
-    rotation: 0
+    coordinate: [1692.0, 1080]
+    rotation: 270
     state: enabled
 - name: range_music_block_dev0
   id: epy_block
@@ -1323,7 +1323,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [500, 900]
+    coordinate: [1344, 1584.0]
     rotation: 0
     state: enabled
 - name: range_music_block_dev1
@@ -1357,7 +1357,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [500, 400]
+    coordinate: [1240, 872.0]
     rotation: 0
     state: enabled
 - name: range_profile_plot_dev0
@@ -1386,7 +1386,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [700, 900]
+    coordinate: [1344, 1468.0]
     rotation: 0
     state: enabled
 - name: range_profile_plot_dev1
@@ -1415,7 +1415,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [700, 400]
+    coordinate: [1248, 772.0]
     rotation: 0
     state: enabled
 - name: range_profile_record_limiter_dev0
@@ -1450,7 +1450,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [300, 900]
+    coordinate: [296, 1680.0]
     rotation: 0
     state: enabled
 - name: range_profile_record_limiter_dev1
@@ -1485,7 +1485,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [300, 400]
+    coordinate: [528, 1072.0]
     rotation: 0
     state: enabled
 - name: sionna_resource_grid_tx
@@ -1520,7 +1520,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [728, 408.0]
+    coordinate: [88, 352.0]
     rotation: 0
     state: enabled
 - name: snippet_install_record_flow_0
@@ -1535,7 +1535,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1968, 96.0]
+    coordinate: [1968, 20.0]
     rotation: 0
     state: enabled
 

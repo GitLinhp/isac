@@ -1,0 +1,4 @@
+from isac_imp.echotimer_rx_compensator import EchotimerRxCompensatorBlock
+
+
+blk = EchotimerRxCompensatorBlock

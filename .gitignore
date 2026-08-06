@@ -1,4 +1,7 @@
-# IDE / editor
+# 上游参照仓库（本地 shallow clone，见 reference/README.md）
+/reference/gnuradio/
+/reference/gr-radar/
+
 .cursor/
 
 # Jupyter

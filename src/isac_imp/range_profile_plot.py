@@ -271,5 +271,30 @@ class RangeProfilePlotBlock(gr.sync_block):
         s, n = self._start_bin, self._num_bins
         y = vec[s : s + n]
         x = self._x_start_m + np.arange(n, dtype=np.float64) * self._range_bin_step
+        if not hasattr(self, "_dbg_plot_frames"):
+            self._dbg_plot_frames = 0
+        self._dbg_plot_frames += 1
+        if self._dbg_plot_frames <= 5 or self._dbg_plot_frames % 20 == 0:
+            from isac_imp.agent_debug_log import agent_log
+
+            finite = y[np.isfinite(y)]
+            full_vec = vec
+            full_finite = full_vec[np.isfinite(full_vec)]
+            agent_log(
+                "range_profile_plot.py:work",
+                "plot frame",
+                {
+                    "frame": self._dbg_plot_frames,
+                    "peak_range_m_roi": float(x[int(np.argmax(finite))]) if finite.size else None,
+                    "peak_range_m_full": float(
+                        int(np.argmax(full_finite))
+                        * self._range_bin_step
+                    )
+                    if full_finite.size
+                    else None,
+                },
+                hypothesis_id="H4",
+                run_id="post-fix-v3",
+            )
         self._display.post_profile(x, y)
         return 1
