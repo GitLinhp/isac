@@ -23,6 +23,7 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import uhd
 import time
+import sip
 import threading
 import usrp_ofdm_sink_source_dd_ofdm_burst_rx_0 as ofdm_burst_rx_0  # embedded python block
 import usrp_ofdm_sink_source_dd_ofdm_burst_tx_source_0 as ofdm_burst_tx_source_0  # embedded python block
@@ -108,7 +109,7 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self.music_enable = music_enable = False
         self.min_out_buf_val = min_out_buf_val = packet_len*2
         self.length_tag_key = length_tag_key = "packet_len"
-        self.idle_ms = idle_ms = 10
+        self.idle_ms = idle_ms = 0
         self.freq = freq = 6.0e9
         self.factor = factor = 0.008
         self.burst_len_samples = burst_len_samples = num_symbols * (fft_len + cp_len)
@@ -175,6 +176,57 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self.uhd_usrp_sink_0.set_center_freq(freq, 0)
         self.uhd_usrp_sink_0.set_antenna("TX/RX", 0)
         self.uhd_usrp_sink_0.set_gain(TX_gain, 0)
+        self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
+            (fft_len + cp_len), #size
+            samp_rate, #samp_rate
+            "", #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_time_sink_x_0.set_update_time(0.50)
+        self.qtgui_time_sink_x_0.set_y_axis(-1, 1)
+
+        self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
+
+        self.qtgui_time_sink_x_0.enable_tags(True)
+        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, 0, "")
+        self.qtgui_time_sink_x_0.enable_autoscale(False)
+        self.qtgui_time_sink_x_0.enable_grid(False)
+        self.qtgui_time_sink_x_0.enable_axis_labels(True)
+        self.qtgui_time_sink_x_0.enable_control_panel(False)
+        self.qtgui_time_sink_x_0.enable_stem_plot(False)
+
+
+        labels = ['Signal 1', 'Signal 2', 'Signal 3', 'Signal 4', 'Signal 5',
+            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ['blue', 'red', 'green', 'black', 'cyan',
+            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+        styles = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        markers = [-1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1]
+
+
+        for i in range(2):
+            if len(labels[i]) == 0:
+                if (i % 2 == 0):
+                    self.qtgui_time_sink_x_0.set_line_label(i, "Re{{Data {0}}}".format(i/2))
+                else:
+                    self.qtgui_time_sink_x_0.set_line_label(i, "Im{{Data {0}}}".format(i/2))
+            else:
+                self.qtgui_time_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_time_sink_x_0.set_line_width(i, widths[i])
+            self.qtgui_time_sink_x_0.set_line_color(i, colors[i])
+            self.qtgui_time_sink_x_0.set_line_style(i, styles[i])
+            self.qtgui_time_sink_x_0.set_line_marker(i, markers[i])
+            self.qtgui_time_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.ofdm_burst_tx_source_0 = ofdm_burst_tx_source_0.OfdmBurstTxSourceBlock(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, subcarrier_spacing=subcarrier_spacing, num_bits_per_symbol=2, seed=42, device='cuda', factor=factor, length_tag_key=length_tag_key, time_lead_s=time_lead_s, idle_ms=idle_ms, samp_rate=float(samp_rate), scheduled_rx=True, num_delay_samp=num_delay_samp)
         self.ofdm_burst_rx_0 = ofdm_burst_rx_0.OfdmBurstRxBlock(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, zeropadding_fac=zeropadding_fac, num_delay_samp=num_delay_samp, device='cuda', length_tag_key=length_tag_key, log_interval_s=1.0, range_roi=range_roi, range_bin_step=range_bin_step, music_enable=music_enable, num_sources=1, subarray_size=16, threshold=0.1)
 
@@ -182,8 +234,9 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         ##################################################
         # Connections
         ##################################################
-        self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_schedule'), (self.ofdm_burst_rx_0, 'tx_schedule'))
         self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_freq_cpi'), (self.ofdm_burst_rx_0, 'tx_freq_cpi'))
+        self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_schedule'), (self.ofdm_burst_rx_0, 'tx_schedule'))
+        self.connect((self.ofdm_burst_tx_source_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.ofdm_burst_rx_0, 0))
 
@@ -257,6 +310,7 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
         self.ofdm_burst_tx_source_0.samp_rate = float(self.samp_rate)
+        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_sink_0.set_samp_rate(self.samp_rate)
         self.uhd_usrp_source_0.set_samp_rate(self.samp_rate)
 

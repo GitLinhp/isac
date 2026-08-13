@@ -170,7 +170,6 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
 
         self._td_pos = 0
         self._burst_armed = False
-        self._idle_until = 0.0
         self._next_tx_epoch = 0.0
         self._burst_started = False
         self._burst_write_t0: float | None = None
@@ -179,9 +178,9 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
         self.set_tag_propagation_policy(TPP_DONT)
         self.set_relative_rate(1.0)
         self.set_min_output_buffer(0, self._burst_len * 2)
-        self._dbg_last_epoch = None
-        self._dbg_epoch_n = 0
-        self._dbg_last_host_mono: float | None = None
+        self._log_last_epoch = None
+        self._log_epoch_n = 0
+        self._log_last_host_mono: float | None = None
 
     def _recompute_burst_period(self) -> None:
         burst_s = (
@@ -279,7 +278,6 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
 
         self._td_pos = 0
         self._burst_armed = False
-        self._idle_until = 0.0
         self._next_tx_epoch = time.time() + self._time_lead_s
         self._burst_started = False
         self._burst_write_t0 = None
@@ -367,26 +365,26 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
         self._issue_scheduled_recv(epoch)
         self._burst_write_t0 = time.monotonic()
         host_now = self._burst_write_t0
-        self._dbg_epoch_n += 1
-        if self._dbg_last_epoch is not None and (
-            self._dbg_epoch_n <= 8 or self._dbg_epoch_n % 50 == 0
+        self._log_epoch_n += 1
+        host_gap_ms = (
+            (host_now - self._log_last_host_mono) * 1000.0
+            if self._log_last_host_mono is not None
+            else float("nan")
+        )
+        if self._log_last_epoch is not None and (
+            self._log_epoch_n <= 8 or self._log_epoch_n % 50 == 0
         ):
-            dt_ms = (epoch - self._dbg_last_epoch) * 1000.0
-            host_gap_ms = (
-                (host_now - self._dbg_last_host_mono) * 1000.0
-                if self._dbg_last_host_mono is not None
-                else float("nan")
-            )
+            dt_ms = (epoch - self._log_last_epoch) * 1000.0
             print(
                 f"[ofdm_burst_tx] epoch_dt_ms={dt_ms:.1f} "
                 f"host_gap_ms={host_gap_ms:.1f} "
                 f"write_ms={self._last_write_ms:.2f} "
                 f"cmd_q={self._cmd_q_depth()} cmd_drop={self._cmd_drop} "
-                f"period_ms={self._burst_period_s * 1000.0:.1f} n={self._dbg_epoch_n}",
+                f"period_ms={self._burst_period_s * 1000.0:.1f} n={self._log_epoch_n}",
                 flush=True,
             )
-        self._dbg_last_epoch = epoch
-        self._dbg_last_host_mono = host_now
+        self._log_last_epoch = epoch
+        self._log_last_host_mono = host_now
         self._next_tx_epoch += self._burst_period_s
 
     def general_work(self, input_items, output_items) -> int:
@@ -394,9 +392,9 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
         if self._td_cpi is None or self._freq_cpi is None:
             return 0
 
-        if self._idle_s > 0.0 and time.monotonic() < self._idle_until:
-            return 0
-
+        # Do not host-side idle with return 0: that deschedules this source until
+        # USRP Sink drains and self-locks near 1/epoch spacing. Inter-CPI gap is
+        # encoded only in tx_time / _next_tx_epoch (burst_period).
         out_td = output_items[0]
         if len(out_td) <= 0:
             return 0
@@ -428,8 +426,6 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
                 self._burst_write_t0 = None
             self._td_pos = 0
             self._burst_armed = False
-            if self._idle_s > 0.0:
-                self._idle_until = time.monotonic() + self._idle_s
 
         return n
 

@@ -74,7 +74,7 @@ flowchart LR
 | `subcarrier_spacing`              | 120 kHz                                   | 子载波间隔                                      |
 | `samp_rate`                       | `fft_len × scs` = **245.76 MHz** | IQ 采样率                                       |
 | `burst_len_samples`               | 4×(2048+128) = **8704**            | 一 CPI 时域样点数（约 35.4 µs）                |
-| `idle_ms`                         | 10                                        | 突发间隙（主机侧 idle）                         |
+| `idle_ms`                         | 10                                        | 计入 `burst_period` / `tx_time` 的突发间隙（非主机 `return 0` idle） |
 | `time_lead_s` / `wait_to_start` | 0.5                                       | **首 CPI** 发射提前量（后续 CPI ≤20 ms） |
 | `freq`                            | 6 GHz                                     | RF 中心频率                                     |
 | `factor`                          | 0.008                                     | TX 幅度缩放（GUI）                              |
@@ -138,7 +138,7 @@ $$
    - `_issue_scheduled_recv(epoch)`：将 `NUM_SAMPS_AND_DONE` **入异步队列**（单 worker），不阻塞 TX work / pacing。
    - `_next_tx_epoch += burst_period_s`。
 3. **out0**：拷贝 `td_cpi`；末样点 `add_style1_eob`。
-4. 若 `idle_ms > 0`：突发结束后 idle，期间 `work` 返回 0。
+4. CPI 间隙仅由 `tx_time` / `_next_tx_epoch`（`burst_period_s`）表达；主机侧不做 `return 0` idle（否则 GR 源会被反压挂起、自锁到 ~4 CPI/s）。
 
 | 输出              | 形状 / 类型                         | 下游                  |
 | ----------------- | ----------------------------------- | --------------------- |
@@ -226,7 +226,7 @@ t = epoch
 
 t > epoch
   RX: delay(277) → CUDA 距离谱 → plot（± MUSIC）
-  Host idle ≈ idle_ms（10 ms）后下一 CPI
+  下一 CPI 尽快写入；epoch 间隔 ≈ idle_ms + burst_s
 ```
 
 ```mermaid
