@@ -243,7 +243,7 @@ class RangeProfileRecordLimiter(gr.sync_block):
 
 
 class DivideCpiRecordLimiter(RangeProfileRecordLimiter):
-    """Divide CPI flatten 录制 limiter；默认 vlen 匹配 transpose_len=4, fft_len=2048, zeropadding_fac=4。"""
+    """Divide CPI flatten 录制 limiter；默认 vlen 匹配 num_symbols=4, fft_len=2048, zeropadding_fac=4。"""
 
     def __init__(
         self,

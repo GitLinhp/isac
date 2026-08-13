@@ -684,10 +684,10 @@ blocks:
     length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: 2*transpose_len
-    transpose_len: transpose_len
+    num_symbols: transpose_len
   states:
     _io_cache: "('OFDM CPI Tag Normalizer', 'OfdmCpiTagNormalizerBlock', [('fft_len',\
-      \ '2048'), ('transpose_len', '4'), ('length_tag_key', \"'packet_len'\")], [('0',\
+      \ '2048'), ('num_symbols', '4'), ('length_tag_key', \"'packet_len'\")], [('0',\
       \ 'complex', 2048)], [('0', 'complex', 2048)], '1:1 \u900F\u4F20\u9891\u57DF\
       \u5411\u91CF\uFF1B\u6BCF CPI \u9996\u7B26\u53F7\u6253 ``packet_len=transpose_len``\
       \ tag\u3002', [])"
@@ -713,10 +713,10 @@ blocks:
     length_tag_key: length_tag_key
     maxoutbuf: '0'
     minoutbuf: 2*transpose_len
-    transpose_len: transpose_len
+    num_symbols: transpose_len
   states:
     _io_cache: "('OFDM CPI Tag Normalizer', 'OfdmCpiTagNormalizerBlock', [('fft_len',\
-      \ '2048'), ('transpose_len', '4'), ('length_tag_key', \"'packet_len'\")], [('0',\
+      \ '2048'), ('num_symbols', '4'), ('length_tag_key', \"'packet_len'\")], [('0',\
       \ 'complex', 2048)], [('0', 'complex', 2048)], '1:1 \u900F\u4F20\u9891\u57DF\
       \u5411\u91CF\uFF1B\u6BCF CPI \u9996\u7B26\u53F7\u6253 ``packet_len=transpose_len``\
       \ tag\u3002', [])"

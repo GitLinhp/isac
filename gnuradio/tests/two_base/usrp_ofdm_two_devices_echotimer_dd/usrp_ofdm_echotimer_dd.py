@@ -249,7 +249,7 @@ class usrp_ofdm_echotimer_dd(gr.top_block, Qt.QWidget):
         self.fft_vxx_0_1 = fft.fft_vcc((fft_len*zeropadding_fac), True, window.blackmanharris(fft_len*zeropadding_fac), False, 1)
         self.fft_vxx_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
-        self.echotimer_transmit_cache_0 = echotimer_transmit_cache_0.EchotimerTransmitCacheBlock(config_file=config_file, length_tag_key=length_tag_key, fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=cp_len)
+        self.echotimer_transmit_cache_0 = echotimer_transmit_cache_0.EchotimerTransmitCacheBlock(config_file=config_file, length_tag_key=length_tag_key, fft_len=fft_len, num_symbols=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=cp_len)
         self.echotimer_transmit_cache_0.set_min_output_buffer((int(2*burst_len_samples)))
         self.blocks_nlog10_ff_0 = blocks.nlog10_ff(10, (fft_len*zeropadding_fac), 0)
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(factor)

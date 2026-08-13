@@ -418,11 +418,11 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: int(2*burst_len_samples)
     subcarrier_spacing: subcarrier_spacing
-    transpose_len: transpose_len
+    num_symbols: transpose_len
   states:
     _io_cache: "('Echotimer Transmit Cache', 'EchotimerTransmitCacheBlock', [('config_file',\
       \ \"'implementaion/ofdm_echotimer_dd.toml'\"), ('length_tag_key', \"'packet_len'\"\
-      ), ('fft_len', '2048'), ('transpose_len', '4'), ('subcarrier_spacing', '60000.0'),\
+      ), ('fft_len', '2048'), ('num_symbols', '4'), ('subcarrier_spacing', '60000.0'),\
       \ ('cp_len', '512')], [], [('0', 'complex', 1), ('1', 'complex', 2048)], '\u53CC\
       \u8F93\u51FA\u7F13\u5B58\u53D1\u5C04\u6E90\uFF1Aout0 \u65F6\u57DF x_time\uFF0C\
       out1 \u9891\u57DF\u53C2\u8003 x_rg\uFF08fftshift\uFF09\u3002\\n\\n    - out0\uFF1A\

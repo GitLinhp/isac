@@ -377,19 +377,20 @@ def test_patch_usrp_source_factory_forces_false() -> None:
     assert calls == [False, False]
 
 
-def test_sionna_ofdm_modulator_burst_length() -> None:
-    import pmt
+def test_sionna_ofdm_modulator_matches_gr_ifft_cp() -> None:
+    """NumPy IFFT+CP 与 GR fft_vcc(IFFT,shift)+ofdm_cyclic_prefixer 数值一致。"""
+    from gnuradio import blocks, digital, fft, gr
 
     from isac_imp.sionna_ofdm_modulator import SionnaOfdmModulatorBlock
     from isac_imp.sionna_resource_grid_tx import _build_freq_grid
 
     fft_len = 64
     cp_len = 16
-    transpose_len = 2
-    burst_len = transpose_len * (fft_len + cp_len)
+    num_symbols = 2
+    burst_len = num_symbols * (fft_len + cp_len)
     freq, _, _ = _build_freq_grid(
         fft_len=fft_len,
-        transpose_len=transpose_len,
+        num_symbols=num_symbols,
         subcarrier_spacing=60e3,
         cp_len=cp_len,
         num_bits_per_symbol=2,
@@ -401,52 +402,160 @@ def test_sionna_ofdm_modulator_burst_length() -> None:
         fft_len=fft_len,
         cp_len=cp_len,
         burst_len_samples=burst_len,
-        transpose_len=transpose_len,
-        subcarrier_spacing=60e3,
-        num_bits_per_symbol=2,
-        seed=7,
-        target_peak=1.0,
     )
     blk.start()
-    cpi = np.concatenate([blk._modulate_symbol(freq[i]) for i in range(transpose_len)])  # noqa: SLF001
-    assert abs(float(np.max(np.abs(cpi))) - 1.0) < 1e-5
-    assert cpi.shape == (burst_len,)
-    assert abs(blk._ifft_scale - 1.0 / np.sqrt(float(fft_len))) < 1e-12  # noqa: SLF001
+    np_out = np.concatenate(
+        [blk._modulate_symbol(freq[i]) for i in range(num_symbols)]  # noqa: SLF001
+    )
+    assert np_out.shape == (burst_len,)
+
+    flat = freq.reshape(-1).astype(np.complex64, copy=False)
+    tb = gr.top_block()
+    src = blocks.vector_source_c(flat.tolist(), False, fft_len, [])
+    iff = fft.fft_vcc(fft_len, False, (), True, 1)
+    cp = digital.ofdm_cyclic_prefixer(fft_len, fft_len + cp_len, 0, "")
+    snk = blocks.vector_sink_c()
+    tb.connect(src, iff, cp, snk)
+    tb.run()
+    gr_out = np.asarray(snk.data(), dtype=np.complex64)
+    assert gr_out.shape == np_out.shape
+    assert float(np.max(np.abs(np_out - gr_out))) < 1e-5
+
+
+def test_ofdm_burst_tx_source_matches_gr_and_style1_tags() -> None:
+    """统一 TX 源：时域 = GR IFFT+CP×factor；含 Style1 tag；频域走一次性 tx_freq_cpi 消息。"""
+    import time as _time
+
+    import pmt
+    from gnuradio import blocks, digital, fft, gr
+
+    from isac_imp.burst_pack import parse_tx_freq_cpi_msg
+    from isac_imp.ofdm_burst_tx_source import OfdmBurstTxSourceBlock, _modulate_symbol
+    from isac_imp.sionna_resource_grid_tx import _build_freq_grid
+
+    fft_len = 64
+    cp_len = 16
+    num_symbols = 2
+    factor = 0.01
+    burst_len = num_symbols * (fft_len + cp_len)
+    freq, _, _ = _build_freq_grid(
+        fft_len=fft_len,
+        num_symbols=num_symbols,
+        subcarrier_spacing=60e3,
+        cp_len=cp_len,
+        num_bits_per_symbol=2,
+        device="cpu",
+        seed=11,
+    )
+    unit = np.concatenate(
+        [_modulate_symbol(freq[i], cp_len) for i in range(num_symbols)]
+    )
+    expect = (unit * factor).astype(np.complex64)
+
+    flat = freq.reshape(-1).astype(np.complex64, copy=False)
+    tb_ref = gr.top_block()
+    src = blocks.vector_source_c(flat.tolist(), False, fft_len, [])
+    iff = fft.fft_vcc(fft_len, False, (), True, 1)
+    cp = digital.ofdm_cyclic_prefixer(fft_len, fft_len + cp_len, 0, "")
+    amp = blocks.multiply_const_cc(factor)
+    snk_ref = blocks.vector_sink_c()
+    tb_ref.connect(src, iff, cp, amp, snk_ref)
+    tb_ref.run()
+    gr_out = np.asarray(snk_ref.data(), dtype=np.complex64)
+    assert float(np.max(np.abs(expect - gr_out))) < 1e-5
+
+    class _TagProbe(gr.sync_block):
+        def __init__(self) -> None:
+            gr.sync_block.__init__(
+                self, name="tag_probe", in_sig=[np.complex64], out_sig=[np.complex64]
+            )
+            self.keys: list[str] = []
+
+        def work(self, input_items, output_items) -> int:
+            n = len(input_items[0])
+            base = self.nitems_read(0)
+            for tag in self.get_tags_in_range(0, base, base + n):
+                self.keys.append(str(pmt.symbol_to_string(tag.key)))
+            output_items[0][:n] = input_items[0][:n]
+            return n
+
+    class _FreqMsgProbe(gr.basic_block):
+        def __init__(self) -> None:
+            gr.basic_block.__init__(self, name="freq_msg_probe", in_sig=None, out_sig=None)
+            self.port = pmt.intern("tx_freq_cpi")
+            self.message_port_register_in(self.port)
+            self.set_msg_handler(self.port, self._on_msg)
+            self.msgs: list = []
+
+        def _on_msg(self, msg) -> None:
+            self.msgs.append(msg)
+
+        def general_work(self, input_items, output_items) -> int:
+            del input_items, output_items
+            return 0
+
+    tx = OfdmBurstTxSourceBlock(
+        fft_len=fft_len,
+        cp_len=cp_len,
+        num_symbols=num_symbols,
+        subcarrier_spacing=60e3,
+        seed=11,
+        factor=factor,
+        idle_ms=0.0,
+        time_lead_s=0.05,
+        samp_rate=1e6,
+        scheduled_rx=False,
+    )
+    probe = _TagProbe()
+    snk_td = blocks.vector_sink_c()
+    freq_probe = _FreqMsgProbe()
+    tb = gr.top_block()
+    tb.connect(tx, probe, snk_td)
+    tb.msg_connect(tx, "tx_freq_cpi", freq_probe, "tx_freq_cpi")
+    tb.start()
+    _time.sleep(0.15)
+    tb.stop()
+    tb.wait()
+
+    td = np.asarray(snk_td.data(), dtype=np.complex64)
+    assert td.size >= burst_len
+    assert float(np.max(np.abs(td[:burst_len] - expect))) < 1e-5
+    assert "tx_sob" in probe.keys
+    assert "tx_time" in probe.keys
+    assert "tx_eob" in probe.keys
+
+    # 频域仅首 CPI 发一次消息
+    assert len(freq_probe.msgs) == 1, f"expected one tx_freq_cpi, got {len(freq_probe.msgs)}"
+    freq_out = parse_tx_freq_cpi_msg(
+        freq_probe.msgs[0], n_sym=num_symbols, fft_len=fft_len
+    )
+    assert float(np.max(np.abs(freq_out - freq))) < 1e-6
 
 
 def test_ofdm_range_profile_rx_align_offset() -> None:
+    from isac_imp.ofdm_burst_tx_source import _modulate_symbol
     from isac_imp.ofdm_range_profile import OfdmRangeProfileBlock
-    from isac_imp.sionna_ofdm_modulator import SionnaOfdmModulatorBlock
     from isac_imp.sionna_resource_grid_tx import _build_freq_grid
 
     fft_len = 128
     cp_len = 32
-    transpose_len = 4
+    num_symbols = 4
     freq, _, _ = _build_freq_grid(
         fft_len=fft_len,
-        transpose_len=transpose_len,
+        num_symbols=num_symbols,
         subcarrier_spacing=60e3,
         cp_len=cp_len,
         num_bits_per_symbol=2,
         device="cpu",
         seed=3,
     )
-    mod = SionnaOfdmModulatorBlock(
-        fft_len=fft_len,
-        cp_len=cp_len,
-        burst_len_samples=transpose_len * (fft_len + cp_len),
-        transpose_len=transpose_len,
-        seed=3,
-        target_peak=1.0,
-    )
-    mod.start()
 
     def _rx_fft(sym_td: np.ndarray) -> np.ndarray:
         body = sym_td[cp_len:]
-        return np.fft.fftshift(np.fft.fft(body, norm=None) / np.sqrt(fft_len))
+        return np.fft.fftshift(np.fft.fft(body, norm=None))
 
     rx = np.stack(
-        [_rx_fft(mod._modulate_symbol(freq[i])) for i in range(transpose_len)]  # noqa: SLF001
+        [_rx_fft(_modulate_symbol(freq[i], cp_len)) for i in range(num_symbols)]
     )
     rx = np.concatenate(
         [
@@ -456,7 +565,7 @@ def test_ofdm_range_profile_rx_align_offset() -> None:
         axis=0,
     )
     blk = OfdmRangeProfileBlock(
-        fft_len=fft_len, zeropadding_fac=2, transpose_len=transpose_len
+        fft_len=fft_len, zeropadding_fac=2, num_symbols=num_symbols
     )
     off, score = blk._find_rx_align_offset(freq, rx)  # noqa: SLF001
     assert off == 2
@@ -466,40 +575,31 @@ def test_ofdm_range_profile_rx_align_offset() -> None:
 def test_ofdm_range_profile_zero_range_peak_when_aligned() -> None:
     from gnuradio.fft import window
 
+    from isac_imp.ofdm_burst_tx_source import _modulate_symbol
     from isac_imp.ofdm_range_profile import compute_cpi_range_profile_db
-    from isac_imp.sionna_ofdm_modulator import SionnaOfdmModulatorBlock
     from isac_imp.sionna_resource_grid_tx import _build_freq_grid
 
     fft_len = 2048
     cp_len = 512
-    transpose_len = 4
+    num_symbols = 4
     zpf = 4
     vlen = fft_len * zpf
     freq, _, _ = _build_freq_grid(
         fft_len=fft_len,
-        transpose_len=transpose_len,
+        num_symbols=num_symbols,
         subcarrier_spacing=60e3,
         cp_len=cp_len,
         num_bits_per_symbol=2,
         device="cpu",
         seed=42,
     )
-    mod = SionnaOfdmModulatorBlock(
-        fft_len=fft_len,
-        cp_len=cp_len,
-        burst_len_samples=transpose_len * (fft_len + cp_len),
-        transpose_len=transpose_len,
-        seed=42,
-        target_peak=1.0,
-    )
-    mod.start()
 
     def _rx_fft(sym_td: np.ndarray) -> np.ndarray:
         body = sym_td[cp_len:]
-        return np.fft.fftshift(np.fft.fft(body, norm=None) / np.sqrt(fft_len))
+        return np.fft.fftshift(np.fft.fft(body, norm=None))
 
     rx = np.stack(
-        [_rx_fft(mod._modulate_symbol(freq[i])) for i in range(transpose_len)]  # noqa: SLF001
+        [_rx_fft(_modulate_symbol(freq[i], cp_len)) for i in range(num_symbols)]
     )
     bh = np.asarray(window.blackmanharris(vlen), dtype=np.float32)
     prof = compute_cpi_range_profile_db(

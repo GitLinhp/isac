@@ -8,7 +8,7 @@
       └→ OfdmRangeProfileBlock in0（TX 频域参考）
 
 ``start()`` 按 ``seed`` 一次性生成固定 CPI 频域栅格；``work()`` 周期性重放，
-并在每个 CPI 首符号打 ``packet_len`` tag（值为 ``transpose_len`` 符号数）。
+并在每个 CPI 首符号打 ``packet_len`` tag（值为 ``num_symbols`` 符号数）。
 """
 
 from __future__ import annotations
@@ -28,16 +28,16 @@ from isac_imp.burst_pack import TPP_DONT
 _LOG_PREFIX = "[SionnaResourceGridTx]"
 
 
-def _resolve_guard_carriers(fft_len: int, transpose_len: int) -> tuple[int, int]:
-    """选取 guard 配置，使 ``rg.num_data_symbols == transpose_len * (fft_len - 2)``。
+def _resolve_guard_carriers(fft_len: int, num_symbols: int) -> tuple[int, int]:
+    """选取 guard 配置，使 ``rg.num_data_symbols == num_symbols * (fft_len - 2)``。
 
     与流图变量 ``n_carriers = fft_len - 2``、QPSK（2 bit/符号）下的
-    ``packet_len = transpose_len * n_carriers // 4`` 保持一致。
+    ``packet_len = num_symbols * n_carriers // 4`` 保持一致。
     """
-    target = int(transpose_len) * (int(fft_len) - 2)
+    target = int(num_symbols) * (int(fft_len) - 2)
     for guards in ((1, 0), (0, 1)):
         rg = ResourceGrid(
-            num_ofdm_symbols=int(transpose_len),
+            num_ofdm_symbols=int(num_symbols),
             fft_size=int(fft_len),
             subcarrier_spacing=60e3,
             num_guard_carriers=guards,
@@ -49,32 +49,31 @@ def _resolve_guard_carriers(fft_len: int, transpose_len: int) -> tuple[int, int]
             return guards
     raise ValueError(
         f"无法对齐 GR 数据符号数: target={target}, fft_len={fft_len}, "
-        f"transpose_len={transpose_len}"
+        f"num_symbols={num_symbols}"
     )
 
 
-def _build_freq_grid(
+def _build_freq_grid_torch(
     *,
     fft_len: int,
-    transpose_len: int,
+    num_symbols: int,
     subcarrier_spacing: float,
     cp_len: int,
     num_bits_per_symbol: int,
     device: str,
     seed: int,
-) -> tuple[np.ndarray, tuple[int, int], int]:
-    """BinarySource → QAM → ResourceGridMapper，返回 fftshift 频域 CPI。
+) -> tuple[torch.Tensor, tuple[int, int], int]:
+    """BinarySource → QAM → ResourceGridMapper → fftshift，结果留在 ``device``。
 
     Returns:
-        freq: 形状 ``(transpose_len, fft_len)``，与 GR carrier_allocator
-            ``output_is_shifted=True`` 一致。
+        freq: 形状 ``(num_symbols, fft_len)`` complex64 张量。
         guards: 选用的 ``num_guard_carriers`` 元组。
         num_data_symbols: ResourceGrid 数据 RE 总数。
     """
     set_random_seed(seed)
-    guards = _resolve_guard_carriers(fft_len, transpose_len)
+    guards = _resolve_guard_carriers(fft_len, num_symbols)
     rg = ResourceGrid(
-        num_ofdm_symbols=int(transpose_len),
+        num_ofdm_symbols=int(num_symbols),
         fft_size=int(fft_len),
         subcarrier_spacing=float(subcarrier_spacing),
         cyclic_prefix_length=int(cp_len),
@@ -83,7 +82,7 @@ def _build_freq_grid(
         pilot_pattern=None,
         device=device,
     )
-    expected_data = int(transpose_len) * (int(fft_len) - 2)
+    expected_data = int(num_symbols) * (int(fft_len) - 2)
     if rg.num_data_symbols != expected_data:
         raise ValueError(
             f"ResourceGrid num_data_symbols={rg.num_data_symbols} != {expected_data}"
@@ -96,16 +95,44 @@ def _build_freq_grid(
     with torch.inference_mode():
         bits = binary_source([1, 1, 1, rg.num_data_symbols * int(num_bits_per_symbol)])
         x = mapper(bits)
-        x_rg = rg_mapper(x)
-        x_rg_np = x_rg.squeeze().cpu().numpy().astype(np.complex64, copy=False)
-
-    if x_rg_np.ndim == 1:
-        x_rg_np = x_rg_np.reshape(1, -1)
-    if x_rg_np.shape != (int(transpose_len), int(fft_len)):
-        x_rg_np = x_rg_np.reshape(int(transpose_len), int(fft_len))
-
-    freq = np.fft.fftshift(x_rg_np, axes=-1).astype(np.complex64, copy=False)
+        x_rg = rg_mapper(x).squeeze()
+        if x_rg.ndim == 1:
+            x_rg = x_rg.reshape(1, -1)
+        if tuple(x_rg.shape) != (int(num_symbols), int(fft_len)):
+            x_rg = x_rg.reshape(int(num_symbols), int(fft_len))
+        freq = torch.fft.fftshift(x_rg.to(torch.complex64), dim=-1)
     return freq, guards, int(rg.num_data_symbols)
+
+
+def _build_freq_grid(
+    *,
+    fft_len: int,
+    num_symbols: int,
+    subcarrier_spacing: float,
+    cp_len: int,
+    num_bits_per_symbol: int,
+    device: str,
+    seed: int,
+) -> tuple[np.ndarray, tuple[int, int], int]:
+    """BinarySource → QAM → ResourceGridMapper，返回 fftshift 频域 CPI（NumPy）。
+
+    Returns:
+        freq: 形状 ``(num_symbols, fft_len)``，与 GR carrier_allocator
+            ``output_is_shifted=True`` 一致。
+        guards: 选用的 ``num_guard_carriers`` 元组。
+        num_data_symbols: ResourceGrid 数据 RE 总数。
+    """
+    freq_t, guards, n_data = _build_freq_grid_torch(
+        fft_len=fft_len,
+        num_symbols=num_symbols,
+        subcarrier_spacing=subcarrier_spacing,
+        cp_len=cp_len,
+        num_bits_per_symbol=num_bits_per_symbol,
+        device=device,
+        seed=seed,
+    )
+    freq = freq_t.detach().cpu().numpy().astype(np.complex64, copy=False)
+    return freq, guards, n_data
 
 
 class SionnaResourceGridTxBlock(gr.sync_block):
@@ -114,7 +141,7 @@ class SionnaResourceGridTxBlock(gr.sync_block):
     def __init__(
         self,
         fft_len: int = 2048,
-        transpose_len: int = 4,
+        num_symbols: int = 4,
         subcarrier_spacing: float = 60e3,
         cp_len: int = 512,
         length_tag_key: str = "packet_len",
@@ -123,7 +150,7 @@ class SionnaResourceGridTxBlock(gr.sync_block):
         seed: int = 42,
     ) -> None:
         self._fft_len = int(fft_len)
-        self._transpose_len = int(transpose_len)
+        self._num_symbols = int(num_symbols)
         gr.sync_block.__init__(
             self,
             name="Sionna ResourceGrid TX",
@@ -141,14 +168,14 @@ class SionnaResourceGridTxBlock(gr.sync_block):
 
         # 本块在 CPI 首符号自行打 packet_len tag，不传播上游 tag。
         self.set_tag_propagation_policy(TPP_DONT)
-        self.set_min_output_buffer(self._transpose_len * 4)
+        self.set_min_output_buffer(self._num_symbols * 4)
 
     def start(self) -> bool:
         # 限制 Torch 线程，避免与 GR scheduler 争抢 CPU。
         torch.set_num_threads(1)
         freq, guards, n_data = _build_freq_grid(
             fft_len=self._fft_len,
-            transpose_len=self._transpose_len,
+            num_symbols=self._num_symbols,
             subcarrier_spacing=self._subcarrier_spacing,
             cp_len=self._cp_len,
             num_bits_per_symbol=self._num_bits_per_symbol,
@@ -175,11 +202,11 @@ class SionnaResourceGridTxBlock(gr.sync_block):
                     0,
                     abs_base + i,
                     self._length_tag_key,
-                    pmt.from_long(self._transpose_len),
+                    pmt.from_long(self._num_symbols),
                 )
             out[i][:] = self._freq_buf[self._sym_idx]
             self._sym_idx += 1
-            if self._sym_idx >= self._transpose_len:
+            if self._sym_idx >= self._num_symbols:
                 self._sym_idx = 0
 
         return n_out

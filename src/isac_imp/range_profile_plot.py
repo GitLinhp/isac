@@ -13,6 +13,7 @@ import numpy as np
 import pyqtgraph as pg
 from gnuradio import gr
 from PyQt5.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QApplication
 
 from isac_imp.range_profile_roi_slice import compute_range_roi
 
@@ -50,7 +51,7 @@ def publish_music_ranges(ranges_m: list[float]) -> None:
 
 
 class _RangeProfileDisplay(QObject):
-    """Qt 主线程上的 PyQtGraph 距离谱折线图窗口。"""
+    """Qt 主线程上的 PyQtGraph 距离谱折线图窗口（延迟建窗）。"""
 
     profile_ready = pyqtSignal(object, object)  # x_m, y_db
     range_estimates_ready = pyqtSignal(object, object)  # ranges_m, method_name
@@ -67,17 +68,20 @@ class _RangeProfileDisplay(QObject):
         self._axis_x = axis_x
         self._frame_count = 0
         self._title = str(title)
+        self._xlabel = str(xlabel)
+        self._ylabel = str(ylabel)
         self._method_name: str | None = None
 
-        self._win = pg.GraphicsLayoutWidget(show=False, title=self._title)
-        self._plot = self._win.addPlot(title=title)
-        self._plot.setLabel("bottom", xlabel)
-        self._plot.setLabel("left", ylabel)
-        self._plot.showGrid(x=True, y=True, alpha=0.25)
-        self._curve = self._plot.plot(pen=pg.mkPen(_LINE, width=1))
+        self._win: pg.GraphicsLayoutWidget | None = None
+        self._plot = None
+        self._curve = None
         self._estimate_lines: list[pg.InfiniteLine] = []
-        self._apply_light_theme()
-        self._apply_x_axis()
+        self._pending_profile: tuple[np.ndarray, np.ndarray] | None = None
+        self._pending_estimates: tuple[list[float], str] | None = None
+
+        app = QApplication.instance()
+        if app is not None:
+            self.moveToThread(app.thread())
 
         self.profile_ready.connect(self._on_profile, Qt.QueuedConnection)
         self.range_estimates_ready.connect(
@@ -86,7 +90,28 @@ class _RangeProfileDisplay(QObject):
         self.show_requested.connect(self._do_show, Qt.QueuedConnection)
         _register_display(self)
 
+    def _ensure_window(self) -> bool:
+        if self._win is not None:
+            return True
+        try:
+            self._win = pg.GraphicsLayoutWidget(show=False, title=self._title)
+            self._plot = self._win.addPlot(title=self._title)
+            self._plot.setLabel("bottom", self._xlabel)
+            self._plot.setLabel("left", self._ylabel)
+            self._plot.showGrid(x=True, y=True, alpha=0.25)
+            self._curve = self._plot.plot(pen=pg.mkPen(_LINE, width=1))
+            self._apply_light_theme()
+            self._apply_x_axis()
+        except Exception:
+            self._win = None
+            self._plot = None
+            self._curve = None
+            return False
+        return True
+
     def _apply_light_theme(self) -> None:
+        if self._win is None or self._plot is None:
+            return
         self._win.setBackground(_BG)
         self._plot.getViewBox().setBackgroundColor(_BG)
         for axis_name in ("left", "bottom"):
@@ -97,6 +122,8 @@ class _RangeProfileDisplay(QObject):
         self._set_plot_title(self._title)
 
     def _set_plot_title(self, text: str) -> None:
+        if self._plot is None:
+            return
         try:
             self._plot.setTitle(text, color=_FG)
         except RuntimeError:
@@ -111,6 +138,16 @@ class _RangeProfileDisplay(QObject):
         self.show_requested.emit()
 
     def _do_show(self) -> None:
+        if not self._ensure_window() or self._win is None:
+            return
+        if self._pending_profile is not None:
+            x_m, y_db = self._pending_profile
+            self._pending_profile = None
+            self._apply_profile(x_m, y_db)
+        if self._pending_estimates is not None:
+            ranges_m, method_name = self._pending_estimates
+            self._pending_estimates = None
+            self._apply_range_estimates(ranges_m, method_name)
         self._win.show()
         try:
             self._win.raise_()
@@ -121,13 +158,16 @@ class _RangeProfileDisplay(QObject):
         self.request_show()
 
     def close(self) -> None:
-        self._win.close()
+        if self._win is not None:
+            self._win.close()
 
     def set_axis_x(self, xmin: float, xmax: float) -> None:
         self._axis_x = (float(xmin), float(xmax))
         self._apply_x_axis()
 
     def _apply_x_axis(self) -> None:
+        if self._plot is None:
+            return
         xmin, xmax = self._axis_x
         self._plot.setXRange(xmin, xmax, padding=0)
 
@@ -142,10 +182,16 @@ class _RangeProfileDisplay(QObject):
     def post_music_ranges(self, ranges_m: list[float]) -> None:
         self.post_range_estimates(ranges_m, "MUSIC")
 
-    @pyqtSlot(object, object)
-    def _on_range_estimates(self, ranges_m: list[float], method_name: str) -> None:
+    def _apply_range_estimates(
+        self, ranges_m: list[float], method_name: str
+    ) -> None:
+        if self._plot is None:
+            return
         for line in self._estimate_lines:
-            self._plot.removeItem(line)
+            try:
+                self._plot.removeItem(line)
+            except RuntimeError:
+                pass
         self._estimate_lines.clear()
 
         if ranges_m:
@@ -165,17 +211,19 @@ class _RangeProfileDisplay(QObject):
 
         self._set_plot_title(self._format_plot_title())
 
-    @pyqtSlot(object, object)
-    def _on_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
+    def _apply_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
+        if self._curve is None or self._plot is None:
+            return
         x = np.ascontiguousarray(x_m, dtype=np.float64)
         y = np.ascontiguousarray(y_db, dtype=np.float32)
-        self._curve.setData(x, y)
+        try:
+            self._curve.setData(x, y)
+        except RuntimeError:
+            return
 
         finite = y[np.isfinite(y)]
         if finite.size:
             lo, hi = float(finite.min()), float(finite.max())
-            if hi <= lo:
-                lo, hi = float(finite.min()), float(finite.max())
             if hi > lo:
                 pad = max(3.0, 0.05 * (hi - lo))
                 self._plot.setYRange(lo - pad, hi + pad, padding=0)
@@ -183,13 +231,27 @@ class _RangeProfileDisplay(QObject):
         self._frame_count += 1
         self._set_plot_title(self._format_plot_title())
 
+    @pyqtSlot(object, object)
+    def _on_range_estimates(self, ranges_m: list[float], method_name: str) -> None:
+        if not self._ensure_window():
+            self._pending_estimates = (list(ranges_m), str(method_name))
+            return
+        self._apply_range_estimates(ranges_m, method_name)
+
+    @pyqtSlot(object, object)
+    def _on_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:
+        if not self._ensure_window():
+            self._pending_profile = (x_m, y_db)
+            return
+        self._apply_profile(x_m, y_db)
+
 
 class RangeProfilePlotBlock(gr.sync_block):
     """全谱 dB 距离谱 → ROI 切片 → PyQtGraph 折线图（独立窗口）。"""
 
     def __init__(
         self,
-        vlen_in: int = 4096,
+        vlen_in: int = 8192,
         range_roi: tuple[float, float] = (0.0, 30.0),
         range_bin_step: float = 0.305,
     ) -> None:
@@ -271,30 +333,5 @@ class RangeProfilePlotBlock(gr.sync_block):
         s, n = self._start_bin, self._num_bins
         y = vec[s : s + n]
         x = self._x_start_m + np.arange(n, dtype=np.float64) * self._range_bin_step
-        if not hasattr(self, "_dbg_plot_frames"):
-            self._dbg_plot_frames = 0
-        self._dbg_plot_frames += 1
-        if self._dbg_plot_frames <= 5 or self._dbg_plot_frames % 20 == 0:
-            from isac_imp.agent_debug_log import agent_log
-
-            finite = y[np.isfinite(y)]
-            full_vec = vec
-            full_finite = full_vec[np.isfinite(full_vec)]
-            agent_log(
-                "range_profile_plot.py:work",
-                "plot frame",
-                {
-                    "frame": self._dbg_plot_frames,
-                    "peak_range_m_roi": float(x[int(np.argmax(finite))]) if finite.size else None,
-                    "peak_range_m_full": float(
-                        int(np.argmax(full_finite))
-                        * self._range_bin_step
-                    )
-                    if full_finite.size
-                    else None,
-                },
-                hypothesis_id="H4",
-                run_id="post-fix-v3",
-            )
         self._display.post_profile(x, y)
         return 1

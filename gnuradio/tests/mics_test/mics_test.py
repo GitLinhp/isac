@@ -149,7 +149,7 @@ class mics_test(gr.top_block, Qt.QWidget):
         self._RX_gain_range = qtgui.Range(0, 50, 1, 30, 200)
         self._RX_gain_win = qtgui.RangeWidget(self._RX_gain_range, self.set_RX_gain, "RX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._RX_gain_win)
-        self.sionna_resource_grid_tx_0 = sionna_resource_grid_tx_0.SionnaResourceGridTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
+        self.sionna_resource_grid_tx_0 = sionna_resource_grid_tx_0.SionnaResourceGridTxBlock(fft_len=fft_len, num_symbols=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
         self.sionna_resource_grid_tx_0.set_min_output_buffer((4*transpose_len))
         self.range_profile_record_limiter_0 = range_profile_record_limiter_0.RangeProfileRecordLimiter(vlen_in=fft_len*zeropadding_fac, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=, file_sink_attr=, record_file_path_attr=, record_base_name=)
         self.range_profile_plot_0 = range_profile_plot_0.RangeProfilePlotBlock(vlen_in=fft_len*zeropadding_fac, range_roi=range_roi, range_bin_step=range_bin_step)
@@ -251,7 +251,7 @@ class mics_test(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
-        self.ofdm_range_profile_0 = ofdm_range_profile_0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
+        self.ofdm_range_profile_0 = ofdm_range_profile_0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, num_symbols=transpose_len)
         self.fft_vxx_0_0 = fft.fft_vcc(fft_len, True, (), True, 1)
         self.fft_vxx_0_0.set_min_output_buffer((2*transpose_len))
         self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)

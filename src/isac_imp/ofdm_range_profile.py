@@ -123,11 +123,11 @@ class OfdmRangeProfileBlock(gr.basic_block):
         self,
         fft_len: int = 2048,
         zeropadding_fac: int = 2,
-        transpose_len: int = 4,
+        num_symbols: int = 4,
     ) -> None:
         self._fft_len = int(fft_len)
         self._vlen_out = self._fft_len * int(zeropadding_fac)
-        self._transpose_len = int(transpose_len)
+        self._num_symbols = int(num_symbols)
 
         gr.basic_block.__init__(
             self,
@@ -141,8 +141,8 @@ class OfdmRangeProfileBlock(gr.basic_block):
                 (np.complex64, self._vlen_out),
             ],
         )
-        # 每 transpose_len 个输入符号产出 1 条距离谱。
-        self.set_relative_rate(1, self._transpose_len)
+        # 每 num_symbols 个输入符号产出 1 条距离谱。
+        self.set_relative_rate(1, self._num_symbols)
         self.set_tag_propagation_policy(TPP_DONT)
 
         self._bh_window = np.asarray(
@@ -154,7 +154,7 @@ class OfdmRangeProfileBlock(gr.basic_block):
         self._tx_skip_until_tag = False
         self._rx_skip_until_tag = False
         self._align_pending = False
-        self._align_search = max(int(transpose_len) * 8, 32)
+        self._align_search = max(int(num_symbols) * 8, 32)
 
         self._schedule_port = pmt.intern(PORT_TX_SCHEDULE)
         self.message_port_register_in(self._schedule_port)
@@ -206,7 +206,7 @@ class OfdmRangeProfileBlock(gr.basic_block):
 
     def _find_rx_align_offset(self, in_tx: np.ndarray, in_rx: np.ndarray) -> tuple[int, float]:
         """搜索使 TX/RX 频域符号相关性最大的 RX 偏移。"""
-        tlen = self._transpose_len
+        tlen = self._num_symbols
         max_off = min(self._align_search, len(in_rx) - tlen + 1)
         if max_off <= 0 or len(in_tx) < tlen:
             return 0, 0.0
@@ -230,8 +230,8 @@ class OfdmRangeProfileBlock(gr.basic_block):
 
     def forecast(self, noutput_items: int, ninputs) -> list:
         del ninputs
-        # 两路输入需等量符号，各 noutput * transpose_len。
-        need = noutput_items * self._transpose_len
+        # 两路输入需等量符号，各 noutput * num_symbols。
+        need = noutput_items * self._num_symbols
         return [need, need]
 
     def general_work(self, input_items, output_items) -> int:
@@ -258,32 +258,14 @@ class OfdmRangeProfileBlock(gr.basic_block):
 
         if (
             self._align_pending
-            and len(in_tx) >= self._transpose_len
-            and len(in_rx) >= self._transpose_len
+            and len(in_tx) >= self._num_symbols
+            and len(in_rx) >= self._num_symbols
         ):
             align_off, align_score = self._find_rx_align_offset(in_tx, in_rx)
             if align_off > 0:
                 self.consume(1, align_off)
                 in_rx = in_rx[align_off:]
             self._align_pending = False
-            if not hasattr(self, "_dbg_alignments"):
-                self._dbg_alignments = 0
-            self._dbg_alignments += 1
-            if self._dbg_alignments <= 5:
-                from isac_imp.agent_debug_log import agent_log
-
-                agent_log(
-                    "ofdm_range_profile.py:general_work",
-                    "rx align search",
-                    {
-                        "align_off": align_off,
-                        "align_score": align_score,
-                        "tx_off": tx_off,
-                        "rx_tag_off": rx_tag_off,
-                    },
-                    hypothesis_id="H4",
-                    run_id="post-fix-v3",
-                )
 
         n_avail = min(len(in_tx), len(in_rx))
         if n_avail <= 0:
@@ -308,7 +290,7 @@ class OfdmRangeProfileBlock(gr.basic_block):
             self._sym_idx += 1
             n_consumed += 1
 
-            if self._sym_idx >= self._transpose_len:
+            if self._sym_idx >= self._num_symbols:
                 out_db[n_produced][:] = (
                     _N_DB * np.log10(self._power_acc)
                 ).astype(np.float32, copy=False)
@@ -322,32 +304,6 @@ class OfdmRangeProfileBlock(gr.basic_block):
 
         self.consume(0, n_consumed)
         self.consume(1, n_consumed)
-        if n_produced > 0:
-            if not hasattr(self, "_dbg_profiles"):
-                self._dbg_profiles = 0
-            self._dbg_profiles += n_produced
-            if self._dbg_profiles <= 5 or self._dbg_profiles % 20 == 0:
-                from isac_imp.agent_debug_log import agent_log
-
-                vec0 = out_db[0]
-                peak_db = float(np.nanmax(vec0))
-                peak_bin = int(np.nanargmax(vec0))
-                step_hint = 3e8 / (2.0 * self._fft_len * 60e3 * (self._vlen_out // self._fft_len))
-                agent_log(
-                    "ofdm_range_profile.py:general_work",
-                    "range profile produced",
-                    {
-                        "count": self._dbg_profiles,
-                        "peak_db": peak_db,
-                        "peak_bin": peak_bin,
-                        "peak_range_m": peak_bin * step_hint,
-                        "tx_off": tx_off,
-                        "rx_tag_off": rx_tag_off,
-                        "align_off": align_off,
-                    },
-                    hypothesis_id="H4",
-                    run_id="post-fix-v3",
-                )
         return n_produced
 
 
@@ -358,12 +314,12 @@ class OfdmDivideCpiBlock(gr.basic_block):
         self,
         fft_len: int = 2048,
         zeropadding_fac: int = 4,
-        transpose_len: int = 4,
+        num_symbols: int = 4,
     ) -> None:
         self._fft_len = int(fft_len)
         self._vlen_out = self._fft_len * int(zeropadding_fac)
-        self._transpose_len = int(transpose_len)
-        self._vlen_cpi = self._vlen_out * self._transpose_len
+        self._num_symbols = int(num_symbols)
+        self._vlen_cpi = self._vlen_out * self._num_symbols
 
         gr.basic_block.__init__(
             self,
@@ -374,12 +330,12 @@ class OfdmDivideCpiBlock(gr.basic_block):
             ],
             out_sig=[(np.complex64, self._vlen_cpi)],
         )
-        self.set_relative_rate(1, self._transpose_len)
+        self.set_relative_rate(1, self._num_symbols)
         self.set_tag_propagation_policy(TPP_DONT)
 
         self._sym_idx = 0
         self._divide_buf = np.zeros(
-            (self._transpose_len, self._vlen_out), dtype=np.complex64
+            (self._num_symbols, self._vlen_out), dtype=np.complex64
         )
 
     def start(self) -> bool:
@@ -389,7 +345,7 @@ class OfdmDivideCpiBlock(gr.basic_block):
 
     def forecast(self, noutput_items: int, ninputs) -> list:
         del ninputs
-        need = noutput_items * self._transpose_len
+        need = noutput_items * self._num_symbols
         return [need, need]
 
     def general_work(self, input_items, output_items) -> int:
@@ -418,7 +374,7 @@ class OfdmDivideCpiBlock(gr.basic_block):
             self._sym_idx += 1
             n_consumed += 1
 
-            if self._sym_idx >= self._transpose_len:
+            if self._sym_idx >= self._num_symbols:
                 out[n_produced][:] = self._divide_buf.ravel()
                 n_produced += 1
                 self._sym_idx = 0

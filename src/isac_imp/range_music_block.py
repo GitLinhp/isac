@@ -33,7 +33,7 @@ class RangeMusicBlock(gr.sync_block):
 
     def __init__(
         self,
-        vlen_in: int = 4096,
+        vlen_in: int = 8192,
         range_bin_step: float = 0.305,
         range_roi: tuple[float, float] = (0.0, 30.0),
         num_sources: int = 1,

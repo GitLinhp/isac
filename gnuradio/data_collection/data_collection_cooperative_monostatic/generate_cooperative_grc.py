@@ -217,7 +217,7 @@ def epy(
 
 IO_SIONNA = (
     '"(\'Sionna ResourceGrid TX\', \'SionnaResourceGridTxBlock\', '
-    "[('fft_len', '2048'), ('transpose_len', '4'), ('subcarrier_spacing', '120000.0'), "
+    "[('fft_len', '2048'), ('num_symbols', '4'), ('subcarrier_spacing', '120000.0'), "
     "('cp_len', '512'), ('length_tag_key', \\\"'packet_len'\\\"), ('num_bits_per_symbol', '2'), "
     "('device', \\\"'cpu'\\\"), ('seed', '42')], [], [('0', 'complex', 2048)], "
     "'\\u65E0\\u8F93\\u5165\\uFF1B\\u8F93\\u51FA fftshift \\u9891\\u57DF OFDM "
@@ -226,7 +226,7 @@ IO_SIONNA = (
 
 IO_OFDM_RP = (
     '"(\'OFDM Range Profile\', \'OfdmRangeProfileBlock\', '
-    "[('fft_len', '2048'), ('zeropadding_fac', '4'), ('transpose_len', '4')], "
+    "[('fft_len', '2048'), ('zeropadding_fac', '4'), ('num_symbols', '4')], "
     "[('0', 'complex', 2048), ('1', 'complex', 2048)], "
     "[('0', 'float', 8192), ('1', 'complex', 8192)], "
     "'\\u53CC\\u8F93\\u5165 TX/RX \\u9891\\u57DF\\u7B26\\u53F7 \\u2192 CPI dB "
@@ -235,10 +235,10 @@ IO_OFDM_RP = (
 
 IO_OFDM_DIVIDE_CPI = (
     '"(\'OFDM Divide CPI\', \'OfdmDivideCpiBlock\', '
-    "[('fft_len', '2048'), ('zeropadding_fac', '4'), ('transpose_len', '4')], "
+    "[('fft_len', '2048'), ('zeropadding_fac', '4'), ('num_symbols', '4')], "
     "[('0', 'complex', 2048), ('1', 'complex', 2048)], "
     "[('0', 'complex', 32768)], "
-    "'\\u53CC\\u8F93\\u5165 TX/RX \\u9891\\u57DF\\u7B26\\u53F7 \\u2192 \\u6BCF CPI flatten \\u7684 Divide H(f)\\uFF08transpose_len \\u00D7 vlen\\uFF09\\u3002', [])\""
+    "'\\u53CC\\u8F93\\u5165 TX/RX \\u9891\\u57DF\\u7B26\\u53F7 \\u2192 \\u6BCF CPI flatten \\u7684 Divide H(f)\\uFF08num_symbols \\u00D7 vlen\\uFF09\\u3002', [])\""
 )
 
 VLEN_CPI = "fft_len*zeropadding_fac*transpose_len"
@@ -438,7 +438,7 @@ def main() -> None:
             "SionnaResourceGridTxBlock",
             {
                 "fft_len": "fft_len",
-                "transpose_len": "transpose_len",
+                "num_symbols": "transpose_len",
                 "subcarrier_spacing": "subcarrier_spacing",
                 "cp_len": "fft_len//4",
                 "length_tag_key": "length_tag_key",
@@ -596,7 +596,7 @@ def main() -> None:
                 {
                     "fft_len": "fft_len",
                     "zeropadding_fac": "zeropadding_fac",
-                    "transpose_len": "transpose_len",
+                    "num_symbols": "transpose_len",
                 },
                 f"[900, {y}]",
                 io_cache=IO_OFDM_RP,
@@ -642,7 +642,7 @@ def main() -> None:
                 {
                     "fft_len": "fft_len",
                     "zeropadding_fac": "zeropadding_fac",
-                    "transpose_len": "transpose_len",
+                    "num_symbols": "transpose_len",
                 },
                 f"[800, {y}]",
                 io_cache=IO_OFDM_DIVIDE_CPI,

@@ -44,6 +44,9 @@ TAG_RX_TIME = pmt.intern("rx_time")  # type: ignore[attr-defined]
 PORT_TX_SCHEDULE = "tx_schedule"
 """TX→RX 消息口名称：每 CPI 计划发射 epoch（与 ``tx_time`` 同形 PMT）。"""
 
+PORT_TX_FREQ_CPI = "tx_freq_cpi"
+"""TX→RX 消息口：每 CPI 的 fftshift 频域参考 ``(n_sym, fft_len)`` complex64。"""
+
 TPP_DONT = gr.TPP_DONT  # type: ignore[attr-defined]
 """``gr.TPP_DONT`` 再导出；epy 块 ``__init__`` 中设 ``set_tag_propagation_policy``。"""
 
@@ -79,6 +82,47 @@ def parse_uhd_time_pmt(value: pmt.pmt) -> float:
 def make_tx_schedule_msg(epoch_s: float):
     """构造 ``tx_schedule`` 消息载荷（与 ``tx_time`` 同形）。"""
     return make_tx_time_pmt(epoch_s)
+
+
+def make_tx_freq_cpi_msg(freq_cpi: np.ndarray):
+    """构造 ``tx_freq_cpi`` 消息：``(dict meta, c32vector row-major)``。"""
+    arr = np.ascontiguousarray(freq_cpi, dtype=np.complex64)
+    if arr.ndim != 2:
+        raise ValueError(f"freq_cpi must be 2-D, got shape {arr.shape}")
+    meta = pmt.make_dict()  # type: ignore[attr-defined]
+    meta = pmt.dict_add(meta, pmt.intern("n_sym"), pmt.from_long(int(arr.shape[0])))  # type: ignore[attr-defined]
+    meta = pmt.dict_add(meta, pmt.intern("fft_len"), pmt.from_long(int(arr.shape[1])))  # type: ignore[attr-defined]
+    flat = arr.reshape(-1)
+    vec = pmt.init_c32vector(int(flat.size), flat)  # type: ignore[attr-defined]
+    return pmt.cons(meta, vec)  # type: ignore[attr-defined]
+
+
+def parse_tx_freq_cpi_msg(msg: pmt.pmt, *, n_sym: int, fft_len: int) -> np.ndarray:
+    """解析 ``tx_freq_cpi`` → ``(n_sym, fft_len) complex64``。"""
+    payload = msg
+    if pmt.is_pair(msg):  # type: ignore[attr-defined]
+        payload = pmt.cdr(msg)  # type: ignore[attr-defined]
+    expected = int(n_sym) * int(fft_len)
+    if pmt.is_c32vector(payload):  # type: ignore[attr-defined]
+        if pmt.length(payload) != expected:  # type: ignore[attr-defined]
+            raise ValueError(
+                f"tx_freq_cpi c32vector length {pmt.length(payload)} != {expected}"  # type: ignore[attr-defined]
+            )
+        return np.asarray(
+            pmt.c32vector_elements(payload), dtype=np.complex64  # type: ignore[attr-defined]
+        ).reshape(int(n_sym), int(fft_len))
+    if pmt.is_blob(payload):  # type: ignore[attr-defined]
+        raw = bytes(pmt.blob_data(payload))  # type: ignore[attr-defined]
+        if len(raw) != expected * 8:
+            raise ValueError(
+                f"tx_freq_cpi blob size {len(raw)} != n_sym*fft_len*8 ({expected * 8})"
+            )
+        return (
+            np.frombuffer(raw, dtype=np.complex64)
+            .reshape(int(n_sym), int(fft_len))
+            .copy()
+        )
+    raise TypeError("tx_freq_cpi message must be (dict, c32vector|blob) or vector/blob")
 
 
 # ---------------------------------------------------------------------------

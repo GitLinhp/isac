@@ -209,7 +209,7 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 1):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self.sionna_resource_grid_tx = sionna_resource_grid_tx.SionnaResourceGridTxBlock(fft_len=fft_len, transpose_len=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
+        self.sionna_resource_grid_tx = sionna_resource_grid_tx.SionnaResourceGridTxBlock(fft_len=fft_len, num_symbols=transpose_len, subcarrier_spacing=subcarrier_spacing, cp_len=fft_len//4, length_tag_key=length_tag_key, num_bits_per_symbol=2, device=device, seed=42)
         self.sionna_resource_grid_tx.set_min_output_buffer((4*transpose_len))
         self.range_profile_record_limiter_dev1 = range_profile_record_limiter_dev1.DivideCpiRecordLimiter(vlen_in=fft_len*zeropadding_fac*transpose_len, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=record_output_dir_dev1, file_sink_attr="blocks_file_sink_dev1", record_file_path_attr="record_file_path_dev1", record_base_name="divide_profiles")
         self.range_profile_record_limiter_dev0 = range_profile_record_limiter_dev0.DivideCpiRecordLimiter(vlen_in=fft_len*zeropadding_fac*transpose_len, record_enable=record_enable, record_max_frames=int(record_max_frames), record_output_dir_override=record_output_dir_dev0, file_sink_attr="blocks_file_sink_dev0", record_file_path_attr="record_file_path_dev0", record_base_name="divide_profiles")
@@ -360,10 +360,10 @@ class data_collection_cooperative_monostatic(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_dev0_win = sip.wrapinstance(self.qtgui_freq_sink_x_dev0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_dev0_win)
-        self.ofdm_range_profile_dev1 = ofdm_range_profile_dev1.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
-        self.ofdm_range_profile_dev0 = ofdm_range_profile_dev0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
-        self.ofdm_divide_cpi_dev1 = ofdm_divide_cpi_dev1.OfdmDivideCpiBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
-        self.ofdm_divide_cpi_dev0 = ofdm_divide_cpi_dev0.OfdmDivideCpiBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, transpose_len=transpose_len)
+        self.ofdm_range_profile_dev1 = ofdm_range_profile_dev1.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, num_symbols=transpose_len)
+        self.ofdm_range_profile_dev0 = ofdm_range_profile_dev0.OfdmRangeProfileBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, num_symbols=transpose_len)
+        self.ofdm_divide_cpi_dev1 = ofdm_divide_cpi_dev1.OfdmDivideCpiBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, num_symbols=transpose_len)
+        self.ofdm_divide_cpi_dev0 = ofdm_divide_cpi_dev0.OfdmDivideCpiBlock(fft_len=fft_len, zeropadding_fac=zeropadding_fac, num_symbols=transpose_len)
         self.fft_vxx_0 = fft.fft_vcc(fft_len, False, (), True, 1)
         self.fft_vxx_0.set_min_output_buffer((2*transpose_len))
         self.fft_rx_dev1 = fft.fft_vcc(fft_len, True, (), True, 1)

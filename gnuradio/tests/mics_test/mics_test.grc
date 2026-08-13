@@ -635,11 +635,11 @@ blocks:
     fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
-    transpose_len: transpose_len
+    num_symbols: transpose_len
     zeropadding_fac: zeropadding_fac
   states:
     _io_cache: "('OFDM Range Profile', 'OfdmRangeProfileBlock', [('fft_len', '2048'),\
-      \ ('zeropadding_fac', '2'), ('transpose_len', '4')], [('0', 'complex', 2048),\
+      \ ('zeropadding_fac', '2'), ('num_symbols', '4')], [('0', 'complex', 2048),\
       \ ('1', 'complex', 2048)], [('0', 'float', 4096), ('1', 'complex', 4096)], '\u53CC\
       \u8F93\u5165 TX/RX \u9891\u57DF\u7B26\u53F7 \u2192 CPI dB \u8DDD\u79BB\u8C31\
       \ + \u53EF\u9009 CPI \u590D\u6570\u8DDD\u79BB\u8C31\uFF08MUSIC\uFF09\u3002',\
@@ -971,10 +971,10 @@ blocks:
     num_bits_per_symbol: '2'
     seed: '42'
     subcarrier_spacing: subcarrier_spacing
-    transpose_len: transpose_len
+    num_symbols: transpose_len
   states:
     _io_cache: "('Sionna ResourceGrid TX', 'SionnaResourceGridTxBlock', [('fft_len',\
-      \ '2048'), ('transpose_len', '4'), ('subcarrier_spacing', '60000.0'), ('cp_len',\
+      \ '2048'), ('num_symbols', '4'), ('subcarrier_spacing', '60000.0'), ('cp_len',\
       \ '512'), ('length_tag_key', \"'packet_len'\"), ('num_bits_per_symbol', '2'),\
       \ ('device', \"'cpu'\"), ('seed', '42')], [], [('0', 'complex', 2048)], '\u65E0\
       \u8F93\u5165\uFF1B\u8F93\u51FA fftshift \u9891\u57DF OFDM \u7B26\u53F7\u5411\
