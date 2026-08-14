@@ -33,6 +33,7 @@ from isac_imp.burst_pack import (
     schedule_idle_delay_s,
 )
 from isac_imp.sionna_resource_grid_tx import _build_freq_grid_torch
+from sionna.phy.ofdm import OFDMModulator
 
 _CMD_Q_MAX = 8
 
@@ -53,14 +54,6 @@ def _modulate_symbol(freq_shifted: np.ndarray, cp_len: int) -> np.ndarray:
     return np.concatenate((td[-cp_len:], td)).astype(np.complex64, copy=False)
 
 
-def _modulate_cpi_torch(freq_shifted: torch.Tensor, cp_len: int) -> torch.Tensor:
-    """批量 IFFT+CP；``freq_shifted`` 形状 ``(n_sym, fft_len)``，已 fftshift。"""
-    td = torch.fft.ifft(
-        torch.fft.ifftshift(freq_shifted, dim=-1), dim=-1, norm="forward"
-    )
-    return torch.cat([td[..., -cp_len:], td], dim=-1)
-
-
 def _precompute_cpi_torch(
     *,
     fft_len: int,
@@ -73,7 +66,11 @@ def _precompute_cpi_torch(
     factor: float,
     burst_len: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """端到端 Torch 预计算，返回主机 ``(freq_cpi, td_unit, td_cpi)``。"""
+    """端到端 Torch 预计算，返回主机 ``(freq_cpi, td_unit, td_cpi)``。
+
+    时域经 ``sionna.phy.ofdm.OFDMModulator``（ortho IFFT）再乘 ``sqrt(fft_len)``，
+    与 GR ``fft_vcc`` / ``norm=\"forward\"`` 幅度对齐。
+    """
     device = _normalize_torch_device(device)
     with torch.inference_mode():
         freq_t, _, _ = _build_freq_grid_torch(
@@ -85,8 +82,9 @@ def _precompute_cpi_torch(
             device=device,
             seed=seed,
         )
-        td_sym = _modulate_cpi_torch(freq_t, cp_len)
-        td_unit_t = td_sym.reshape(-1)
+        modulator = OFDMModulator(cyclic_prefix_length=cp_len, device=device)
+        # Sionna ortho (1/√N) → ×√N 对齐 GR forward IFFT
+        td_unit_t = modulator(freq_t) * (float(fft_len) ** 0.5)
         if int(td_unit_t.numel()) != int(burst_len):
             raise RuntimeError(
                 f"td burst length {td_unit_t.numel()} != expected {burst_len}"
@@ -372,17 +370,16 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
             else float("nan")
         )
         if self._log_last_epoch is not None and (
-            self._log_epoch_n <= 8 or self._log_epoch_n % 50 == 0
+            self._log_epoch_n <= 3 or self._log_epoch_n % 500 == 0
         ):
             dt_ms = (epoch - self._log_last_epoch) * 1000.0
-            print(
+            msg = (
                 f"[ofdm_burst_tx] epoch_dt_ms={dt_ms:.1f} "
-                f"host_gap_ms={host_gap_ms:.1f} "
-                f"write_ms={self._last_write_ms:.2f} "
-                f"cmd_q={self._cmd_q_depth()} cmd_drop={self._cmd_drop} "
-                f"period_ms={self._burst_period_s * 1000.0:.1f} n={self._log_epoch_n}",
-                flush=True,
+                f"host_gap_ms={host_gap_ms:.1f} n={self._log_epoch_n}"
             )
+            if self._cmd_drop > 0:
+                msg += f" cmd_drop={self._cmd_drop}"
+            print(msg, flush=True)
         self._log_last_epoch = epoch
         self._log_last_host_mono = host_now
         self._next_tx_epoch += self._burst_period_s

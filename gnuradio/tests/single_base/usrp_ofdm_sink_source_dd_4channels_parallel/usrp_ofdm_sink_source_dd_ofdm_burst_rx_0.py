@@ -23,16 +23,6 @@ class OfdmBurstRx4Block(_obr.OfdmBurstRxBlock):
         plot_title="Range Profile",
         num_channels=4,
         plot_title_prefix="Range Profile",
-        record_enable=False,
-        record_file_path="",
-        record_max_frames=55,
-        array_spacing_m=0.025,
-        carrier_freq_hz=6.0e9,
-        aoa_enable=False,
-        phase_cal_capture=False,
-        phase_cal_frames=20,
-        phase_cal_path="",
-        phase_bias_deg=(0.0, 0.0, 0.0, 0.0),
     ):
         super().__init__(
             fft_len=fft_len,
@@ -52,16 +42,6 @@ class OfdmBurstRx4Block(_obr.OfdmBurstRxBlock):
             plot_title=plot_title,
             num_channels=4,
             plot_title_prefix=plot_title_prefix,
-            record_enable=record_enable,
-            record_file_path=record_file_path,
-            record_max_frames=record_max_frames,
-            array_spacing_m=array_spacing_m,
-            carrier_freq_hz=carrier_freq_hz,
-            aoa_enable=aoa_enable,
-            phase_cal_capture=phase_cal_capture,
-            phase_cal_frames=phase_cal_frames,
-            phase_cal_path=phase_cal_path,
-            phase_bias_deg=phase_bias_deg,
         )
 
 

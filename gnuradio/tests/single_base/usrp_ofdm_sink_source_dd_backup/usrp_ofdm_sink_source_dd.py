@@ -39,7 +39,10 @@ def snipfcn_scheduled_rx_bind_snippet(self):
     now = time.time()
     self.uhd_usrp_sink_0.set_time_now(uhd.time_spec(now), uhd.ALL_MBOARDS)
     self.uhd_usrp_source_0.set_time_now(uhd.time_spec(now), uhd.ALL_MBOARDS)
-    self.uhd_usrp_source_0.set_max_noutput_items(16384)
+    _maxn = max(16384, int(self.burst_len_samples))
+    self.uhd_usrp_source_0.set_max_noutput_items(_maxn)
+    self.uhd_usrp_source_0.set_min_output_buffer(max(int(self.min_out_buf_val), 2 * int(self.burst_len_samples)))
+    self.ofdm_burst_tx_source_0.set_min_output_buffer(0, max(2 * int(self.burst_len_samples), int(self.min_out_buf_val)))
     self.ofdm_burst_tx_source_0.bind_scheduled_rx(self.uhd_usrp_source_0)
 
 
@@ -146,7 +149,7 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
             uhd.stream_args(
                 cpu_format="fc32",
                 args='num_recv_frames=512,recv_buff_size=25000000',
-                channels=[0],
+                channels=[1],
             ),
         )
         self.uhd_usrp_source_0.set_clock_source('internal', 0)
@@ -162,11 +165,12 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
             uhd.stream_args(
                 cpu_format="fc32",
                 args='num_send_frames=512,send_buff_size=25000000',
-                channels=[0],
+                channels=[1],
             ),
             '',
         )
         self.uhd_usrp_sink_0.set_clock_source('internal', 0)
+        self.uhd_usrp_sink_0.set_time_source('mimo', 0)
         self.uhd_usrp_sink_0.set_samp_rate(samp_rate)
         # No synchronization enforced.
 
@@ -180,7 +184,7 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
             1, #number of inputs
             None # parent
         )
-        self.qtgui_time_sink_x_0.set_update_time(0.10)
+        self.qtgui_time_sink_x_0.set_update_time(0.50)
         self.qtgui_time_sink_x_0.set_y_axis(-1, 1)
 
         self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
@@ -225,7 +229,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.ofdm_burst_tx_source_0 = ofdm_burst_tx_source_0.OfdmBurstTxSourceBlock(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, subcarrier_spacing=subcarrier_spacing, num_bits_per_symbol=2, seed=42, device='cuda', factor=factor, length_tag_key=length_tag_key, time_lead_s=time_lead_s, idle_ms=idle_ms, samp_rate=float(samp_rate), scheduled_rx=True, num_delay_samp=num_delay_samp)
-        self.ofdm_burst_tx_source_0.set_min_output_buffer(min_out_buf_val)
         self.ofdm_burst_rx_0 = ofdm_burst_rx_0.OfdmBurstRxBlock(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, zeropadding_fac=zeropadding_fac, num_delay_samp=num_delay_samp, device='cuda', length_tag_key=length_tag_key, log_interval_s=1.0, range_roi=range_roi, range_bin_step=range_bin_step, music_enable=music_enable, num_sources=1, subarray_size=16, threshold=0.1)
 
 
@@ -233,7 +236,7 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_schedule'), (self.ofdm_burst_rx_0, 'tx_schedule'))
-        self.connect((self.ofdm_burst_tx_source_0, 1), (self.ofdm_burst_rx_0, 1))
+        self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_freq_cpi'), (self.ofdm_burst_rx_0, 'tx_freq_cpi'))
         self.connect((self.ofdm_burst_tx_source_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.ofdm_burst_rx_0, 0))

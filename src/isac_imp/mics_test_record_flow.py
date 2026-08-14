@@ -1,11 +1,20 @@
-"""mics_test / cooperative 流图录制辅助：GRC Snippet 在 main() 中调用 install_*_record_flow(tb)。"""
+"""mics_test / cooperative / usrp_ofdm_4ch 流图录制辅助。
+
+GRC Snippet 在 main() 中调用 ``install_*_record_flow(tb)``。
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from isac_imp.range_profile_record_limiter import bind_record_limit_handler
-from isac_imp.record_target_metadata import append_cooperative_target_row
+from isac_imp.range_profile_record_limiter import (
+    allocate_next_record_path,
+    bind_record_limit_handler,
+)
+from isac_imp.record_target_metadata import (
+    append_cooperative_target_row,
+    append_mono_4ch_target_row,
+)
 
 
 def install_mics_test_record_flow(tb) -> None:
@@ -29,6 +38,32 @@ def install_cooperative_record_flow(tb) -> None:
         original_set_record_enable(record_enable)
         if record_enable and not was_enabled:
             _append_target_metadata_on_record_start(tb)
+
+    tb.set_record_enable = set_record_enable
+
+
+def install_usrp_ofdm_4ch_record_flow(tb) -> None:
+    """单站 4ch：递增 divide_profiles_NNN + 元数据 CSV + 录满自动停。"""
+    install_mics_test_record_flow(tb)
+
+    original_set_record_enable = tb.set_record_enable
+
+    def set_record_enable(record_enable: bool) -> None:
+        was_enabled = tb.get_record_enable()
+        if record_enable and not was_enabled:
+            out_dir = str(tb.get_record_output_dir())
+            path = allocate_next_record_path(out_dir, base_name="divide_profiles")
+            tb.set_record_file_path(path)
+            original_set_record_enable(True)
+            append_mono_4ch_target_row(
+                out_dir,
+                target_x_cm=float(tb.get_target_pos_x_cm()),
+                target_y_cm=float(tb.get_target_pos_y_cm()),
+                data_file=path,
+                record_max_frames=int(tb.get_record_max_frames()),
+            )
+            return
+        original_set_record_enable(record_enable)
 
     tb.set_record_enable = set_record_enable
 

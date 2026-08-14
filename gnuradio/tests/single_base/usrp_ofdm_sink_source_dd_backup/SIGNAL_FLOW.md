@@ -15,7 +15,7 @@
 本流图实现**零多普勒 OFDM 单站雷达**（环回 / 近距目标）：
 
 1. **启动时**在 CUDA 上一次性预计算一整 CPI 的频域网格与时域 IQ，拷回 Host。
-2. **运行期** Host 仅 memcpy 重放时域突发，打 Style1 时间标签，并向 USRP Source 下发 `NUM_SAMPS_AND_DONE`。
+2. **运行期** Host 仅 memcpy 重放时域突发，打 Style1 时间标签，并向 USRP Source **异步**下发 `NUM_SAMPS_AND_DONE`（后台线程，避免 MPM RPC 卡住 TX pacing）。
 3. **同 `tx_epoch`** 时刻 USRP 发射与接收各 `8704` 个样点。
 4. RX 在 Host 做延迟对齐后，将 CPI 送入 CUDA 做去 CP / FFT / 信道估计 / 距离 FFT，再在 Qt 上显示 ROI 距离谱（可选异步 MUSIC）。
 
@@ -37,11 +37,9 @@ flowchart LR
   subgraph rxHost [Host_RX]
     Rx["OfdmBurstRx\nCUDA DSP + plot + MUSIC"]
   end
-  TimeSink["qtgui_time_sink"]
 
   TxSrc -->|"out0 complex64 IQ"| Sink
-  TxSrc --> TimeSink
-  TxSrc -->|"out1 vlen=fft_len freq ref"| Rx
+  TxSrc -->|"msg tx_freq_cpi\n首 CPI 一次"| Rx
   TxSrc -->|"msg tx_schedule"| Rx
   Source -->|"fc32 IQ + rx_time"| Rx
   Sink -.->|"RF air / loopback"| Source
@@ -49,14 +47,19 @@ flowchart LR
 
 连接关系（与生成代码一致）：
 
-| 源                                | 目的                        | 类型                          |
-| --------------------------------- | --------------------------- | ----------------------------- |
-| `OfdmBurstTxSource.out0`        | `uhd_usrp_sink_0`         | 时域 IQ`complex64`          |
-| `OfdmBurstTxSource.out0`        | `qtgui_time_sink_x_0`     | 监视                          |
-| `OfdmBurstTxSource.out1`        | `OfdmBurstRx.in1`         | 频域参考`(complex64, 2048)` |
-| `OfdmBurstTxSource.tx_schedule` | `OfdmBurstRx.tx_schedule` | PMT 消息                      |
-| `uhd_usrp_source_0`             | `OfdmBurstRx.in0`         | 接收 IQ`fc32`               |
+| 源                                | 目的                        | 类型                                      |
+| --------------------------------- | --------------------------- | ----------------------------------------- |
+| `OfdmBurstTxSource.out0`        | `uhd_usrp_sink_0`         | 时域 IQ`complex64`（唯一流输出）        |
+| `OfdmBurstTxSource.tx_freq_cpi` | `OfdmBurstRx.tx_freq_cpi` | PMT 消息（首 CPI 一次；RX 粘性复用）      |
+| `OfdmBurstTxSource.tx_schedule` | `OfdmBurstRx.tx_schedule` | PMT 消息（每 CPI）                        |
+| `uhd_usrp_source_0`             | `OfdmBurstRx.in0`         | 接收 IQ`fc32`                           |
 
+**反压 / 吞吐说明**：
+
+1. TX/RX 均为单流口；无 out1/in1、无 null_sink/source。
+2. 频域参考在 `start()` 预缓存 PMT，仅首 CPI `pub` 一次；RX 用 `_tx_cpi_latest` 粘性复用，避免每 CPI `init_c32vector`/`c32vector_elements` 拖住 TX。
+3. 后续 CPI command lead=`20ms`；`host_gap_ms` 与 `epoch_dt_ms` 用于验收。
+4. qtgui time sink 默认 disabled，不接 out0。
 ---
 
 ## 3. 关键参数
@@ -71,7 +74,7 @@ flowchart LR
 | `subcarrier_spacing`              | 120 kHz                                   | 子载波间隔                                      |
 | `samp_rate`                       | `fft_len × scs` = **245.76 MHz** | IQ 采样率                                       |
 | `burst_len_samples`               | 4×(2048+128) = **8704**            | 一 CPI 时域样点数（约 35.4 µs）                |
-| `idle_ms`                         | 10                                        | 突发间隙（主机侧 idle）                         |
+| `idle_ms`                         | 10                                        | 计入 `burst_period` / `tx_time` 的突发间隙（非主机 `return 0` idle） |
 | `time_lead_s` / `wait_to_start` | 0.5                                       | **首 CPI** 发射提前量（后续 CPI ≤20 ms） |
 | `freq`                            | 6 GHz                                     | RF 中心频率                                     |
 | `factor`                          | 0.008                                     | TX 幅度缩放（GUI）                              |
@@ -98,8 +101,8 @@ $$
 | ------ | ---------------------------------- | ------------------------------------------------------------------------ | ------------ |
 | 建块前 | `patch_usrp_source_factory()`    | USRP Source 以`issue_stream_cmd_on_start=False` 创建，禁止启动即连续收 | Host         |
 | 建块后 | `set_time_now`（Sink + Source）  | 同机 TX/RX 绝对时间对齐                                                  | Host → USRP |
-| 建块后 | `set_max_noutput_items(16384)`   | 允许一次`work` 拉满一 CPI（8704），避免默认 ~8191 分块卡死            | Host / GR    |
-| 建块后 | `bind_scheduled_rx(usrp_source)` | TX 持有 Source 句柄，以便每突发`issue_stream_cmd`                      | Host         |
+| 建块后 | `set_max_noutput_items(max(16384, burst_len))` + `min_output_buffer≥2·burst` | 允许一次 `work` 拉满一 CPI（8704），避免默认 ~8191 分块卡死 | Host / GR |
+| 建块后 | `bind_scheduled_rx(usrp_source)` | TX 持有 Source 句柄；每突发异步 `issue_stream_cmd` | Host         |
 
 实现位置：流图 snippet；调度补丁见 [`scheduled_usrp_source.py`](../../../../src/isac_imp/scheduled_usrp_source.py)。
 
@@ -126,22 +129,24 @@ $$
 
 每个 CPI：
 
-1. **out1**：写出 `num_symbols` 个频域向量；首向量打 `packet_len` tag（值为符号数 **4**）。
+1. **首 CPI**：`message_port_pub(tx_freq_cpi, 缓存 PMT)`（仅一次）；后续 CPI 跳过。
 2. **`_begin_burst`**：
    - 首 CPI：`epoch = max(now + time_lead_s, next)`（约 +0.5 s 给硬件上臂）。
-   - 后续 CPI：仅 `min(0.02, time_lead)` 命令提前量，避免再次跳 0.5 s。
+   - 后续 CPI：command lead **20 ms**；落后则按 `burst_period_s` 整周期追赶。
    - `add_style1_sob_time` → tags `tx_sob` + `tx_time`。
    - `message_port_pub(tx_schedule, make_tx_schedule_msg(epoch))`。
-   - `_issue_scheduled_recv(epoch)`：对 USRP Source 发 `STREAM_MODE_NUM_SAMPS_AND_DONE`，`num_samps=burst_len`，`time_spec=epoch`。
-   - `_next_tx_epoch += burst_period_s`（突发时长 + idle）。
+   - `_issue_scheduled_recv(epoch)`：将 `NUM_SAMPS_AND_DONE` **入异步队列**（单 worker），不阻塞 TX work / pacing。
+   - `_next_tx_epoch += burst_period_s`。
 3. **out0**：拷贝 `td_cpi`；末样点 `add_style1_eob`。
-4. 若 `idle_ms > 0`：突发结束后 `idle_until = monotonic + idle_s`，期间 `work` 返回 0。
+4. CPI 间隙仅由 `tx_time` / `_next_tx_epoch`（`burst_period_s`）表达；主机侧不做 `return 0` idle（否则 GR 源会被反压挂起、自锁到 ~4 CPI/s）。
 
-| 输出            | 形状 / 类型                      | 下游                  |
-| --------------- | -------------------------------- | --------------------- |
-| out0            | `complex64` 标量流，CPI=8704   | USRP Sink + time sink |
-| out1            | `(complex64, 2048)` 向量流     | RX 参考               |
-| `tx_schedule` | PMT`(uint64 sec, double frac)` | RX 消息口             |
+| 输出              | 形状 / 类型                         | 下游                  |
+| ----------------- | ----------------------------------- | --------------------- |
+| out0              | `complex64` 标量流，CPI=8704      | USRP Sink（唯一消费者） |
+| `tx_freq_cpi`   | PMT `(dict meta, c32vector)`          | RX（首 CPI 一次）     |
+| `tx_schedule`   | PMT`(uint64 sec, double frac)`    | RX 每 CPI             |
+
+诊断：`epoch_dt_ms` / `host_gap_ms` / `write_ms` / `cmd_q` / `cmd_drop` 节流打印；稳态 `host_gap≈period`，`write_ms` 应远小于 period。
 
 Style1（[`burst_pack.py`](../../../../src/isac_imp/burst_pack.py)）：Sink 的 `len_tag_name=''`，靠 `tx_sob` / `tx_time` / `tx_eob` 界定突发，**不是** length-tag 突发。
 
@@ -174,8 +179,8 @@ TX RF →（环回电缆或近距目标散射）→ RX RF。
 | 设备 | USRP FPGA/RF → Host                               |
 | 格式 | `fc32`                                           |
 | 天线 | `RX1`                                            |
-| 启动 | 已 patch：不连续流；由 TX`issue_stream_cmd` 驱动 |
-| 其它 | `max_noutput_items=16384`                        |
+| 启动 | 已 patch：不连续流；由 TX **异步** `issue_stream_cmd` 驱动 |
+| 其它 | `max_noutput ≥ max(16384, burst_len)`；`min_output_buffer ≥ 2·burst` |
 
 ### 7.2 `OfdmBurstRxBlock`（统一 sink）
 
@@ -183,14 +188,14 @@ TX RF →（环回电缆或近距目标散射）→ RX RF。
 
 | 步骤 | 方法                     | 做什么                                                                                 | 设备            | 数据                   |
 | ---- | ------------------------ | -------------------------------------------------------------------------------------- | --------------- | ---------------------- |
-| 1    | `_on_tx_schedule`      | 收到计划 epoch → 跳到下一`packet_len` 对齐；清空部分 TX 符号缓冲                    | Host            | msg                    |
-| 2    | `_ingest_tx`           | 等`packet_len` tag，攒满 4×`(2048,)` → 入队 `(4,2048) complex64`（队列最多 2） | Host            | TX 参考 CPI            |
+| 1    | `_on_tx_schedule`      | 收到计划 epoch（轻量 ack）                                                            | Host            | msg                    |
+| 2    | `_on_tx_freq_cpi`      | 解析一次 → `_tx_cpi_latest` + 入队（粘性复用）                                        | Host            | TX 参考 CPI            |
 | 3    | `_ingest_iq`           | 找`rx_time` → 从该偏移 bulk memcpy 满 `burst_len`                                 | Host            | `(8704,) complex64` |
-| 4    | `_apply_delay`         | 左移`num_delay_samp`（默认 277），尾部填 0，把环回峰对齐到 ~0 m                      | Host            | 原地                   |
-| 5    | `process_rx_cpi_torch` | H2D → CUDA DSP → D2H                                                                 | **CUDA**  | 见下                   |
-| 6    | `_emit_plot_and_music` | ROI 裁剪刷新图；可选异步 MUSIC                                                         | Host / Qt + CPU | —                     |
+| 4    | `_apply_delay`         | 左移`num_delay_samp`（默认 277），尾部填 0                                            | Host            | 原地                   |
+| 5    | 异步 `process_rx_cpi_torch` | 入队后 H2D → CUDA → D2H（不阻塞 GR `work`） | **CUDA**（后台线程） | 见下 |
+| 6    | `_emit_plot_and_music` | ROI 裁剪刷新图；可选异步 MUSIC | Host / Qt + CPU | — |
 
-**`forecast` 注意**：正在收集 IQ 时 `need_tx=0`，避免双输入在 TX 上 stall，导致剩余样点凑不齐（历史 ~8191 分块问题）。
+**`forecast`**：仅对 in0 索取 IQ（整 CPI / 剩余样点）；无第二流口。
 
 ### 7.3 CUDA 距离谱（`process_rx_cpi_torch`）
 
@@ -212,8 +217,8 @@ TX RF →（环回电缆或近距目标散射）→ RX RF。
 
 ```text
 t ≈ epoch − 0.5 s（首帧）/ epoch − 几十 ms（后续）
-  TX work: 写频域 ref + Style1 tags + tx_schedule + issue_stream_cmd
-  Host memcpy → USRP Sink DMA
+  TX work: tx_freq_cpi(once) + Style1 + tx_schedule + enqueue stream_cmd
+  Host memcpy out0 → USRP Sink DMA
 
 t = epoch
   USRP TX 发 8704 samp（~35.4 µs @ 245.76 MHz）
@@ -221,7 +226,7 @@ t = epoch
 
 t > epoch
   RX: delay(277) → CUDA 距离谱 → plot（± MUSIC）
-  Host idle ≈ idle_ms（10 ms）后下一 CPI
+  下一 CPI 尽快写入；epoch 间隔 ≈ idle_ms + burst_s
 ```
 
 ```mermaid
@@ -234,8 +239,8 @@ sequenceDiagram
 
   TX->>TX: start precompute once
   Note over TX,GPU: CUDA RG plus IFFT CP then D2H
-  TX->>RX: freq ref plus tx_schedule
-  TX->>Src: NUM_SAMPS_AND_DONE at epoch
+  TX->>RX: tx_freq_cpi msg plus tx_schedule
+  TX->>Src: async NUM_SAMPS_AND_DONE at epoch
   TX->>Sink: Style1 IQ at epoch
   Sink-->>Src: RF loopback
   Src->>RX: IQ plus rx_time
@@ -273,7 +278,7 @@ sequenceDiagram
 | TX 统一源         | `src/isac_imp/ofdm_burst_tx_source.py`                | 预计算 + Style1 + 定点收样命令                       |
 | RX 统一 sink      | `src/isac_imp/ofdm_burst_rx.py`                       | IQ/参考对齐 + CUDA 距离谱 + plot/MUSIC               |
 | 频域网格          | `src/isac_imp/sionna_resource_grid_tx.py`             | `_build_freq_grid_torch`（被 TX `start()` 调用） |
-| Style1 / 调度消息 | `src/isac_imp/burst_pack.py`                          | `tx_sob`/`tx_time`/`tx_eob`、`tx_schedule`   |
+| Style1 / 调度消息 | `src/isac_imp/burst_pack.py`                          | `tx_sob`/`tx_time`/`tx_eob`、`tx_schedule`/`tx_freq_cpi` |
 | Source 工厂补丁   | `src/isac_imp/scheduled_usrp_source.py`               | 禁止启动连续收                                       |
 | ROI               | `src/isac_imp/range_profile_roi_slice.py`             | `compute_range_roi`                                |
 | 显示类            | `src/isac_imp/range_profile_plot.py`                  | `_RangeProfileDisplay`（被 RX 实例化）             |

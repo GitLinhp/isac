@@ -21,6 +21,7 @@ _BG = "w"
 _FG = "#333333"
 _LINE = "#0066cc"
 _MUSIC_LINE = "#cc0000"
+_AOA_UNSET = object()
 
 _display_registry: list[weakref.ReferenceType[_RangeProfileDisplay]] = []
 
@@ -50,11 +51,33 @@ def publish_music_ranges(ranges_m: list[float]) -> None:
     publish_range_estimates(ranges_m, method_name="MUSIC")
 
 
+def publish_aoa_deg(aoa_deg: float | None) -> None:
+    """向已注册窗口推送 AoA 标注（优先标题含 ch0 的窗口）。"""
+    targets = []
+    for ref in list(_display_registry):
+        display = ref()
+        if display is None:
+            continue
+        title = str(getattr(display, "_title", "")).lower()
+        if "ch0" in title or "ch 0" in title:
+            targets.append(display)
+    if not targets:
+        # fallback: first live display
+        for ref in list(_display_registry):
+            display = ref()
+            if display is not None:
+                targets = [display]
+                break
+    for display in targets:
+        display.post_aoa_deg(aoa_deg)
+
+
 class _RangeProfileDisplay(QObject):
     """Qt 主线程上的 PyQtGraph 距离谱折线图窗口（延迟建窗）。"""
 
     profile_ready = pyqtSignal(object, object)  # x_m, y_db
     range_estimates_ready = pyqtSignal(object, object)  # ranges_m, method_name
+    aoa_ready = pyqtSignal(object)  # float | None
     show_requested = pyqtSignal()
 
     def __init__(
@@ -71,6 +94,7 @@ class _RangeProfileDisplay(QObject):
         self._xlabel = str(xlabel)
         self._ylabel = str(ylabel)
         self._method_name: str | None = None
+        self._aoa_deg: float | None = None
 
         self._win: pg.GraphicsLayoutWidget | None = None
         self._plot = None
@@ -78,6 +102,7 @@ class _RangeProfileDisplay(QObject):
         self._estimate_lines: list[pg.InfiniteLine] = []
         self._pending_profile: tuple[np.ndarray, np.ndarray] | None = None
         self._pending_estimates: tuple[list[float], str] | None = None
+        self._pending_aoa: float | None | object = _AOA_UNSET
 
         app = QApplication.instance()
         if app is not None:
@@ -87,6 +112,7 @@ class _RangeProfileDisplay(QObject):
         self.range_estimates_ready.connect(
             self._on_range_estimates, Qt.QueuedConnection
         )
+        self.aoa_ready.connect(self._on_aoa, Qt.QueuedConnection)
         self.show_requested.connect(self._do_show, Qt.QueuedConnection)
         _register_display(self)
 
@@ -130,9 +156,13 @@ class _RangeProfileDisplay(QObject):
             return
 
     def _format_plot_title(self) -> str:
+        extras: list[str] = []
         if self._method_name:
-            return f"{self._title} — {self._method_name}  [#{self._frame_count}]"
-        return f"{self._title}  [#{self._frame_count}]"
+            extras.append(self._method_name)
+        if self._aoa_deg is not None:
+            extras.append(f"AoA={self._aoa_deg:.1f}°")
+        mid = (" — " + " · ".join(extras)) if extras else ""
+        return f"{self._title}{mid}  [#{self._frame_count}]"
 
     def request_show(self) -> None:
         self.show_requested.emit()
@@ -148,6 +178,10 @@ class _RangeProfileDisplay(QObject):
             ranges_m, method_name = self._pending_estimates
             self._pending_estimates = None
             self._apply_range_estimates(ranges_m, method_name)
+        if self._pending_aoa is not _AOA_UNSET:
+            aoa = self._pending_aoa
+            self._pending_aoa = _AOA_UNSET
+            self._apply_aoa_deg(aoa)  # type: ignore[arg-type]
         self._win.show()
         try:
             self._win.raise_()
@@ -181,6 +215,13 @@ class _RangeProfileDisplay(QObject):
 
     def post_music_ranges(self, ranges_m: list[float]) -> None:
         self.post_range_estimates(ranges_m, "MUSIC")
+
+    def post_aoa_deg(self, aoa_deg: float | None) -> None:
+        self.aoa_ready.emit(aoa_deg)
+
+    def _apply_aoa_deg(self, aoa_deg: float | None) -> None:
+        self._aoa_deg = None if aoa_deg is None else float(aoa_deg)
+        self._set_plot_title(self._format_plot_title())
 
     def _apply_range_estimates(
         self, ranges_m: list[float], method_name: str
@@ -237,6 +278,13 @@ class _RangeProfileDisplay(QObject):
             self._pending_estimates = (list(ranges_m), str(method_name))
             return
         self._apply_range_estimates(ranges_m, method_name)
+
+    @pyqtSlot(object)
+    def _on_aoa(self, aoa_deg: float | None) -> None:
+        if not self._ensure_window():
+            self._pending_aoa = aoa_deg
+            return
+        self._apply_aoa_deg(aoa_deg)
 
     @pyqtSlot(object, object)
     def _on_profile(self, x_m: np.ndarray, y_db: np.ndarray) -> None:

@@ -96,9 +96,6 @@ flowchart LR
 | `range_bin_step`                  | `c/(2·fs·zp)` ≈ 0.153 m              | 距离 bin                                        |
 | `range_roi`                       | (0.0, 3.5) m                              | 显示 / MUSIC ROI                                |
 | `music_enable`                    | False                                     | 异步 1D MUSIC（GUI 复选框）                     |
-| `aoa_enable`                      | False                                     | 异步 ULA 空间 MUSIC 方位角（GUI）               |
-| `array_spacing_m`                 | **0.025**                               | ULA 阵元间距 d (m)，GUI 可配                    |
-| `phase_cal_capture`               | False                                     | 方式 A 相位校准采集（满 20 帧自动停）           |
 | `device`                          | `'cuda'`                                | TX 预计算与 RX 每 CPI DSP                       |
 | `length_tag_key`                  | `packet_len`                            | 频域参考 CPI 边界 tag                           |
 
@@ -225,7 +222,6 @@ TX RF →（环回电缆或近距目标散射）→ RX RF。
 
 - **Plot**：`_RangeProfileDisplay`（`range_profile_plot.py`）；`compute_range_roi` 裁 `(0, 3.5) m`；节流约 0.10 s。
 - **MUSIC**：`RangeMusicEstimator`（`isac/sensing/detection/range_music_estimator.py`）；`ThreadPoolExecutor` 异步；默认 `num_sources=1`，`subarray_size=16`；结果画竖线。输入为全谱复数 `cx`，估计器内部再按 ROI 切片。
-- **AoA**：`UlaAoaEstimator`；先对 `cx` 施加相位校准权，再空间 MUSIC；ch0 标题标注 `AoA=…°`。
 
 ---
 
@@ -279,7 +275,6 @@ sequenceDiagram
 | 去 CP / FFT / 距离谱       | CUDA → Host    | dB`(8192,) f32`；cx `(8192,) c64` |
 | Plot                       | Qt 主线程       | ROI 子集                              |
 | MUSIC                      | Host 线程池     | `peak_ranges_m` 列表                |
-| 相位校准 / AoA             | Host 线程池     | `rx_phase_cal.npz`；`peak_angles_deg` |
 
 **结论**：DSP 与可视化已收进 `OfdmBurstRx`；TX 侧 CUDA 仅用于 `start()` 预计算，运行期全 Host 重放以保证实时。
 
@@ -302,33 +297,10 @@ sequenceDiagram
 
 安装钩子：`install_usrp_ofdm_4ch_record_flow`（分配路径 + 写 CSV + 录满停）。
 
----
-
-## 11. 相位校准与 ULA 方位角
-
-4 元 ULA；方式 A（等长功分/环回）通道相位校准 + 空间 MUSIC 测角。
-
-| 项 | 说明 |
-| --- | --- |
-| 阵列 | 4 元 ULA；间距 **`array_spacing_m`（d）GUI 可配**，默认 `0.025` m（≈λ/2 @ 6 GHz） |
-| 波长 | \(\lambda=c/f\)，`f` 为流图 `freq`（传入 `carrier_freq_hz`） |
-| 校准 GUI | **Phase Cal**：累计默认 **20** 帧后自动停并取消勾选 |
-| 校准算法 | ROI 内非相干峰 bin；相对 ch0 复平面平均相位 → \(w_k=\exp(-j\bar\phi_k)\) |
-| 校准文件 | `data/experiment/usrp_ofdm_sink_source_dd/rx_phase_cal.npz`（启动自动加载） |
-| 手动偏置 | GUI **Phase bias ch0–ch3 (deg)**：`[-180, 180]`，步进 `0.1`；\(w_{\mathrm{eff}}=w_{\mathrm{auto}}\cdot e^{-j\cdot\mathrm{bias}}\)（与自动校准**相乘叠加**） |
-| 实时相位 | 主窗 `QLabel`：ROI 峰 bin 上相对 ch0 的 \(\phi_k\)（施加 `w_eff` 后，约 0.1 s 刷新） |
-| 录制 | 仍写**原始** `cx`（不施加校准权） |
-| AoA GUI | **AoA Enable**；异步空间 MUSIC（峰邻域 ±2 bin 快拍）；使用 `w_eff` |
-| 导向 | \(a_n(\theta)=\exp(j2\pi(d/\lambda)n\sin\theta)\)，\(+\sin\theta\) 指向通道序号增大方向 |
-| 显示 | ch0 Range Profile 标题标注 `AoA=…°`；日志 `[UlaAoa]` / `[PhaseCal]` |
-
-操作：接等长功分 → **Phase Cal**（完成后自动取消勾选，且**手动偏置清零**）→ 看相位标签≈0 → 必要时再微调偏置 → 设好 d → AoA Enable。
-
-注意：`w_eff=w_auto·e^{-j·bias}`。若先拧偏置再跑 Phase Cal，旧 bias 会叠在新 `w_auto` 上，标签会出现约 `-bias` 的假残差；因此 Cal 完成会自动 `bias→0`。
 
 ---
 
-## 12. 相关源码索引
+## 11. 相关源码索引
 
 ### 本流图直接使用
 
@@ -336,15 +308,13 @@ sequenceDiagram
 | ----------------- | ------------------------------------------------------- | ---------------------------------------------------- |
 | Flowgraph         | `usrp_ofdm_sink_source_dd.py` / `.grc`              | 拓扑与参数                                           |
 | TX 统一源         | `src/isac_imp/ofdm_burst_tx_source.py`                | 预计算 + Style1 + 定点收样命令                       |
-| RX 统一 sink      | `src/isac_imp/ofdm_burst_rx.py`                       | IQ/参考对齐 + CUDA 距离谱 + plot/MUSIC/AoA + 录制    |
-| 相位校准          | `src/isac_imp/rx_phase_calibration.py`                | 方式 A 累计/存取/apply                               |
+| RX 统一 sink      | `src/isac_imp/ofdm_burst_rx.py`                       | IQ/参考对齐 + CUDA 距离谱 + plot/MUSIC + 录制        |
 | 频域网格          | `src/isac_imp/sionna_resource_grid_tx.py`             | `_build_freq_grid_torch`（被 TX `start()` 调用） |
 | Style1 / 调度消息 | `src/isac_imp/burst_pack.py`                          | `tx_sob`/`tx_time`/`tx_eob`、`tx_schedule`/`tx_freq_cpi` |
 | Source 工厂补丁   | `src/isac_imp/scheduled_usrp_source.py`               | 禁止启动连续收                                       |
 | ROI               | `src/isac_imp/range_profile_roi_slice.py`             | `compute_range_roi`                                |
 | 显示类            | `src/isac_imp/range_profile_plot.py`                  | `_RangeProfileDisplay`（被 RX 实例化）             |
 | MUSIC 估计器      | `src/isac/sensing/detection/range_music_estimator.py` | 异步测距                                             |
-| ULA AoA           | `src/isac/sensing/detection/ula_aoa_estimator.py`     | 空间 MUSIC 方位角                                    |
 
 ### 本流图未接入（遗留 / 旧多块链）
 

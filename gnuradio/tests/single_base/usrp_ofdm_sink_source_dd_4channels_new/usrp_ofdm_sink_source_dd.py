@@ -30,60 +30,6 @@ import usrp_ofdm_sink_source_dd_ofdm_burst_rx_0 as ofdm_burst_rx_0  # embedded p
 import usrp_ofdm_sink_source_dd_ofdm_burst_tx_source_0 as ofdm_burst_tx_source_0  # embedded python block
 
 
-def snipfcn_bind_phase_cal_done_snippet(self):
-    from isac_imp.ofdm_burst_rx import bind_phase_cal_done_handler
-
-    def _sync_phase_bias_widgets_to_zero():
-        for i in range(4):
-            setattr(self, f"phase_bias_ch{i}_deg", 0.0)
-        if hasattr(self, "ofdm_burst_rx_0"):
-            self.ofdm_burst_rx_0.phase_bias_deg = (0.0, 0.0, 0.0, 0.0)
-        for i in range(4):
-            win = getattr(self, f"_phase_bias_ch{i}_deg_win", None)
-            if win is None:
-                continue
-            try:
-                if hasattr(win, "counter") and hasattr(win.counter, "setValue"):
-                    win.counter.setValue(0.0)
-                elif hasattr(win, "d_widget") and hasattr(win.d_widget, "setValue"):
-                    win.d_widget.setValue(0.0)
-            except Exception:
-                pass
-
-    def _on_phase_cal_done():
-        self.set_phase_cal_capture(False)
-        reset_fn = getattr(self, "reset_phase_bias_after_cal", None)
-        if callable(reset_fn):
-            reset_fn()
-        else:
-            _sync_phase_bias_widgets_to_zero()
-
-    bind_phase_cal_done_handler(_on_phase_cal_done)
-
-def snipfcn_bind_phase_display_snippet(self):
-    from isac_imp.ofdm_burst_rx import bind_phase_display_handler
-    from PyQt5 import Qt
-
-    if not getattr(self, "_rx_phase_label", None):
-        self._rx_phase_label = Qt.QLabel(
-            "RX phase (rel ch0, after cal+bias)  ch0:+0.0  ch1:+0.0  ch2:+0.0  ch3:+0.0 °"
-        )
-        self.top_layout.addWidget(self._rx_phase_label)
-
-    def _on_phases(phases_deg):
-        label = getattr(self, "_rx_phase_label", None)
-        if label is None:
-            return
-        parts = [f"ch{i}:{float(p):+.1f}" for i, p in enumerate(phases_deg)]
-        text = "RX phase (rel ch0, after cal+bias)  " + "  ".join(parts) + " °"
-        Qt.QMetaObject.invokeMethod(label, "setText", Qt.Q_ARG("QString", text))
-
-    bind_phase_display_handler(_on_phases)
-
-def snipfcn_install_usrp_ofdm_4ch_record_flow_snippet(self):
-    from isac_imp.mics_test_record_flow import install_usrp_ofdm_4ch_record_flow
-    install_usrp_ofdm_4ch_record_flow(self)
-
 def snipfcn_patch_usrp_source_factory_snippet(self):
     from isac_imp.scheduled_usrp_source import patch_usrp_source_factory
     patch_usrp_source_factory()
@@ -100,10 +46,12 @@ def snipfcn_scheduled_rx_bind_snippet(self):
     self.ofdm_burst_tx_source_0.set_min_output_buffer(0, max(2 * int(self.burst_len_samples), int(self.min_out_buf_val)))
     self.ofdm_burst_tx_source_0.bind_scheduled_rx(self.uhd_usrp_source_0)
 
+def snipfcn_install_usrp_ofdm_4ch_record_flow_snippet(self):
+    from isac_imp.mics_test_record_flow import install_usrp_ofdm_4ch_record_flow
+    install_usrp_ofdm_4ch_record_flow(self)
+
 
 def snippets_main_after_init(tb):
-    snipfcn_bind_phase_cal_done_snippet(tb)
-    snipfcn_bind_phase_display_snippet(tb)
     snipfcn_install_usrp_ofdm_4ch_record_flow_snippet(tb)
     snipfcn_scheduled_rx_bind_snippet(tb)
 
@@ -169,12 +117,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self.record_enable = record_enable = False
         self.range_roi = range_roi = (0.0, 3.5)
         self.range_bin_step = range_bin_step = 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
-        self.phase_cal_frames = phase_cal_frames = 20
-        self.phase_cal_capture = phase_cal_capture = False
-        self.phase_bias_ch3_deg = phase_bias_ch3_deg = 0.0
-        self.phase_bias_ch2_deg = phase_bias_ch2_deg = 0.0
-        self.phase_bias_ch1_deg = phase_bias_ch1_deg = 0.0
-        self.phase_bias_ch0_deg = phase_bias_ch0_deg = 0.0
         self.num_delay_samp = num_delay_samp = 277
         self.music_enable = music_enable = False
         self.min_out_buf_val = min_out_buf_val = packet_len*2
@@ -183,8 +125,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self.freq = freq = 6.0e9
         self.factor = factor = 0.008
         self.burst_len_samples = burst_len_samples = num_symbols * (fft_len + cp_len)
-        self.array_spacing_m = array_spacing_m = 0.025
-        self.aoa_enable = aoa_enable = False
         self.TX_gain = TX_gain = 20
         self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.RX_gain = RX_gain = 20
@@ -204,29 +144,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(1, 2):
             self.top_grid_layout.setColumnStretch(c, 1)
-        _phase_cal_capture_check_box = Qt.QCheckBox("Phase Cal")
-        self._phase_cal_capture_choices = {True: True, False: False}
-        self._phase_cal_capture_choices_inv = dict((v,k) for k,v in self._phase_cal_capture_choices.items())
-        self._phase_cal_capture_callback = lambda i: Qt.QMetaObject.invokeMethod(_phase_cal_capture_check_box, "setChecked", Qt.Q_ARG("bool", self._phase_cal_capture_choices_inv[i]))
-        self._phase_cal_capture_callback(self.phase_cal_capture)
-        _phase_cal_capture_check_box.stateChanged.connect(lambda i: self.set_phase_cal_capture(self._phase_cal_capture_choices[bool(i)]))
-        self.top_grid_layout.addWidget(_phase_cal_capture_check_box, 0, 3, 1, 1)
-        for r in range(0, 1):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(3, 4):
-            self.top_grid_layout.setColumnStretch(c, 1)
-        self._phase_bias_ch3_deg_range = qtgui.Range(-180, 180, 0.1, 0.0, 200)
-        self._phase_bias_ch3_deg_win = qtgui.RangeWidget(self._phase_bias_ch3_deg_range, self.set_phase_bias_ch3_deg, "Phase bias ch3 (deg)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._phase_bias_ch3_deg_win)
-        self._phase_bias_ch2_deg_range = qtgui.Range(-180, 180, 0.1, 0.0, 200)
-        self._phase_bias_ch2_deg_win = qtgui.RangeWidget(self._phase_bias_ch2_deg_range, self.set_phase_bias_ch2_deg, "Phase bias ch2 (deg)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._phase_bias_ch2_deg_win)
-        self._phase_bias_ch1_deg_range = qtgui.Range(-180, 180, 0.1, 0.0, 200)
-        self._phase_bias_ch1_deg_win = qtgui.RangeWidget(self._phase_bias_ch1_deg_range, self.set_phase_bias_ch1_deg, "Phase bias ch1 (deg)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._phase_bias_ch1_deg_win)
-        self._phase_bias_ch0_deg_range = qtgui.Range(-180, 180, 0.1, 0.0, 200)
-        self._phase_bias_ch0_deg_win = qtgui.RangeWidget(self._phase_bias_ch0_deg_range, self.set_phase_bias_ch0_deg, "Phase bias ch0 (deg)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._phase_bias_ch0_deg_win)
         self._num_delay_samp_range = qtgui.Range(0, packet_len, 1, 277, 200)
         self._num_delay_samp_win = qtgui.RangeWidget(self._num_delay_samp_range, self.set_num_delay_samp, "Number of delayed samples", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._num_delay_samp_win)
@@ -244,20 +161,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self._factor_range = qtgui.Range(0, 1, 0.001, 0.008, 200)
         self._factor_win = qtgui.RangeWidget(self._factor_range, self.set_factor, "'factor'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._factor_win)
-        self._array_spacing_m_range = qtgui.Range(0, 100, 0.001, 0.025, 200)
-        self._array_spacing_m_win = qtgui.RangeWidget(self._array_spacing_m_range, self.set_array_spacing_m, "ULA spacing d (m)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._array_spacing_m_win)
-        _aoa_enable_check_box = Qt.QCheckBox("AoA Enable")
-        self._aoa_enable_choices = {True: True, False: False}
-        self._aoa_enable_choices_inv = dict((v,k) for k,v in self._aoa_enable_choices.items())
-        self._aoa_enable_callback = lambda i: Qt.QMetaObject.invokeMethod(_aoa_enable_check_box, "setChecked", Qt.Q_ARG("bool", self._aoa_enable_choices_inv[i]))
-        self._aoa_enable_callback(self.aoa_enable)
-        _aoa_enable_check_box.stateChanged.connect(lambda i: self.set_aoa_enable(self._aoa_enable_choices[bool(i)]))
-        self.top_grid_layout.addWidget(_aoa_enable_check_box, 0, 2, 1, 1)
-        for r in range(0, 1):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(2, 3):
-            self.top_grid_layout.setColumnStretch(c, 1)
         self._TX_gain_range = qtgui.Range(0, 50, 1, 20, 200)
         self._TX_gain_win = qtgui.RangeWidget(self._TX_gain_range, self.set_TX_gain, "TX Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._TX_gain_win)
@@ -378,23 +281,23 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.ofdm_burst_tx_source_0 = ofdm_burst_tx_source_0.OfdmBurstTxSourceBlock(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, subcarrier_spacing=subcarrier_spacing, num_bits_per_symbol=2, seed=42, device='cuda', factor=factor, length_tag_key=length_tag_key, time_lead_s=time_lead_s, idle_ms=idle_ms, samp_rate=float(samp_rate), scheduled_rx=True, num_delay_samp=num_delay_samp)
-        self.ofdm_burst_rx_0 = ofdm_burst_rx_0.OfdmBurstRx4Block(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, zeropadding_fac=zeropadding_fac, num_delay_samp=num_delay_samp, device='cuda', length_tag_key=length_tag_key, log_interval_s=5.0, range_roi=range_roi, range_bin_step=range_bin_step, music_enable=music_enable, num_sources=1, subarray_size=16, threshold=0.1, plot_title="Range Profile ch0", num_channels=4, plot_title_prefix="Range Profile", record_enable=record_enable, record_file_path=record_file_path, record_max_frames=record_max_frames, array_spacing_m=array_spacing_m, carrier_freq_hz=freq, aoa_enable=aoa_enable, phase_cal_capture=phase_cal_capture, phase_cal_frames=phase_cal_frames, phase_cal_path='', phase_bias_deg=(phase_bias_ch0_deg, phase_bias_ch1_deg, phase_bias_ch2_deg, phase_bias_ch3_deg))
+        self.ofdm_burst_rx_0 = ofdm_burst_rx_0.OfdmBurstRx4Block(fft_len=fft_len, cp_len=cp_len, num_symbols=num_symbols, zeropadding_fac=zeropadding_fac, num_delay_samp=num_delay_samp, device='cuda', length_tag_key=length_tag_key, log_interval_s=5.0, range_roi=range_roi, range_bin_step=range_bin_step, music_enable=music_enable, num_sources=1, subarray_size=16, threshold=0.1, plot_title="Range Profile ch0", num_channels=4, plot_title_prefix="Range Profile", record_enable=record_enable, record_file_path=record_file_path, record_max_frames=record_max_frames)
 
 
         ##################################################
         # Connections
         ##################################################
-        self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_freq_cpi'), (self.ofdm_burst_rx_0, 'tx_freq_cpi'))
         self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_schedule'), (self.ofdm_burst_rx_0, 'tx_schedule'))
+        self.msg_connect((self.ofdm_burst_tx_source_0, 'tx_freq_cpi'), (self.ofdm_burst_rx_0, 'tx_freq_cpi'))
         self.connect((self.ofdm_burst_tx_source_0, 0), (self.qtgui_time_sink_x_0, 0))
-        self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 3))
-        self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 1))
         self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 2))
         self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 0))
+        self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 3))
+        self.connect((self.ofdm_burst_tx_source_0, 0), (self.uhd_usrp_sink_0, 1))
         self.connect((self.uhd_usrp_source_0, 2), (self.ofdm_burst_rx_0, 2))
+        self.connect((self.uhd_usrp_source_0, 0), (self.ofdm_burst_rx_0, 0))
         self.connect((self.uhd_usrp_source_0, 1), (self.ofdm_burst_rx_0, 1))
         self.connect((self.uhd_usrp_source_0, 3), (self.ofdm_burst_rx_0, 3))
-        self.connect((self.uhd_usrp_source_0, 0), (self.ofdm_burst_rx_0, 0))
 
 
     def closeEvent(self, event):
@@ -545,66 +448,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
         self.range_bin_step = range_bin_step
         self.ofdm_burst_rx_0.range_bin_step = self.range_bin_step
 
-    def get_phase_cal_frames(self):
-        return self.phase_cal_frames
-
-    def set_phase_cal_frames(self, phase_cal_frames):
-        self.phase_cal_frames = phase_cal_frames
-        self.ofdm_burst_rx_0.phase_cal_frames = self.phase_cal_frames
-
-    def get_phase_cal_capture(self):
-        return self.phase_cal_capture
-
-    def set_phase_cal_capture(self, phase_cal_capture):
-        self.phase_cal_capture = phase_cal_capture
-        self._phase_cal_capture_callback(self.phase_cal_capture)
-        self.ofdm_burst_rx_0.phase_cal_capture = self.phase_cal_capture
-
-    def reset_phase_bias_after_cal(self):
-        """Phase Cal 完成后清零手动偏置，避免与 w_auto 双重校正。"""
-        for i in range(4):
-            setattr(self, f"phase_bias_ch{i}_deg", 0.0)
-        self.ofdm_burst_rx_0.phase_bias_deg = (0.0, 0.0, 0.0, 0.0)
-        for i in range(4):
-            win = getattr(self, f"_phase_bias_ch{i}_deg_win", None)
-            if win is None:
-                continue
-            try:
-                if hasattr(win, "counter") and hasattr(win.counter, "setValue"):
-                    win.counter.setValue(0.0)
-                elif hasattr(win, "d_widget") and hasattr(win.d_widget, "setValue"):
-                    win.d_widget.setValue(0.0)
-            except Exception:
-                pass
-
-    def get_phase_bias_ch3_deg(self):
-        return self.phase_bias_ch3_deg
-
-    def set_phase_bias_ch3_deg(self, phase_bias_ch3_deg):
-        self.phase_bias_ch3_deg = phase_bias_ch3_deg
-        self.ofdm_burst_rx_0.phase_bias_deg = (self.phase_bias_ch0_deg, self.phase_bias_ch1_deg, self.phase_bias_ch2_deg, self.phase_bias_ch3_deg)
-
-    def get_phase_bias_ch2_deg(self):
-        return self.phase_bias_ch2_deg
-
-    def set_phase_bias_ch2_deg(self, phase_bias_ch2_deg):
-        self.phase_bias_ch2_deg = phase_bias_ch2_deg
-        self.ofdm_burst_rx_0.phase_bias_deg = (self.phase_bias_ch0_deg, self.phase_bias_ch1_deg, self.phase_bias_ch2_deg, self.phase_bias_ch3_deg)
-
-    def get_phase_bias_ch1_deg(self):
-        return self.phase_bias_ch1_deg
-
-    def set_phase_bias_ch1_deg(self, phase_bias_ch1_deg):
-        self.phase_bias_ch1_deg = phase_bias_ch1_deg
-        self.ofdm_burst_rx_0.phase_bias_deg = (self.phase_bias_ch0_deg, self.phase_bias_ch1_deg, self.phase_bias_ch2_deg, self.phase_bias_ch3_deg)
-
-    def get_phase_bias_ch0_deg(self):
-        return self.phase_bias_ch0_deg
-
-    def set_phase_bias_ch0_deg(self, phase_bias_ch0_deg):
-        self.phase_bias_ch0_deg = phase_bias_ch0_deg
-        self.ofdm_burst_rx_0.phase_bias_deg = (self.phase_bias_ch0_deg, self.phase_bias_ch1_deg, self.phase_bias_ch2_deg, self.phase_bias_ch3_deg)
-
     def get_num_delay_samp(self):
         return self.num_delay_samp
 
@@ -645,7 +488,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
 
     def set_freq(self, freq):
         self.freq = freq
-        self.ofdm_burst_rx_0.carrier_freq_hz = self.freq
         self.uhd_usrp_sink_0.set_center_freq(self.freq, 0)
         self.uhd_usrp_sink_0.set_center_freq(self.freq, 1)
         self.uhd_usrp_sink_0.set_center_freq(self.freq, 2)
@@ -667,21 +509,6 @@ class usrp_ofdm_sink_source_dd(gr.top_block, Qt.QWidget):
 
     def set_burst_len_samples(self, burst_len_samples):
         self.burst_len_samples = burst_len_samples
-
-    def get_array_spacing_m(self):
-        return self.array_spacing_m
-
-    def set_array_spacing_m(self, array_spacing_m):
-        self.array_spacing_m = array_spacing_m
-        self.ofdm_burst_rx_0.array_spacing_m = self.array_spacing_m
-
-    def get_aoa_enable(self):
-        return self.aoa_enable
-
-    def set_aoa_enable(self, aoa_enable):
-        self.aoa_enable = aoa_enable
-        self._aoa_enable_callback(self.aoa_enable)
-        self.ofdm_burst_rx_0.aoa_enable = self.aoa_enable
 
     def get_TX_gain(self):
         return self.TX_gain

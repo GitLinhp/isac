@@ -1,0 +1,4 @@
+from isac_imp.burst_usrp_stream_scheduler import BurstUsrpStreamSchedulerBlock
+
+
+blk = BurstUsrpStreamSchedulerBlock

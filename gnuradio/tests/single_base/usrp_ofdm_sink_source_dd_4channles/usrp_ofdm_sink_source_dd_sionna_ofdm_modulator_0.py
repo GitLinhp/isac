@@ -1,0 +1,3 @@
+from isac_imp.sionna_ofdm_modulator import SionnaOfdmModulatorBlock
+
+blk = SionnaOfdmModulatorBlock

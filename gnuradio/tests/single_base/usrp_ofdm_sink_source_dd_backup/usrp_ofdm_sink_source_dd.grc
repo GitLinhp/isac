@@ -168,7 +168,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2040, 632.0]
+    coordinate: [2048, 544.0]
     rotation: 0
     state: enabled
 - name: length_tag_key
@@ -339,7 +339,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2216, 528.0]
+    coordinate: [2040, 640.0]
     rotation: 0
     state: enabled
 - name: zeropadding_fac
@@ -405,14 +405,14 @@ blocks:
       \ '0'), ('device', \"'cuda'\"), ('length_tag_key', \"'packet_len'\"), ('log_interval_s',\
       \ '1.0'), ('range_roi', '(0.0, 30.0)'), ('range_bin_step', '0.305'), ('music_enable',\
       \ 'True'), ('num_sources', '1'), ('subarray_size', '16'), ('threshold', '0.1')],\
-      \ [('0', 'complex', 1), ('1', 'complex', 2048), ('tx_schedule', 'message', 1)],\
-      \ [], 'USRP IQ + TX \u9891\u57DF\u53C2\u8003 \u2192 Torch CUDA \u8DDD\u79BB\u8C31\
-      \ + \u5185\u7F6E plot/MUSIC\u3002', ['music_enable', 'num_delay_samp', 'range_bin_step',\
-      \ 'range_roi'])"
+      \ [('0', 'complex', 1), ('tx_freq_cpi', 'message', 1), ('tx_schedule', 'message',\
+      \ 1)], [], 'USRP IQ + TX \u9891\u57DF\u53C2\u8003 \u2192 Torch CUDA \u8DDD\u79BB\
+      \u8C31 + \u5185\u7F6E plot/MUSIC\u3002', ['music_enable', 'num_delay_samp',\
+      \ 'range_bin_step', 'range_roi'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [992, 984.0]
+    coordinate: [880, 908.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_tx_source_0
@@ -434,7 +434,7 @@ blocks:
     idle_ms: idle_ms
     length_tag_key: length_tag_key
     maxoutbuf: '0'
-    minoutbuf: min_out_buf_val
+    minoutbuf: '0'
     num_bits_per_symbol: '2'
     num_delay_samp: num_delay_samp
     num_symbols: num_symbols
@@ -449,14 +449,14 @@ blocks:
       \ ('num_bits_per_symbol', '2'), ('seed', '42'), ('device', \"'cpu'\"), ('factor',\
       \ '0.008'), ('length_tag_key', \"'packet_len'\"), ('time_lead_s', '0.5'), ('idle_ms',\
       \ '10.0'), ('samp_rate', '122880000.0'), ('scheduled_rx', 'True'), ('num_delay_samp',\
-      \ '0')], [], [('0', 'complex', 1), ('1', 'complex', 2048), ('tx_schedule', 'message',\
-      \ 1)], '\u9884\u8BA1\u7B97 CPI \u2192 \u65F6\u57DF Style1 IQ + \u9891\u57DF\u53C2\
-      \u8003\u5411\u91CF\u3002', ['factor', 'idle_ms', 'num_delay_samp', 'samp_rate',\
-      \ 'scheduled_rx', 'time_lead_s'])"
+      \ '0')], [], [('0', 'complex', 1), ('tx_freq_cpi', 'message', 1), ('tx_schedule',\
+      \ 'message', 1)], '\u9884\u8BA1\u7B97 CPI \u2192 \u65F6\u57DF Style1 IQ\uFF1B\
+      \u9891\u57DF\u53C2\u8003\u7ECF\u6D88\u606F\u4E00\u6B21\u6027\u4E0B\u53D1\u3002\
+      ', ['factor', 'idle_ms', 'num_delay_samp', 'samp_rate', 'scheduled_rx', 'time_lead_s'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [504, 524.0]
+    coordinate: [512, 588.0]
     rotation: 0
     state: enabled
 - name: patch_usrp_source_factory_snippet
@@ -553,7 +553,7 @@ blocks:
     tr_slope: qtgui.TRIG_SLOPE_POS
     tr_tag: '""'
     type: complex
-    update_time: '0.10'
+    update_time: '0.50'
     width1: '1'
     width10: '1'
     width2: '1'
@@ -572,7 +572,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [840, 468.0]
+    coordinate: [864, 460.0]
     rotation: 0
     state: enabled
 - name: scheduled_rx_bind_snippet
@@ -589,7 +589,15 @@ blocks:
 
       self.uhd_usrp_source_0.set_time_now(uhd.time_spec(now), uhd.ALL_MBOARDS)
 
-      self.uhd_usrp_source_0.set_max_noutput_items(16384)
+      _maxn = max(16384, int(self.burst_len_samples))
+
+      self.uhd_usrp_source_0.set_max_noutput_items(_maxn)
+
+      self.uhd_usrp_source_0.set_min_output_buffer(max(int(self.min_out_buf_val),
+      2 * int(self.burst_len_samples)))
+
+      self.ofdm_burst_tx_source_0.set_min_output_buffer(0, max(2 * int(self.burst_len_samples),
+      int(self.min_out_buf_val)))
 
       self.ofdm_burst_tx_source_0.bind_scheduled_rx(self.uhd_usrp_source_0)
 
@@ -1314,14 +1322,14 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [512, 952.0]
+    coordinate: [496, 928.0]
     rotation: 0
     state: enabled
 
 connections:
 - [ofdm_burst_tx_source_0, '0', qtgui_time_sink_x_0, '0']
 - [ofdm_burst_tx_source_0, '0', uhd_usrp_sink_0, '0']
-- [ofdm_burst_tx_source_0, '1', ofdm_burst_rx_0, '1']
+- [ofdm_burst_tx_source_0, tx_freq_cpi, ofdm_burst_rx_0, tx_freq_cpi]
 - [ofdm_burst_tx_source_0, tx_schedule, ofdm_burst_rx_0, tx_schedule]
 - [uhd_usrp_source_0, '0', ofdm_burst_rx_0, '0']
 

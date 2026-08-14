@@ -26,6 +26,14 @@ CSV_COLUMNS = (
     "record_max_frames",
 )
 
+MONO_4CH_TARGET_CSV_COLUMNS = (
+    "recorded_at_utc",
+    "target_x_cm",
+    "target_y_cm",
+    "data_file",
+    "record_max_frames",
+)
+
 _LOG_PREFIX = "[RecordTargetMetadata]"
 
 
@@ -66,6 +74,37 @@ def append_cooperative_target_row(
     print(f"{_LOG_PREFIX} appended → {csv_path}", file=sys.stderr)
     return csv_path
 
+
+def append_mono_4ch_target_row(
+    parent_dir: str | Path,
+    *,
+    target_x_cm: float,
+    target_y_cm: float,
+    data_file: str,
+    record_max_frames: int,
+) -> Path:
+    """单站 4ch 会话元数据：``parent_dir/target_positions.csv``。"""
+    parent = Path(parent_dir)
+    parent.mkdir(parents=True, exist_ok=True)
+    csv_path = parent / COOPERATIVE_TARGET_CSV
+    write_header = not csv_path.exists() or csv_path.stat().st_size == 0
+
+    row = {
+        "recorded_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "target_x_cm": float(target_x_cm),
+        "target_y_cm": float(target_y_cm),
+        "data_file": _relative_to_parent(parent, data_file),
+        "record_max_frames": int(record_max_frames),
+    }
+
+    with csv_path.open("a", newline="", encoding="utf-8") as csv_f:
+        writer = csv.DictWriter(csv_f, fieldnames=MONO_4CH_TARGET_CSV_COLUMNS)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+    print(f"{_LOG_PREFIX} mono4ch appended → {csv_path}", file=sys.stderr)
+    return csv_path
 
 def _is_empty_csv_row(row: dict[str, str]) -> bool:
     return not any((row.get(col) or "").strip() for col in CSV_COLUMNS)

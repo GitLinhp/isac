@@ -70,14 +70,13 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         ##################################################
         self.subcarrier_spacing = subcarrier_spacing = 120e3
         self.fft_len = fft_len = 2048
-        self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
         self.zeropadding_fac = zeropadding_fac = 2
         self.transpose_len = transpose_len = 1
         self.sic_num_taps = sic_num_taps = 64
         self.sic_enable = sic_enable = True
+        self.samp_rate = samp_rate = int(fft_len * subcarrier_spacing)
         self.record_enable = record_enable = False
         self.n_carriers = n_carriers = fft_len - 2
-        self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.wait_to_start = wait_to_start = 0.03
         self.uhd_dev_args = uhd_dev_args = "type=x4xx,serial=349B642,mgmt_addr=192.168.1.100,addr=192.168.10.2,clock_source=external,time_source=external"
         self.sic_taps_path = sic_taps_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/sic_tap_calibration/dataset/run_001/sic_taps.npy"
@@ -85,7 +84,7 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self.sic_input_index = sic_input_index = 0 if sic_enable else 1
         self.record_output_index = record_output_index = 0 if record_enable else 1
         self.record_file_path = record_file_path = "/home/caict/Desktop/isac/gnuradio/tests/data_collection/range_profile_collection/dataset/run_001/range_profiles"
-        self.range_bin_step = range_bin_step = 3e8/(2*samp_rate*zeropadding_fac)
+        self.range_bin_step = range_bin_step = 3e8/(2*int(fft_len*subcarrier_spacing)*zeropadding_fac)
         self.qpsk_symbols_per_packet = qpsk_symbols_per_packet = transpose_len * n_carriers
         self.payload_mod = payload_mod = digital.constellation_qpsk()
         self.packet_len = packet_len = transpose_len * n_carriers // 4
@@ -97,6 +96,7 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self.frame_rate_hz = frame_rate_hz = samp_rate / (transpose_len * (fft_len + fft_len // 4))
         self.factor = factor = 0.004
         self.TX_gain = TX_gain = 30
+        self.R_max = R_max = 3e8/2/samp_rate*fft_len
         self.RX_gain = RX_gain = 30
 
         ##################################################
@@ -363,36 +363,27 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
     def set_subcarrier_spacing(self, subcarrier_spacing):
         self.subcarrier_spacing = subcarrier_spacing
         self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
 
     def get_fft_len(self):
         return self.fft_len
 
     def set_fft_len(self, fft_len):
         self.fft_len = fft_len
+        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
         self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
         self.set_min_out_buf_val(int(2*self.transpose_len*(self.fft_len+self.fft_len/4)))
         self.set_n_carriers(self.fft_len - 2)
-        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
-        self.set_samp_rate(int(self.fft_len * self.subcarrier_spacing))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
-
-    def get_samp_rate(self):
-        return self.samp_rate
-
-    def set_samp_rate(self, samp_rate):
-        self.samp_rate = samp_rate
-        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
-        self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
-        self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
-        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
     def get_zeropadding_fac(self):
         return self.zeropadding_fac
 
     def set_zeropadding_fac(self, zeropadding_fac):
         self.zeropadding_fac = zeropadding_fac
-        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
+        self.set_range_bin_step(3e8/(2*int(self.fft_len*self.subcarrier_spacing)*self.zeropadding_fac))
         self.fft_vxx_0_1.set_window(window.blackmanharris(self.fft_len*self.zeropadding_fac))
 
     def get_transpose_len(self):
@@ -420,6 +411,16 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self._sic_enable_callback(self.sic_enable)
         self.set_sic_input_index(0 if self.sic_enable else 1)
 
+    def get_samp_rate(self):
+        return self.samp_rate
+
+    def set_samp_rate(self, samp_rate):
+        self.samp_rate = samp_rate
+        self.set_R_max(3e8/2/self.samp_rate*self.fft_len)
+        self.set_frame_rate_hz(self.samp_rate / (self.transpose_len * (self.fft_len + self.fft_len // 4)))
+        self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
+        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
+
     def get_record_enable(self):
         return self.record_enable
 
@@ -436,13 +437,6 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self.set_occupied_carriers(list((list(range(-self.n_carriers//2, 0)) + list(range(1, self.n_carriers//2 + 1)),)))
         self.set_packet_len(self.transpose_len * self.n_carriers // 4)
         self.set_qpsk_symbols_per_packet(self.transpose_len * self.n_carriers)
-
-    def get_R_max(self):
-        return self.R_max
-
-    def set_R_max(self, R_max):
-        self.R_max = R_max
-        self.set_range_bin_step(3e8/(2*self.samp_rate*self.zeropadding_fac))
 
     def get_wait_to_start(self):
         return self.wait_to_start
@@ -568,6 +562,12 @@ class range_profile_collection(gr.top_block, Qt.QWidget):
         self.TX_gain = TX_gain
         self.radar_usrp_echotimer_cc_0.set_tx_gain(self.TX_gain)
 
+    def get_R_max(self):
+        return self.R_max
+
+    def set_R_max(self, R_max):
+        self.R_max = R_max
+
     def get_RX_gain(self):
         return self.RX_gain
 
@@ -583,16 +583,6 @@ def main(top_block_cls=range_profile_collection, options=None):
     qapp = Qt.QApplication(sys.argv)
 
     tb = top_block_cls()
-
-    from pathlib import Path
-    for _p in [Path(__file__).resolve().parent, *Path(__file__).resolve().parents]:
-        _src = _p / "src"
-        if (_src / "isac_imp").is_dir():
-            sys.path.insert(0, str(_src))
-            break
-    from isac_imp.sic_taps import load_sic_taps
-
-    load_sic_taps(tb)
 
     tb.start()
     tb.flowgraph_started.set()

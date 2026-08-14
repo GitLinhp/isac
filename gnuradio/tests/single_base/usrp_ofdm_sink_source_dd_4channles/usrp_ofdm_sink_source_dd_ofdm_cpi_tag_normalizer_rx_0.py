@@ -1,0 +1,3 @@
+from isac_imp.ofdm_cpi_tag_normalizer import OfdmCpiTagNormalizerBlock
+
+blk = OfdmCpiTagNormalizerBlock
