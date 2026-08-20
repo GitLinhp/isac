@@ -3,7 +3,7 @@
 无流输入；输出::
 
     out0  时域 IQ（含 Style1 tx_sob/tx_time/tx_eob）→ USRP Sink
-    tx_schedule / tx_freq_cpi  消息口：计划 epoch + 频域 CPI 参考（后者仅首 CPI 发一次）
+    tx_freq_cpi / tx_schedule  消息口：频域 CPI 参考（仅首 CPI 一次）+ 计划 epoch
 
 ``start()`` 在 ``device``（默认 cpu；本测试图用 cuda）上用 Torch 预计算固定 CPI
 时域/频域缓存，一次 D2H 后运行期仅 memcpy 重放，避免 USRP underflow。
@@ -155,10 +155,10 @@ class OfdmBurstTxSourceBlock(gr.basic_block):
         )
         self._length_tag_key = pmt.intern(length_tag_key)
         self._srcid = pmt.intern("ofdm_burst_tx_source")
-        self._schedule_port = pmt.intern(PORT_TX_SCHEDULE)
         self._freq_port = pmt.intern(PORT_TX_FREQ_CPI)
-        self.message_port_register_out(self._schedule_port)
+        self._schedule_port = pmt.intern(PORT_TX_SCHEDULE)
         self.message_port_register_out(self._freq_port)
+        self.message_port_register_out(self._schedule_port)
 
         self._freq_cpi: np.ndarray | None = None
         self._freq_msg = None

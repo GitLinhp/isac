@@ -6,13 +6,13 @@ options:
     cmake_opt: ''
     comment: ''
     copyright: ''
-    description: USRP Sink/Source Style1 OFDM radar zero-Doppler range profile. Scheduled
-      Unified OfdmBurstRx (Torch CUDA DSP).
+    description: USRP Sink/Source Style1 OFDM radar zero-Doppler range profile (1TX/1RX
+      ch0). Scheduled OfdmBurstRx (Torch CUDA DSP).
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: usrp_ofdm_sink_source_dd
+    id: usrp_ofdm_single_bs_range
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -52,20 +52,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2672, 532.0]
-    rotation: 0
-    state: enabled
-- name: R_max
-  id: variable
-  parameters:
-    comment: "\u6700\u5927\u4E0D\u6A21\u7CCA\u8DDD\u79BB (m)\uFF0CR = c/(2\xB7BW)\xB7\
-      N_fft"
-    value: 3e8/2/samp_rate*fft_len
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1096, 8.0]
+    coordinate: [2160, 628.0]
     rotation: 0
     state: enabled
 - name: TX_gain
@@ -86,45 +73,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2552, 532.0]
-    rotation: 0
-    state: enabled
-- name: aoa_enable
-  id: variable_qtgui_check_box
-  parameters:
-    comment: Enable ULA spatial MUSIC AoA on phase-calibrated cx
-    'false': 'False'
-    gui_hint: 0,2,1,1
-    label: AoA Enable
-    'true': 'True'
-    type: bool
-    value: 'False'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [832, 244.0]
-    rotation: 0
-    state: enabled
-- name: array_spacing_m
-  id: variable_qtgui_range
-  parameters:
-    comment: ULA element spacing d (m); default ~lambda/2 @ 6 GHz
-    gui_hint: ''
-    label: ULA spacing d (m)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '0'
-    step: '0.001'
-    stop: '100'
-    value: '0.025'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1104, 108.0]
+    coordinate: [2040, 628.0]
     rotation: 0
     state: enabled
 - name: burst_len_samples
@@ -136,19 +85,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [600, 8.0]
+    coordinate: [592, 8.0]
     rotation: 0
     state: enabled
 - name: cp_len
   id: variable
   parameters:
     comment: Cyclic prefix length (samples); ~78 m round-trip @ 245.76 MHz
-    value: '128'
+    value: int(fft_len/16)
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [560, 280.0]
+    coordinate: [176, 304.0]
     rotation: 0
     state: enabled
 - name: factor
@@ -163,7 +112,7 @@ blocks:
     start: '0'
     step: '0.001'
     stop: '1'
-    value: '0.008'
+    value: '0.005'
     widget: counter_slider
   states:
     bus_sink: false
@@ -176,12 +125,12 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '2048'
+    value: '4096'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [200, 272.0]
+    coordinate: [176, 224.0]
     rotation: 0
     state: enabled
 - name: freq
@@ -206,7 +155,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2048, 544.0]
+    coordinate: [1536, 640.0]
     rotation: 0
     state: enabled
 - name: length_tag_key
@@ -218,7 +167,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 16.0]
+    coordinate: [200, 24.0]
     rotation: 0
     state: enabled
 - name: min_out_buf_val
@@ -230,7 +179,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1280, 16.0]
+    coordinate: [1320, 48.0]
     rotation: 0
     state: enabled
 - name: music_enable
@@ -247,7 +196,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [848, 92.0]
+    coordinate: [824, 116.0]
     rotation: 0
     state: enabled
 - name: n_carriers
@@ -259,7 +208,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [312, 272.0]
+    coordinate: [272, 224.0]
     rotation: 0
     state: enabled
 - name: num_delay_samp
@@ -274,25 +223,25 @@ blocks:
     start: '0'
     step: '1'
     stop: packet_len
-    value: '277'
+    value: '278'
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2360, 532.0]
+    coordinate: [1848, 628.0]
     rotation: 0
     state: enabled
 - name: num_symbols
   id: variable
   parameters:
     comment: CPI OFDM symbols per burst; 4 avoids qpsk>8192 sched limit at fft_len=2048
-    value: '4'
+    value: '2'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [424, 24.0]
+    coordinate: [200, 96.0]
     rotation: 0
     state: enabled
 - name: packet_len
@@ -304,120 +253,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [56, 144.0]
-    rotation: 0
-    state: enabled
-- name: phase_bias_ch0_deg
-  id: variable_qtgui_range
-  parameters:
-    comment: Manual phase bias for RX ch0 (deg); w_eff *= exp(-j bias)
-    gui_hint: ''
-    label: Phase bias ch0 (deg)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '-180'
-    step: '0.1'
-    stop: '180'
-    value: '0.0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1512, 252.0]
-    rotation: 0
-    state: enabled
-- name: phase_bias_ch1_deg
-  id: variable_qtgui_range
-  parameters:
-    comment: Manual phase bias for RX ch1 (deg); w_eff *= exp(-j bias)
-    gui_hint: ''
-    label: Phase bias ch1 (deg)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '-180'
-    step: '0.1'
-    stop: '180'
-    value: '0.0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1664, 436.0]
-    rotation: 0
-    state: enabled
-- name: phase_bias_ch2_deg
-  id: variable_qtgui_range
-  parameters:
-    comment: Manual phase bias for RX ch2 (deg); w_eff *= exp(-j bias)
-    gui_hint: ''
-    label: Phase bias ch2 (deg)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '-180'
-    step: '0.1'
-    stop: '180'
-    value: '0.0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1400, 468.0]
-    rotation: 0
-    state: enabled
-- name: phase_bias_ch3_deg
-  id: variable_qtgui_range
-  parameters:
-    comment: Manual phase bias for RX ch3 (deg); w_eff *= exp(-j bias)
-    gui_hint: ''
-    label: Phase bias ch3 (deg)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '-180'
-    step: '0.1'
-    stop: '180'
-    value: '0.0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208, 468.0]
-    rotation: 0
-    state: enabled
-- name: phase_cal_capture
-  id: variable_qtgui_check_box
-  parameters:
-    comment: Method A phase cal capture (auto-stop after N frames)
-    'false': 'False'
-    gui_hint: 0,3,1,1
-    label: Phase Cal
-    'true': 'True'
-    type: bool
-    value: 'False'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [488, 124.0]
-    rotation: 0
-    state: enabled
-- name: phase_cal_frames
-  id: variable
-  parameters:
-    comment: Frames to accumulate for method-A phase cal
-    value: '20'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1048, 328.0]
+    coordinate: [40, 120.0]
     rotation: 0
     state: enabled
 - name: range_bin_step
@@ -430,19 +266,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [856, 8.0]
+    coordinate: [944, 48.0]
     rotation: 0
     state: enabled
 - name: range_roi
   id: variable
   parameters:
     comment: ''
-    value: (0.0, 3.5)
+    value: '(0.0, 15) #(0.0, 3.5)'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1368, 128.0]
+    coordinate: [1120, 32.0]
     rotation: 0
     state: enabled
 - name: record_enable
@@ -459,19 +295,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [656, 228.0]
+    coordinate: [592, 196.0]
     rotation: 0
     state: enabled
 - name: record_file_path
   id: variable
   parameters:
-    comment: Filled per-session by install_usrp_ofdm_4ch_record_flow
+    comment: Filled per-session by install_usrp_ofdm_1ch_record_flow
     value: '"/dev/null"'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1304, 216.0]
+    coordinate: [1360, 192.0]
     rotation: 0
     state: enabled
 - name: record_max_frames
@@ -483,19 +319,20 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1200, 376.0]
+    coordinate: [1144, 392.0]
     rotation: 0
     state: enabled
 - name: record_output_dir
   id: variable
   parameters:
-    comment: Session dir under data/experiment (divide_profiles_NNN + CSV)
-    value: repo_data_dir("data", "experiment", "usrp_ofdm_sink_source_dd")
+    comment: Session dir under data/usrp_ofdm_single_bs_range (divide_profiles_NNN
+      + CSV)
+    value: repo_data_dir("data", "usrp_ofdm_single_bs_range")
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1224, 296.0]
+    coordinate: [1032, 248.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -507,61 +344,40 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [424, 272.0]
+    coordinate: [368, 224.0]
     rotation: 0
     state: enabled
 - name: subcarrier_spacing
   id: variable
   parameters:
     comment: ''
-    value: 120e3
+    value: 60e3
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [40, 272.0]
+    coordinate: [32, 224.0]
     rotation: 0
     state: enabled
-- name: target_pos_x_cm
+- name: target_range_m
   id: variable_qtgui_range
   parameters:
-    comment: ''
+    comment: Ground-truth target radial range (m) for session CSV
     gui_hint: ''
-    label: Target X (cm)
+    label: Target range (m)
     min_len: '200'
     orient: QtCore.Qt.Horizontal
     rangeType: float
-    start: '-100'
-    step: '10'
-    stop: '100'
+    start: '0'
+    step: '0.05'
+    stop: '15'
     value: '0'
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [64, 372.0]
-    rotation: 0
-    state: enabled
-- name: target_pos_y_cm
-  id: variable_qtgui_range
-  parameters:
-    comment: ''
-    gui_hint: ''
-    label: Target Y (cm)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '-100'
-    step: '10'
-    stop: '100'
-    value: '0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [272, 396.0]
+    coordinate: [32, 308.0]
     rotation: 0
     state: enabled
 - name: time_lead_s
@@ -573,7 +389,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2344, 704.0]
+    coordinate: [1832, 800.0]
     rotation: 0
     state: enabled
 - name: wait_to_start
@@ -585,7 +401,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2040, 640.0]
+    coordinate: [1528, 736.0]
     rotation: 0
     state: enabled
 - name: zeropadding_fac
@@ -597,7 +413,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [696, 128.0]
+    coordinate: [592, 104.0]
     rotation: 0
     state: enabled
 - name: address
@@ -614,57 +430,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2432, 348.0]
-    rotation: 0
-    state: enabled
-- name: bind_phase_cal_done_snippet
-  id: snippet
-  parameters:
-    alias: ''
-    code: "from isac_imp.ofdm_burst_rx import bind_phase_cal_done_handler\n\ndef _sync_phase_bias_widgets_to_zero():\n\
-      \    for i in range(4):\n        setattr(self, f\"phase_bias_ch{i}_deg\", 0.0)\n\
-      \    if hasattr(self, \"ofdm_burst_rx_0\"):\n        self.ofdm_burst_rx_0.phase_bias_deg\
-      \ = (0.0, 0.0, 0.0, 0.0)\n    for i in range(4):\n        win = getattr(self,\
-      \ f\"_phase_bias_ch{i}_deg_win\", None)\n        if win is None:\n         \
-      \   continue\n        try:\n            if hasattr(win, \"counter\") and hasattr(win.counter,\
-      \ \"setValue\"):\n                win.counter.setValue(0.0)\n            elif\
-      \ hasattr(win, \"d_widget\") and hasattr(win.d_widget, \"setValue\"):\n    \
-      \            win.d_widget.setValue(0.0)\n        except Exception:\n       \
-      \     pass\n\ndef _on_phase_cal_done():\n    self.set_phase_cal_capture(False)\n\
-      \    reset_fn = getattr(self, \"reset_phase_bias_after_cal\", None)\n    if\
-      \ callable(reset_fn):\n        reset_fn()\n    else:\n        _sync_phase_bias_widgets_to_zero()\n\
-      \nbind_phase_cal_done_handler(_on_phase_cal_done)\n"
-    comment: Uncheck Phase Cal; zero bias (inline fallback if method missing)
-    priority: '1'
-    section: main_after_init
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1936, 360.0]
-    rotation: 0
-    state: enabled
-- name: bind_phase_display_snippet
-  id: snippet
-  parameters:
-    alias: ''
-    code: "from isac_imp.ofdm_burst_rx import bind_phase_display_handler\nfrom PyQt5\
-      \ import Qt\n\nif not getattr(self, \"_rx_phase_label\", None):\n    self._rx_phase_label\
-      \ = Qt.QLabel(\n        \"RX phase (rel ch0, after cal+bias)  ch0:+0.0  ch1:+0.0\
-      \  ch2:+0.0  ch3:+0.0 \xB0\"\n    )\n    self.top_layout.addWidget(self._rx_phase_label)\n\
-      \ndef _on_phases(phases_deg):\n    label = getattr(self, \"_rx_phase_label\"\
-      , None)\n    if label is None:\n        return\n    parts = [f\"ch{i}:{float(p):+.1f}\"\
-      \ for i, p in enumerate(phases_deg)]\n    text = \"RX phase (rel ch0, after\
-      \ cal+bias)  \" + \"  \".join(parts) + \" \xB0\"\n    Qt.QMetaObject.invokeMethod(label,\
-      \ \"setText\", Qt.Q_ARG(\"QString\", text))\n\nbind_phase_display_handler(_on_phases)\n"
-    comment: Create/update RX phase QLabel from OfdmBurstRx
-    priority: '1'
-    section: main_after_init
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1936, 400.0]
+    coordinate: [1920, 444.0]
     rotation: 0
     state: enabled
 - name: import_record_paths_0
@@ -677,65 +443,44 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1936, 232.0]
+    coordinate: [1592, 304.0]
     rotation: 0
     state: enabled
-- name: install_usrp_ofdm_4ch_record_flow_snippet
+- name: install_usrp_ofdm_1ch_record_flow_snippet
   id: snippet
   parameters:
     alias: ''
-    code: 'from isac_imp.mics_test_record_flow import install_usrp_ofdm_4ch_record_flow
+    code: 'from isac_imp.mics_test_record_flow import install_usrp_ofdm_1ch_record_flow
 
-      install_usrp_ofdm_4ch_record_flow(self)
+      install_usrp_ofdm_1ch_record_flow(self)
 
       '
-    comment: Session allocate + CSV metadata + auto-stop
+    comment: Session allocate + range CSV metadata + auto-stop (1ch)
     priority: '1'
     section: main_after_init
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1936, 280.0]
+    coordinate: [1424, 372.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_rx_0
   id: epy_block
   parameters:
-    _source_code: "from isac_imp import ofdm_burst_rx as _obr\n\n\nclass OfdmBurstRx4Block(_obr.OfdmBurstRxBlock):\n\
-      \    \"\"\"GRC epy \u63A2\u6D4B\u7528\uFF1A\u5F3A\u5236 4 \u8F93\u5165\u3002\
-      \u7236\u7C7B\u52FF\u76F4\u63A5 import\uFF0C\u5426\u5219 extract \u4F1A\u8BEF\
-      \u9009 1 \u53E3\u3002\"\"\"\n\n    def __init__(\n        self,\n        fft_len=2048,\n\
-      \        cp_len=512,\n        num_symbols=4,\n        zeropadding_fac=4,\n \
-      \       num_delay_samp=0,\n        device=\"cuda\",\n        length_tag_key=\"\
-      packet_len\",\n        log_interval_s=1.0,\n        range_roi=(0.0, 30.0),\n\
-      \        range_bin_step=0.305,\n        music_enable=True,\n        num_sources=1,\n\
-      \        subarray_size=16,\n        threshold=0.1,\n        plot_title=\"Range\
-      \ Profile\",\n        num_channels=4,\n        plot_title_prefix=\"Range Profile\"\
-      ,\n        record_enable=False,\n        record_file_path=\"\",\n        record_max_frames=55,\n\
-      \        array_spacing_m=0.025,\n        carrier_freq_hz=6.0e9,\n        aoa_enable=False,\n\
-      \        phase_cal_capture=False,\n        phase_cal_frames=20,\n        phase_cal_path=\"\
-      \",\n        phase_bias_deg=(0.0, 0.0, 0.0, 0.0),\n    ):\n        super().__init__(\n\
-      \            fft_len=fft_len,\n            cp_len=cp_len,\n            num_symbols=num_symbols,\n\
-      \            zeropadding_fac=zeropadding_fac,\n            num_delay_samp=num_delay_samp,\n\
-      \            device=device,\n            length_tag_key=length_tag_key,\n  \
-      \          log_interval_s=log_interval_s,\n            range_roi=range_roi,\n\
-      \            range_bin_step=range_bin_step,\n            music_enable=music_enable,\n\
-      \            num_sources=num_sources,\n            subarray_size=subarray_size,\n\
-      \            threshold=threshold,\n            plot_title=plot_title,\n    \
-      \        num_channels=4,\n            plot_title_prefix=plot_title_prefix,\n\
-      \            record_enable=record_enable,\n            record_file_path=record_file_path,\n\
-      \            record_max_frames=record_max_frames,\n            array_spacing_m=array_spacing_m,\n\
-      \            carrier_freq_hz=carrier_freq_hz,\n            aoa_enable=aoa_enable,\n\
-      \            phase_cal_capture=phase_cal_capture,\n            phase_cal_frames=phase_cal_frames,\n\
-      \            phase_cal_path=phase_cal_path,\n            phase_bias_deg=phase_bias_deg,\n\
-      \        )\n\n\nblk = OfdmBurstRx4Block\n"
+    _source_code: 'from isac_imp.ofdm_burst_rx import OfdmBurstRxBlock
+
+
+
+      blk = OfdmBurstRxBlock
+
+      '
     affinity: ''
     alias: ''
-    aoa_enable: aoa_enable
-    array_spacing_m: array_spacing_m
+    aoa_enable: 'False'
+    array_spacing_m: '0.025'
     carrier_freq_hz: freq
-    comment: 'Unified 4-ch RX: batch Torch CUDA DSP + per-ch plot/MUSIC'
+    comment: '1-ch RX: Torch CUDA DSP + Range Profile / MUSIC'
     cp_len: cp_len
     device: '''cuda'''
     fft_len: fft_len
@@ -744,15 +489,15 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     music_enable: music_enable
-    num_channels: '4'
+    num_channels: '1'
     num_delay_samp: num_delay_samp
     num_sources: '1'
     num_symbols: num_symbols
-    phase_bias_deg: (phase_bias_ch0_deg, phase_bias_ch1_deg, phase_bias_ch2_deg, phase_bias_ch3_deg)
-    phase_cal_capture: phase_cal_capture
-    phase_cal_frames: phase_cal_frames
+    phase_bias_deg: None
+    phase_cal_capture: 'False'
+    phase_cal_frames: '20'
     phase_cal_path: ''''''
-    plot_title: '"Range Profile ch0"'
+    plot_title: '"Range Profile"'
     plot_title_prefix: '"Range Profile"'
     range_bin_step: range_bin_step
     range_roi: range_roi
@@ -763,28 +508,29 @@ blocks:
     threshold: '0.1'
     zeropadding_fac: zeropadding_fac
   states:
-    _io_cache: "('OFDM Burst RX', 'OfdmBurstRx4Block', [('fft_len', '2048'), ('cp_len',\
+    _io_cache: "('OFDM Burst RX', 'OfdmBurstRxBlock', [('fft_len', '2048'), ('cp_len',\
       \ '512'), ('num_symbols', '4'), ('zeropadding_fac', '4'), ('num_delay_samp',\
       \ '0'), ('device', \"'cuda'\"), ('length_tag_key', \"'packet_len'\"), ('log_interval_s',\
       \ '1.0'), ('range_roi', '(0.0, 30.0)'), ('range_bin_step', '0.305'), ('music_enable',\
       \ 'True'), ('num_sources', '1'), ('subarray_size', '16'), ('threshold', '0.1'),\
-      \ ('plot_title', \"'Range Profile'\"), ('num_channels', '4'), ('plot_title_prefix',\
+      \ ('plot_title', \"'Range Profile'\"), ('num_channels', '1'), ('plot_title_prefix',\
       \ \"'Range Profile'\"), ('record_enable', 'False'), ('record_file_path', \"\
       ''\"), ('record_max_frames', '55'), ('array_spacing_m', '0.025'), ('carrier_freq_hz',\
       \ '6000000000.0'), ('aoa_enable', 'False'), ('phase_cal_capture', 'False'),\
       \ ('phase_cal_frames', '20'), ('phase_cal_path', \"''\"), ('phase_bias_deg',\
-      \ '(0.0, 0.0, 0.0, 0.0)')], [('0', 'complex', 1), ('1', 'complex', 1), ('2',\
-      \ 'complex', 1), ('3', 'complex', 1), ('tx_schedule', 'message', 1), ('tx_freq_cpi',\
-      \ 'message', 1)], [], 'GRC epy \u63A2\u6D4B\u7528\uFF1A\u5F3A\u5236 4 \u8F93\
-      \u5165\u3002\u7236\u7C7B\u52FF\u76F4\u63A5 import\uFF0C\u5426\u5219 extract\
-      \ \u4F1A\u8BEF\u9009 1 \u53E3\u3002', ['aoa_enable', 'array_spacing_m', 'carrier_freq_hz',\
+      \ 'None')], [('0', 'complex', 1), ('tx_schedule', 'message', 1), ('tx_freq_cpi',\
+      \ 'message', 1)], [], 'USRP IQ + TX \u9891\u57DF\u53C2\u8003 \u2192 Torch CUDA\
+      \ \u8DDD\u79BB\u8C31 + \u5185\u7F6E plot/MUSIC\u3002\\n\\n    ``num_channels=1``\uFF1A\
+      \u5355\u6D41\u53E3\uFF08\u517C\u5BB9\u65E7\u6D41\u56FE\uFF09\u3002\\n    ``num_channels>1``\uFF1A\
+      \u591A\u6D41\u53E3\u5206\u8DEF\u91C7\u96C6\uFF0C\u51D1\u9F50\u540E\u4E00\u6B21\
+      \u6279 CUDA\u3002\\n    ', ['aoa_enable', 'array_spacing_m', 'carrier_freq_hz',\
       \ 'music_enable', 'num_delay_samp', 'phase_bias_deg', 'phase_cal_capture', 'phase_cal_frames',\
       \ 'phase_cal_path', 'range_bin_step', 'range_roi', 'record_enable', 'record_file_path',\
       \ 'record_max_frames'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [880, 968.0]
+    coordinate: [888, 772.0]
     rotation: 0
     state: enabled
 - name: ofdm_burst_tx_source_0
@@ -821,14 +567,14 @@ blocks:
       \ ('num_bits_per_symbol', '2'), ('seed', '42'), ('device', \"'cpu'\"), ('factor',\
       \ '0.008'), ('length_tag_key', \"'packet_len'\"), ('time_lead_s', '0.5'), ('idle_ms',\
       \ '10.0'), ('samp_rate', '122880000.0'), ('scheduled_rx', 'True'), ('num_delay_samp',\
-      \ '0')], [], [('0', 'complex', 1), ('tx_freq_cpi', 'message', 1), ('tx_schedule',\
+      \ '0')], [], [('0', 'complex', 1), ('tx_schedule', 'message', 1), ('tx_freq_cpi',\
       \ 'message', 1)], '\u9884\u8BA1\u7B97 CPI \u2192 \u65F6\u57DF Style1 IQ\uFF1B\
       \u9891\u57DF\u53C2\u8003\u7ECF\u6D88\u606F\u4E00\u6B21\u6027\u4E0B\u53D1\u3002\
       ', ['factor', 'idle_ms', 'num_delay_samp', 'samp_rate', 'scheduled_rx', 'time_lead_s'])"
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [496, 556.0]
+    coordinate: [488, 556.0]
     rotation: 0
     state: enabled
 - name: patch_usrp_source_factory_snippet
@@ -981,7 +727,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1936, 168.0]
+    coordinate: [1640, 208.0]
     rotation: 0
     state: enabled
 - name: uhd_usrp_sink_0
@@ -1054,7 +800,7 @@ blocks:
     bw8: '0'
     bw9: '0'
     center_freq0: freq
-    center_freq1: freq
+    center_freq1: '0'
     center_freq10: '0'
     center_freq11: '0'
     center_freq12: '0'
@@ -1065,7 +811,7 @@ blocks:
     center_freq17: '0'
     center_freq18: '0'
     center_freq19: '0'
-    center_freq2: freq
+    center_freq2: '0'
     center_freq20: '0'
     center_freq21: '0'
     center_freq22: '0'
@@ -1076,7 +822,7 @@ blocks:
     center_freq27: '0'
     center_freq28: '0'
     center_freq29: '0'
-    center_freq3: freq
+    center_freq3: '0'
     center_freq30: '0'
     center_freq31: '0'
     center_freq4: '0'
@@ -1098,7 +844,7 @@ blocks:
     dev_addr: address
     dev_args: '""'
     gain0: TX_gain
-    gain1: TX_gain
+    gain1: '0'
     gain10: '0'
     gain11: '0'
     gain12: '0'
@@ -1109,7 +855,7 @@ blocks:
     gain17: '0'
     gain18: '0'
     gain19: '0'
-    gain2: TX_gain
+    gain2: '0'
     gain20: '0'
     gain21: '0'
     gain22: '0'
@@ -1120,7 +866,7 @@ blocks:
     gain27: '0'
     gain28: '0'
     gain29: '0'
-    gain3: TX_gain
+    gain3: '0'
     gain30: '0'
     gain31: '0'
     gain4: '0'
@@ -1228,7 +974,7 @@ blocks:
     lo_source9: internal
     maxoutbuf: '0'
     minoutbuf: '0'
-    nchan: '4'
+    nchan: '1'
     num_mboards: '1'
     otw: ''
     samp_rate: samp_rate
@@ -1243,7 +989,7 @@ blocks:
     show_lo_controls: 'False'
     start_time: '-1.0'
     stream_args: num_send_frames=512,send_buff_size=25000000
-    stream_chans: '[0, 1, 2, 3]'
+    stream_chans: '[0]'
     sync: none
     time_source0: ''
     time_source1: ''
@@ -1331,7 +1077,7 @@ blocks:
     bw8: '0'
     bw9: '0'
     center_freq0: freq
-    center_freq1: freq
+    center_freq1: '0'
     center_freq10: '0'
     center_freq11: '0'
     center_freq12: '0'
@@ -1342,7 +1088,7 @@ blocks:
     center_freq17: '0'
     center_freq18: '0'
     center_freq19: '0'
-    center_freq2: freq
+    center_freq2: '0'
     center_freq20: '0'
     center_freq21: '0'
     center_freq22: '0'
@@ -1353,7 +1099,7 @@ blocks:
     center_freq27: '0'
     center_freq28: '0'
     center_freq29: '0'
-    center_freq3: freq
+    center_freq3: '0'
     center_freq30: '0'
     center_freq31: '0'
     center_freq4: '0'
@@ -1439,7 +1185,7 @@ blocks:
     dev_addr: address
     dev_args: '""'
     gain0: RX_gain
-    gain1: RX_gain
+    gain1: '0'
     gain10: '0'
     gain11: '0'
     gain12: '0'
@@ -1450,7 +1196,7 @@ blocks:
     gain17: '0'
     gain18: '0'
     gain19: '0'
-    gain2: RX_gain
+    gain2: '0'
     gain20: '0'
     gain21: '0'
     gain22: '0'
@@ -1461,7 +1207,7 @@ blocks:
     gain27: '0'
     gain28: '0'
     gain29: '0'
-    gain3: RX_gain
+    gain3: '0'
     gain30: '0'
     gain31: '0'
     gain4: '0'
@@ -1632,7 +1378,7 @@ blocks:
     lo_source9: internal
     maxoutbuf: '0'
     minoutbuf: min_out_buf_val
-    nchan: '4'
+    nchan: '1'
     num_mboards: '1'
     otw: ''
     rx_agc0: Default
@@ -1679,7 +1425,7 @@ blocks:
     show_lo_controls: 'False'
     start_time: '-1.0'
     stream_args: num_recv_frames=512,recv_buff_size=25000000
-    stream_chans: '[0, 1, 2, 3]'
+    stream_chans: '[0]'
     sync: none
     time_source0: ''
     time_source1: ''
@@ -1694,22 +1440,16 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [496, 908.0]
+    coordinate: [496, 912.0]
     rotation: 0
     state: enabled
 
 connections:
 - [ofdm_burst_tx_source_0, '0', qtgui_time_sink_x_0, '0']
 - [ofdm_burst_tx_source_0, '0', uhd_usrp_sink_0, '0']
-- [ofdm_burst_tx_source_0, '0', uhd_usrp_sink_0, '1']
-- [ofdm_burst_tx_source_0, '0', uhd_usrp_sink_0, '2']
-- [ofdm_burst_tx_source_0, '0', uhd_usrp_sink_0, '3']
 - [ofdm_burst_tx_source_0, tx_freq_cpi, ofdm_burst_rx_0, tx_freq_cpi]
 - [ofdm_burst_tx_source_0, tx_schedule, ofdm_burst_rx_0, tx_schedule]
 - [uhd_usrp_source_0, '0', ofdm_burst_rx_0, '0']
-- [uhd_usrp_source_0, '1', ofdm_burst_rx_0, '1']
-- [uhd_usrp_source_0, '2', ofdm_burst_rx_0, '2']
-- [uhd_usrp_source_0, '3', ofdm_burst_rx_0, '3']
 
 metadata:
   file_format: 1

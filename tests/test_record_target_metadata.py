@@ -8,8 +8,10 @@ from pathlib import Path
 from isac_imp.record_target_metadata import (
     COOPERATIVE_TARGET_CSV,
     CSV_COLUMNS,
+    MONO_RANGE_TARGET_CSV_COLUMNS,
     WITHIN_50CM_DIR,
     append_cooperative_target_row,
+    append_mono_range_target_row,
     dedupe_cooperative_target_csv_latest,
     merge_cooperative_target_csv_plan_b,
     migrate_exact_50cm_boundary_to_within_50cm,
@@ -86,6 +88,30 @@ def test_append_second_row_without_duplicate_header(tmp_path: Path) -> None:
     with (tmp_path / COOPERATIVE_TARGET_CSV).open(encoding="utf-8") as csv_f:
         header = csv_f.readline().strip().split(",")
     assert header == list(CSV_COLUMNS)
+
+
+def test_append_mono_range_target_row(tmp_path: Path) -> None:
+    data = tmp_path / "divide_profiles_001"
+    data.touch()
+
+    csv_path = append_mono_range_target_row(
+        tmp_path,
+        target_range_m=1.25,
+        data_file=str(data),
+        record_max_frames=55,
+    )
+
+    assert csv_path == tmp_path / COOPERATIVE_TARGET_CSV
+    with csv_path.open(encoding="utf-8") as csv_f:
+        reader = csv.DictReader(csv_f)
+        assert list(reader.fieldnames or ()) == list(MONO_RANGE_TARGET_CSV_COLUMNS)
+        rows = list(reader)
+    assert len(rows) == 1
+    assert rows[0]["target_range_m"] == "1.25"
+    assert rows[0]["data_file"] == "divide_profiles_001"
+    assert rows[0]["record_max_frames"] == "55"
+    assert rows[0]["recorded_at_utc"]
+    assert "target_x_cm" not in rows[0]
 
 
 def test_sort_cooperative_target_csv_removes_empty_and_sorts(tmp_path: Path) -> None:

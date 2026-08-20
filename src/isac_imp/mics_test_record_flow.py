@@ -14,6 +14,7 @@ from isac_imp.range_profile_record_limiter import (
 from isac_imp.record_target_metadata import (
     append_cooperative_target_row,
     append_mono_4ch_target_row,
+    append_mono_range_target_row,
 )
 
 
@@ -59,6 +60,31 @@ def install_usrp_ofdm_4ch_record_flow(tb) -> None:
                 out_dir,
                 target_x_cm=float(tb.get_target_pos_x_cm()),
                 target_y_cm=float(tb.get_target_pos_y_cm()),
+                data_file=path,
+                record_max_frames=int(tb.get_record_max_frames()),
+            )
+            return
+        original_set_record_enable(record_enable)
+
+    tb.set_record_enable = set_record_enable
+
+
+def install_usrp_ofdm_1ch_record_flow(tb) -> None:
+    """单站 1ch 测距：递增 divide_profiles_NNN + 真实距离 CSV + 录满自动停。"""
+    install_mics_test_record_flow(tb)
+
+    original_set_record_enable = tb.set_record_enable
+
+    def set_record_enable(record_enable: bool) -> None:
+        was_enabled = tb.get_record_enable()
+        if record_enable and not was_enabled:
+            out_dir = str(tb.get_record_output_dir())
+            path = allocate_next_record_path(out_dir, base_name="divide_profiles")
+            tb.set_record_file_path(path)
+            original_set_record_enable(True)
+            append_mono_range_target_row(
+                out_dir,
+                target_range_m=float(tb.get_target_range_m()),
                 data_file=path,
                 record_max_frames=int(tb.get_record_max_frames()),
             )

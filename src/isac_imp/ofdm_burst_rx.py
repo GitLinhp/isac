@@ -4,7 +4,7 @@
 无中间 GR 块；流图连接::
 
     in0..inN-1  ← USRP Source 各通道（complex64，含 rx_time）
-    tx_schedule / tx_freq_cpi ← TX 计划 epoch + 频域 CPI 消息（后者粘性复用）
+    tx_freq_cpi / tx_schedule ← TX 频域 CPI 消息（粘性复用）+ 计划 epoch
 
 ``num_channels>1`` 时分路拼 CPI，凑齐后一次批处理 CUDA 距离谱；每通道独立 Range Profile 窗。
 """
@@ -96,7 +96,7 @@ def notify_channel_phases(phases_deg: list[float]) -> None:
 
 def default_phase_cal_path() -> str:
     return str(
-        Path(repo_data_dir("data", "experiment", "usrp_ofdm_sink_source_dd"))
+        Path(repo_data_dir("data", "usrp_ofdm_single_bs_range"))
         / "rx_phase_cal.npz"
     )
 
@@ -377,12 +377,12 @@ class OfdmBurstRxBlock(gr.basic_block):
         self._dsp_drop = 0
         self._demod: Optional[OFDMDemodulator] = None
 
-        self._schedule_port = pmt.intern(PORT_TX_SCHEDULE)
-        self.message_port_register_in(self._schedule_port)
-        self.set_msg_handler(self._schedule_port, self._on_tx_schedule)
         self._freq_port = pmt.intern(PORT_TX_FREQ_CPI)
         self.message_port_register_in(self._freq_port)
         self.set_msg_handler(self._freq_port, self._on_tx_freq_cpi)
+        self._schedule_port = pmt.intern(PORT_TX_SCHEDULE)
+        self.message_port_register_in(self._schedule_port)
+        self.set_msg_handler(self._schedule_port, self._on_tx_schedule)
 
         n = self._num_channels
         self._iq_buf: list[np.ndarray | None] = [None] * n
