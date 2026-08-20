@@ -237,7 +237,7 @@ def plot_scene_schematic(
         xy=dev0,
         xytext=(10, 12),
         textcoords="offset points",
-        fontsize=11,
+        fontsize=18,
         ha="left",
         va="bottom",
         zorder=6,
@@ -247,7 +247,7 @@ def plot_scene_schematic(
         xy=dev1,
         xytext=(10, 8),
         textcoords="offset points",
-        fontsize=11,
+        fontsize=18,
         ha="left",
         va="bottom",
         zorder=6,
@@ -271,10 +271,11 @@ def plot_scene_schematic(
     ax.set_xlim(-2.2, 1.2)
     ax.set_ylim(-2.2, 1.2)
     ax.set_aspect("equal")
-    ax.set_xlabel("x (m)")
-    ax.set_ylabel("y (m)")
+    ax.set_xlabel("x (m)", fontsize=18)
+    ax.set_ylabel("y (m)", fontsize=18)
     ax.set_xticks([-2.0, -1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_yticks([-2.0, -1.0, -0.5, 0.0, 0.5, 1.0])
+    ax.tick_params(labelsize=18)
     ax.grid(True, alpha=0.25, linewidth=0.5, zorder=0)
     ax.axhline(0.0, color="#888888", linewidth=0.6, alpha=0.5, zorder=0)
     ax.axvline(0.0, color="#888888", linewidth=0.6, alpha=0.5, zorder=0)
@@ -332,7 +333,7 @@ def plot_scene_schematic(
             label="RX",
         ),
     ]
-    ax.legend(handles=legend_handles, loc="lower left", framealpha=0.92)
+    ax.legend(handles=legend_handles, loc="lower left", framealpha=0.92, fontsize=18)
 
     fig.tight_layout()
     output_png = output_png.resolve()

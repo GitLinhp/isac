@@ -1,0 +1,536 @@
+%%
+%% This is file `sigconf.tex',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% samples.dtx  (with options: `all,proceedings,sigconf')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sigconf.tex.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file samples.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, as listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+%%
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%% The first command in your LaTeX source must be the \documentclass
+%% command.
+%%
+%% For submission and review of your manuscript please change the
+%% command to \documentclass[manuscript, screen, review]{acmart}.
+%%
+%% When submitting camera ready or to TAPS, please change the command
+%% to \documentclass[sigconf]{acmart} or whichever template is required
+%% for your publication.
+%%
+%%
+\documentclass[sigconf]{acmart}
+%%
+%% \BibTeX command to typeset BibTeX logo in the docs
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{makecell}  % 表头换行（SHL / 年份）
+\usepackage{subcaption}
+%% Rights management information.  This information is sent to you
+%% when you complete the rights form.  These commands have SAMPLE
+%% values in them; it is your responsibility as an author to replace
+%% the commands and values with those provided to you when you
+%% complete the rights form.
+\setcopyright{acmlicensed}
+\copyrightyear{2026}
+\acmYear{2026}
+\acmDOI{XXXXXXX.XXXXXXX}
+%% These commands are for a PROCEEDINGS abstract or paper.
+\acmConference[Con4AP '26]
+  {Ubiquitous Connectivity for Agentic and Physical AI,
+   collocated with ACM UbiComp/ISWC 2026}
+  {October 12, 2026}
+  {Shanghai, China}
+%%
+%%  Uncomment \acmBooktitle if the title of the proceedings is different
+%%  from ``Proceedings of ...''!
+%%
+%%\acmBooktitle{Woodstock '18: ACM Symposium on Neural Gaze Detection,
+%%  June 03--05, 2018, Woodstock, NY}
+%% \acmISBN{978-1-4503-XXXX-X/2026/10}
+
+%%
+%% Submission ID.
+%% Use this when submitting an article to a sponsored event. You'll
+%% receive a unique submission ID from the organizers
+%% of the event, and this ID should be used as the parameter to this command.
+\acmSubmissionID{1009}
+
+%%
+%% For managing citations, it is recommended to use bibliography
+%% files in BibTeX format.
+%%
+%% You can then either use BibTeX with the ACM-Reference-Format style,
+%% or BibLaTeX with the acmnumeric or acmauthoryear sytles, that include
+%% support for advanced citation of software artefact from the
+%% biblatex-software package, also separately available on CTAN.
+%%
+%% Look at the sample-*-biblatex.tex files for templates showcasing
+%% the biblatex styles.
+%%
+%%
+%% The majority of ACM publications use numbered citations and
+%% references.  The command \citestyle{authoryear} switches to the
+%% "author year" style.
+%%
+%% If you are preparing content for an event
+%% sponsored by ACM SIGGRAPH, you must use the "author year" style of
+%% citations and references.
+%% Uncommenting
+%% the next command will enable that style.
+%%\citestyle{acmauthoryear}
+
+%%
+%% end of the preamble, start of the body of the document source.
+\begin{document}
+
+%% title
+\title[DL-Based ISAC Cooperative Sensing]{Deep Learning-Based Cooperative Target Sensing in ISAC Systems: Algorithm Design and Prototype Implementation}
+
+%% authors
+\author{Haopeng Lin}
+\orcid{0009-0005-8447-2797}
+\affiliation{%
+  \institution{Beijing University of Posts and Telecommunications}
+  \city{Beijing}
+  \country{China}
+}
+\email{linhaopeng@bupt.edu.cn}
+
+\author{Guochao Song}
+\affiliation{%
+  \institution{China Academy of Information and Communications Technology}
+  \city{Beijing}
+  \country{China}
+}
+\email{songguochao@caict.ac.cn}
+
+\author{Xiangrui Tang}
+\affiliation{%
+  \institution{Beijing University of Posts and Telecommunications}
+  \city{Beijing}
+  \country{China}
+}
+\email{xiangruitang@bupt.edu.cn}
+
+\author{Dongxue Lyu}
+\affiliation{%
+  \institution{Beijing University of Posts and Telecommunications}
+  \city{Beijing}
+  \country{China}
+}
+\email{dxlv@bupt.edu.cn}
+
+\author{Zhongyuan Zhao}
+\correspondingauthor
+\affiliation{%
+  \institution{Beijing University of Posts and Telecommunications}
+  \city{Beijing}
+  \country{China}
+}
+\email{zyzhao@bupt.edu.cn}
+
+%%
+%% By default, the full list of authors will be used in the page
+%% headers. Often, this list is too long, and will overlap
+%% other information printed in the page headers. This command allows
+%% the author to define a more concise list
+%% of authors' names for this purpose.
+\renewcommand{\shortauthors}{Haopeng Lin et al.}
+
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\begin{abstract}
+In this paper, a convolutional neural network (CNN)-based cooperative monostatic target positioning (CMTP) algorithm is designed for integrated communication and sensing (ISAC) systems. The proposed algorithm fuses preprocessed sensing data from different BSs to perform target sensing at the fusion center. Moreover, an artificial intelligence (AI)-enabled ISAC prototype system with orthogonal frequency division multiplexing (OFDM) is built, which deploys the proposed CNN-based algorithm. The proposed algorithm is tested in indoor scenario, and experimental results demonstrate that the proposed CNN-based CMTP scheme achieves a MAE reduction of $38\%$ and $40\%$ relative to MUSIC and ESPRIT, respectively, under a lower computation complexity.
+\end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10002951.10003227.10003236.10003238</concept_id>
+       <concept_desc>Information systems~Sensor networks</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Information systems~Sensor networks}
+
+\keywords{Integrated sensing and communication, cooperative sensing, positioning, deep learning, prototype system}
+
+% \received{31 July 2026}
+% \received[revised]{XX August 2026}
+% \received[accepted]{XX August 2026}
+
+%%
+%% This command processes the author and affiliation and title
+%% information and builds the first part of the formatted document.
+\maketitle
+
+\section{Introduction}
+With emerging applications such as the low-altitude economy, smart cities, and smart healthcare, integrated sensing and communication (ISAC) has become a key technology for sixth-generation (6G) mobile systems~\cite{Zhiqin21,ITU-R23}. By sharing hardware and spectrum, ISAC embeds wireless sensing into communication infrastructure~\cite{Zhiyong20}.
+
+In complex scenarios, such as smart cities, mobile communication systems are required to provide high-precision sensing capability. Single-BS sensing is insufficient to meet this requirement~\cite{Andrew22}. Compared with single-BS sensing, multi-BS cooperative sensing offers more available paths, richer scattering intensity, and superior cooperative gain~\cite{Guangyi24, Zhiqing24}, which improves the accuracy and success probability of target sensing~\cite{Guoliang22, Wangjun22}. Therefore multi-BS cooperative sensing becomes a promising approach to overcome the limitation of
+single-BS sensing~\cite{Zhiqing23}. 
+
+Existing algorithm research on cooperative sensing can be divided into two categories: non-AI and AI methods. Non-AI algorithms typically estimate intermediate parameters and then convert them into the final sensing results~\cite{Zhang25, Jiapeng24}. In contrast, AI algorithms learn a data-driven mapping from multi-BS observations to the target sensing results in an end-to-end manner~\cite{Zihuan26, Hanting25}. However, existing AI-based cooperative sensing studies are often evaluated in simulations, while current ISAC prototypes rarely deploy end-to-end learning models for real-time sensing.
+
+In this paper, a CNN-based cooperative monostatic target positioning (CMTP) scheme is developed and validated on an AI-enabled OFDM ISAC prototype. The main contributions are summarized as follows:
+\begin{itemize}
+\item A dual-BS CMTP model is designed to fuse ROI range spectra via shared residual encoding, range attention pooling (RAP), and late-fusion MLP regression, enabling joint planar localization at the fusion center.
+\item An AI-enabled cooperative monostatic prototype is implemented with USRP X410 radios and GPU-based inference, supporting synchronized OFDM sensing and online CMTP execution.
+\item Cross-day indoor measurements show that CMTP reduces the MAE by about $38\%$ and $40\%$ relative to MUSIC and ESPRIT, respectively, while also lowering fusion-center latency.
+\end{itemize}
+
+\begin{figure}[t]  
+    \centering 
+    \includegraphics[width=0.8\linewidth]{figures/scenario.png}  
+    \caption{ISAC-enabled centralized cooperative sensing.}
+    \Description{Dual-BS sensing with a fusion center receiving preprocessed observations.}
+    \label{fig:scenario}
+\end{figure}
+
+\section{System Model}
+
+Fig.~\ref{fig:scenario} illustrates the ISAC-enabled centralized multi-BS cooperative sensing system in this paper. The system consists of two base stations, BS-0 and BS-1, deployed at spatially separated locations, and a sensing information fusion center (FC) responsible for coordinating sensing operations and fusing multi-node observations. 
+
+Each BS transmits OFDM modulated ISAC signal, receives and preprocesses echo reflected by the target, and then uploads preprocessed data to FC. By jointly processing the multi-node echo data at the FC, the system enables cooperative sensing with enhanced spatial coverage and sensing performance compared with single-BS operation.
+
+\subsection{Transmitted Signal Model}
+
+A pulsed time-divided OFDM frame structure is used for ISAC in this paper. An OFDM frame is divided into communication subframe and sensing subframe in time domain. The transmitted signal can be expressed as
+\begin{equation}
+\begin{aligned}
+x(t)= & \sum_{m=0}^{M-1} \sum_{n=0}^{N-1}
+d_{m, n} e^{j 2 \pi\left(f_{c}+ n \Delta f\right) t} \\
+& \cdot \operatorname{rect}\left(\frac{t-m T}{T}\right),
+\end{aligned}
+\end{equation}
+where $M$ and $N$ denote the number of OFDM symbols and subcarriers, respectively; $m \in \{ 0,1,\ldots,M-1 \}$ and $n \in \{ 0,1,\ldots,N-1\}$ represent the indices of OFDM symbols and subcarriers, respectively; $d_{m, n}$ denotes modulated OFDM symbol; $f_c$ is the center frequency; $\Delta f=\frac{1}{T}$ is subcarrier spacing; $T$ is the duration of single OFDM symbol; $\operatorname{rect}\left(\cdot\right)$ is a rectangle window function.
+
+\subsection{Received Signal Model}
+
+The received signal has expression as follows.
+\begin{equation}
+\begin{aligned}
+y(t)= & U \sum_{m=0}^{M-1} \sum_{n=0}^{N-1}
+d_{m, n} e^{j 2 \pi\left(f_{c}+n \Delta f\right)\left(t-\frac{2 R}{C}\right)} \\
+& \cdot \operatorname{rect}\left(\frac{t-m T-\frac{2 R}{C}}{T}\right)+z(t)
+\end{aligned}
+\end{equation}
+where $U$ denotes the total path gain of sensing channel between receiver and transmitter. $R$ denotes the radial distance of target to receiver. $z(t)$ is additive Gaussian white noise, and $C$ is speed of light.
+
+The received time signal $y(t)$ is processed in three steps---OFDM demodulation, least-squares (LS) channel estimation, and range-spectrum computation---to obtain the complex range spectrum $\mathbf{r}$.
+
+First, OFDM demodulation (CP removal and FFT) yields the frequency-domain observation
+\begin{equation}
+Y_{m,n}=\mathrm{Demod}\{y(t)\}_{m,n},
+\end{equation}
+
+Second, LS channel estimation with the known transmit reference $X_{m,n}$ gives
+\begin{equation}
+\hat{H}_{m,n}=\frac{Y_{m,n}}{X_{m,n}}.
+\end{equation}
+
+Third, Blackman--Harris windowing, zero-padding to length $N_{\mathrm{FFT}}=ZN$, IFFT, and coherent processing interval (CPI) integration are compactly written as
+\begin{equation}
+\mathbf{r}=\sum_{m=0}^{M_{\mathrm{CPI}}-1}
+\mathbf{F}_{N_{\mathrm{FFT}}}^{-1}
+\big(
+\mathbf{w}\odot
+[\hat{H}_{m,0},\ldots,\hat{H}_{m,N-1},\mathbf{0}_{1\times(N_{\mathrm{FFT}}-N)}]^{\mathsf{T}}
+\big),
+\end{equation}
+where $\mathbf{F}_{N_{\mathrm{FFT}}}^{-1}$ is the $N_{\mathrm{FFT}}$-point IFFT, $\mathbf{w}$ is the window, and $\odot$ denotes the Hadamard product. The physical range of the $\ell$-th bin is $R_\ell=\ell\Delta r$, where the range-bin spacing after zero-padding is
+\begin{equation}
+\Delta r=\frac{C}{2N_{\mathrm{FFT}}\Delta f}.
+\end{equation}
+Note that the theoretical range resolution is determined by the effective bandwidth $B=N\Delta f$ as $\Delta R=C/(2B)$, whereas zero-padding only refines the bin spacing $\Delta r$. The resulting $\mathbf{r}\in\mathbb{C}^{N_{\mathrm{FFT}}}$ is the complex range spectrum used for subsequent range estimation and positioning. In the dual-BS cooperative setting, the ROI-cropped spectra at BS-$0$ and BS-$1$ are denoted by $\mathbf{r}_0$ and $\mathbf{r}_1$, respectively.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/cmtp_architecture.png}
+\caption{Architecture of the proposed CNN-based CMTP model. (Conv layers use $(c,k,s)$ for output channels, kernel length, and stride; $\downarrow$ denotes range-axis down-sampling.)}
+\Description{Block diagram of CMTP with dual-BS shared spectral encoders, range attention pooling (RAP), and a late-fusion MLP localization decoder.}
+\label{fig:cmtp-arch}
+\end{figure*}
+
+\section{The Proposed CNN-based CMTP Scheme}
+\label{sec:CMTP-scheme}
+In this section, the model structure of the proposed CNN-based CMTP model is designed to implement dual-BS joint positioning. Then, the loss function and training strategy are introduced.
+
+\subsection{The Architecture of CMTP}
+As shown in Fig.~\ref{fig:cmtp-arch}, CMTP is a CNN-based model, which maps dual-BS ROI range spectra to the planar coordinate $\hat{\mathbf{p}}=(\hat{x},\hat{y})$. For BS-$n$, $n\in\{0,1\}$, let $\mathbf{r}_n\in\mathbb{C}^{L}$ denote the complex range profile after ROI cropping to $[0,4]\,\mathrm{m}$, where $L$ is the number of range bins. As a preprocessing step, each complex profile is split into real and imaginary parts to form a two-channel real-valued input $\tilde{\mathbf{r}}_n\in\mathbb{R}^{2\times L}.$
+Note that per-BS RMS normalization is not applied, so as to preserve the absolute spectral amplitude information for subsequent positioning. The network then applies a shared-weight cascade of a convolution block (CB), three residual blocks (ResBlocks), and range attention pooling (RAP) to each station in parallel, followed by concatenation and an MLP regression head, i.e.,
+\begin{equation}
+\hat{\mathbf{p}}=f(\mathbf{r}_0,\mathbf{r}_1;\Theta),
+\end{equation}
+where $\Theta$ collects all trainable parameters of CMTP. The detailed design is introduced as follows.
+
+1) \textit{The Architecture of CB:}
+The intermediate feature of $\tilde{\mathbf{r}}_n$ is first extracted by CB along the range axis. In particular, CB employs $\mathrm{Conv1d}(2\to 64,\,k=7,\,s=2)$ with BatchNorm and ReLU, followed by $\mathrm{MaxPool1d}(k=3,\,s=2)$, which down-samples the range axis by approximately a factor of four.
+
+2) \textit{The Architecture of ResBlock:}
+The refined feature tensor is then generated by refining the CB features through three ResBlocks with shared weights across BS-$0$ and BS-$1$. In particular, ResBlock$_1$ keeps $64$ channels with stride $1$, while ResBlock$_2$ and ResBlock$_3$ raise the channel dimension to $128$ and $256$ with stride $2$, respectively. Each ResBlock consists of two $3\times 1$ convolutions, BatchNorm, ReLU, and a $1\times 1$ shortcut when the channel count or stride changes. The resulting feature tensor is $\mathbf{y}_n\in\mathbb{R}^{C\times L'}$, where $C=256$ and $L'\approx L/16$.
+
+3) \textit{The Architecture of RAP:}
+After residual encoding, $\mathbf{y}_n\in\mathbb{R}^{C\times L'}$ still lies on the range axis. Because a target echo typically concentrates on a few bins while the remaining bins are dominated by noise, sidelobes, or clutter, naive global average or max pooling would mix irrelevant range responses into the station embedding. RAP therefore performs \emph{learnable soft selection} along range before late fusion. Let $q(\cdot)$ denote a $1\times 1$ convolutional scoring network. The attention weights and the pooled vector are
+\begin{equation}
+\boldsymbol{\alpha}_n=\mathrm{softmax}\bigl(q(\mathbf{y}_n)\bigr)\in\mathbb{R}^{1\times L'},
+\qquad
+\mathbf{s}_n=\sum_{\ell=1}^{L'}\alpha_{n,\ell}\,\mathbf{y}_{n,:,\ell}\in\mathbb{R}^{C}.
+\end{equation}
+In this way, RAP adaptively up-weights bins associated with target echoes, suppresses non-informative regions, and yields a compact vector $\mathbf{s}_n\in\mathbb{R}^{256}$ for each BS.
+The dual-BS embeddings $\{\mathbf{s}_0,\mathbf{s}_1\}$ then provide complementary, denoised spectral cues to the MLP, without requiring explicit peak picking as in classical subspace ranging.
+
+4) \textit{The Architecture of MLP:}
+The main task of MLP is to fuse the dual-BS feature vectors and map them to planar coordinates. In particular, $\mathbf{s}_0$ and $\mathbf{s}_1$ are first concatenated as $\mathbf{s}=[\mathbf{s}_0;\mathbf{s}_1]\in\mathbb{R}^{512}$. Then, an MLP with one hidden layer of dimension $128$ is employed, where ReLU and dropout with probability $0.3$ are inserted between the two linear layers, i.e.,
+\begin{equation}
+\hat{\mathbf{p}}=
+\mathbf{W}_2\,\mathrm{ReLU}(\mathbf{W}_1\mathbf{s}+\mathbf{b}_1)+\mathbf{b}_2.
+\end{equation}
+
+\subsection{Loss Function and Training Strategy}
+To minimize the difference between the predicted and ground-truth planar coordinates, the root mean square error (RMSE) is used as the loss function. For a mini-batch of size $B$, with prediction $\hat{\mathbf{p}}_i$, ground truth $\mathbf{p}_i$, and sample weight $w_i$,
+\begin{equation}
+\mathcal{L}
+=\sqrt{
+\frac{\sum_{i=1}^{B} w_i\,\lVert\hat{\mathbf{p}}_i-\mathbf{p}_i\rVert_2^{2}}
+{\sum_{i=1}^{B} w_i}
++\varepsilon
+},
+\end{equation}
+where $\varepsilon>0$ is a numerical stabilizer. The weight $w_i$ is assigned according to the planar zone of the target: the center zone ($|x|,|y|\le 0.5\,\mathrm{m}$), side zones, and corner zones use weights $1$, $3$, and $3$, respectively, which improves the fitting performance in geometrically adverse outer regions.
+
+In Algorithm~\ref{alg:cmtp}, a training strategy of CMTP is designed. During training, uniform planar label jitter within $\pm 0.02\,\mathrm{m}$ and range-axis SpecAugment with probability $0.5$ are employed for data augmentation, together with CPI-domain amplitude scaling of $0.2$ and complex additive noise with standard deviation $0.02$ to enhance robustness to spectral fluctuations. The checkpoint with the best validation loss is retained for inference.
+
+\begin{algorithm}[b]
+\caption{The Training Strategy of CMTP}
+\label{alg:cmtp}
+\begin{algorithmic}[1]
+\Require Initial parameters $\Theta^{(0)}$, epochs $E$, patience $P$
+\For{$e=1$ to $E$}
+  \State Sample a mini-batch and apply data augmentation
+  \State $\hat{\mathbf{p}}\leftarrow f(\mathbf{r}_0,\mathbf{r}_1;\Theta^{(e-1)})$
+  \State Update $\Theta^{(e)}$ by minimizing $\mathcal{L}$; early-stop if validation loss stagnates for $P$ epochs
+\EndFor
+\Ensure Trained model $f(\cdot;\Theta)$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/prototype_system_architecture_diagram.png}
+    \caption{Architecture diagram of the prototype system.}
+    \Description{Block diagram of the upper computer, dual USRPs, router, and rubidium frequency standard.}
+    \label{fig:prototype-arch}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.485\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/prototype_hardware.png}
+    \caption{Hardware of the prototype system.}
+    \Description{Photograph of the deployed USRP radios, antennas, and supporting equipment.}
+    \label{fig:prototype-hardware}
+  \end{subfigure}
+  \vspace{0.5em}
+  \begin{subfigure}[t]{\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/prototype_signal_processing_flowchart.png}
+    \caption{Signal processing flowchart of the prototype system.}
+    \Description{End-to-end flowchart from OFDM transmit and receive processing to fusion-center CMTP inference.}
+    \label{fig:prototype-flow}
+  \end{subfigure}
+  \caption{Prototype system for cooperative sensing.}
+  \Description{Architecture diagram, hardware photo, and signal-processing flowchart of the dual-BS prototype.}
+  \label{fig:prototype}
+\end{figure*}
+
+\section{Prototype System Design}
+\label{sec:prototype-system-design}
+In this section, an AI-enabled prototype system for multi-base-station (multi-BS) cooperative sensing is introduced, implemented with GNU Radio and Python.
+
+\subsection{System Architecture}
+The system architecture and hardware of the prototype system are as shown in Fig.~\ref{fig:prototype-arch} and Fig.~\ref{fig:prototype-hardware}, respectively. The prototype system consists of an upper computer (UC; NVIDIA Spark), two universal software radio peripherals (USRPs; NI X410), a router, a rubidium frequency standard (RFS), and associated interconnecting cables. 
+
+The UC and USRPs function as the baseband signal processor and radio-frequency (RF) front end of the base stations, respectively. In addition, the UC serves as the fusion center, while the RFS provides the external reference clock (REF) and pulse-per-second (PPS) for system synchronization.
+
+The UC and the USRPs are interconnected through two distinct physical links. High-speed data traffic is transmitted via QSFP optical cables, whereas device control and configuration are performed over RJ45 Ethernet connections established through a router. Synchronization between the two USRPs is achieved by connecting the REF and PPS inputs of each USRP to the 10 MHz frequency standard and PPS outputs of RFS via SMA coaxial cables.
+
+\subsection{Signal Processing Procedure}
+The signal processing flowchart of the prototype system is shown as Fig.~\ref{fig:prototype-flow}. The baseband signal processing can be divided into transmitter, receiver and data fusion center. The detailed signal processing procedures are shown as follows.
+
+At the transmitters, a pre-stored bitstream is loaded and processed through QAM mapping, resource-grid mapping, inverse fast Fourier transform (IFFT), and cyclic-prefix (CP) insertion to form the transmitted OFDM baseband waveform. Each CPI comprises 4 consecutive OFDM symbols. The baseband signal is then upconverted to radio frequency (RF) and radiated over the air.
+
+At the receivers, the downconverted received baseband signal is processed for sensing. After CP removal and FFT, frequency-domain channel estimation is performed by dividing the received resource grid by the known transmit reference, which is equivalent to least-squares (LS) estimation under known pilots. The estimated channel response is then zero-padded, multiplied by a Blackman--Harris (BH) window, and transformed along the delay axis via FFT to form the range spectrum. Coherent integration is applied across the OFDM symbols within each CPI to enhance the echo-to-clutter ratio. Finally, the integrated range spectrum is cropped to the predefined region of interest (ROI) and uploaded to the data fusion center.
+
+At the data fusion center, the dual-BS ROI spectra are jointly processed by the proposed CMTP to recover the target planar coordinate. Unlike conventional pipelines that estimate per-BS ranges and then intersect dual-station circles, CMTP performs end-to-end localization from spectra to coordinates; the network architecture is detailed in Section~\ref{sec:CMTP-scheme}.
+
+In summary, the transmitter generates synchronized OFDM waveforms, each receiver extracts the ROI range profile, and the fusion center executes CMTP to output the target location in the sensing plane.
+
+\section{Experimental Evaluation}
+In this section, the construction of the cooperative monostatic measurement dataset is first described. And then, the performance of the proposed CMTP scheme is evaluated.
+
+\subsection{Dataset Construction}
+As shown in Fig.~\ref{fig:measurement}, the measurement campaign is conducted on a dual-BS cooperative monostatic ISAC prototype as described in Section~\ref{sec:prototype-system-design}. BS-$0$ and BS-$1$ are placed at $(0,-2)\,\mathrm{m}$ and $(-2,0)\,\mathrm{m}$, respectively, and each station operates in a quasi-monostatic configuration with a small TX/RX antenna offset. A single static target (metal reflector) is moved over the sensing plane $[-1,1]\,\mathrm{m}\times[-1,1]\,\mathrm{m}$. To characterize geometrically diverse localization conditions, the plane is divided into center zones ($|x|,|y|\le 0.5\,\mathrm{m}$), side zones, and corner zones, which are also used later for weighted training and regional metrics.
+
+During the measurement campaign, both base stations transmit and receive synchronized OFDM waveforms. BS-$0$ and BS-$1$ operate at carrier frequencies of $6.0\,\mathrm{GHz}$ and $3.5\,\mathrm{GHz}$, respectively. The OFDM configuration employs a subcarrier spacing of $120\,\mathrm{kHz}$ with $2048$ subcarriers, yielding an effective bandwidth of $245.76\,\mathrm{MHz}$ and a range resolution of approximately $0.61\,\mathrm{m}$. Each coherent processing interval (CPI) comprises $M_{\mathrm{CPI}}=4$ consecutive OFDM symbols that are integrated at the receiver.
+
+Each location yields synchronized dual-BS CPI frames; ROI spectra $\{\mathbf{r}_0,\mathbf{r}_1\}$ on $[0,4]\,\mathrm{m}$ with label $\mathbf{p}=(x,y)$ form one sample.
+Two campaigns under the same geometry cover $217$ locations $\times$ $50$ CPIs ($10{,}850$ samples/day).
+Day-1 is split session-wise and region-stratified (validation ratio $0.4$) into $6500$/$4350$ train/val samples from $130$/$87$ locations, with no location shared across splits; CMTP is trained with early stopping on the validation loss (Section~\ref{sec:CMTP-scheme}).
+Day-2 ($10{,}850$ samples, $217$ locations) is held out for cross-day testing without sample leakage.
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[t]{0.55\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/measurement_scenario.jpg}
+\caption{Measurement scenario.}
+\Description{Indoor photograph of the dual-BS cooperative monostatic measurement setup.}
+\label{fig:measurement-photo}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.43\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/scene_geometry.png}
+\caption{Scenario geometry.}
+\Description{Schematic of the sensing plane with BS-0, BS-1, and target sampling locations over center, side, and corner zones.}
+\label{fig:measurement-geometry}
+\end{subfigure}
+\caption{Dual-BS cooperative monostatic measurement.}
+\Description{Photo of the indoor measurement scenario and schematic of the sensing plane with BS-0, BS-1, and target sampling locations.}
+\label{fig:measurement}
+\end{figure}
+
+\subsection{Experimental Results}
+During the training procedure, the Adam optimizer is employed, the initial learning rate is set as $5\times 10^{-5}$, the batch size is set as $128$, and the number of epochs is set as $E=100$, with early stopping when the validation loss does not improve for $P=15$ consecutive epochs.
+
+The following performance metrics are evaluated:
+\begin{itemize}
+\item \textbf{Global mean absolute error (GMAE):} The mean positioning error over all samples in the sensing plane.
+\item \textbf{Center mean absolute error (CMAE):} The mean positioning error restricted to the center zone with $|x|,|y|\le 0.5\,\mathrm{m}$.
+\item \textbf{Latency:} The average per-sample runtime of the fusion-center algorithm, measured on a GPU.
+\end{itemize}
+
+Moreover, the following typical localization schemes are selected as baselines:
+\begin{itemize}
+\item \textbf{MUSIC:} Classical two-stage pipeline that first estimates per-BS ranges via the MUSIC subspace method and then recovers the planar coordinate by dual-station geometric intersection.
+\item \textbf{ESPRIT:} Same two-stage pipeline as MUSIC, except that per-BS ranges are estimated by ESPRIT.
+\end{itemize}
+
+Fig.~\ref{fig:range-cdf} depicts the per-BS range MAE CDF of MUSIC and ESPRIT. Independent single-BS ranging errors propagate into geometric intersection: BS-$0$ is steeper in the low-error region (about $65\%$ below $0.2\,\mathrm{m}$), whereas BS-$1$ reaches the $50\%$ CDF only near $0.45$--$0.5\,\mathrm{m}$. The long BS-$0$ tail (about $90\%$ CDF near $2.0\,\mathrm{m}$) indicates limited robustness under adverse CPI/geometry and explains planar positioning outliers.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\linewidth]{figures/methods_range_cdf_compare.png}
+\caption{Per-BS range MAE CDF of MUSIC and ESPRIT.}
+\Description{Four CDF curves comparing range estimation errors at BS-0 and BS-1 for MUSIC and ESPRIT.}
+\label{fig:range-cdf}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\linewidth]{figures/methods_rmse_cdf_compare_global.png}
+\caption{Positioning MAE CDF of different schemes.}
+\Description{Global positioning MAE CDF curves comparing MUSIC, ESPRIT, and CMTP.}
+\label{fig:positioning-cdf}
+\end{figure}
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/music_rmse_heatmap.png}
+\caption{MUSIC}
+\label{fig:heatmap-music}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/esprit_rmse_heatmap.png}
+\caption{ESPRIT}
+\label{fig:heatmap-esprit}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/cmtp_rmse_heatmap.png}
+\caption{CMTP}
+\label{fig:heatmap-cmtp}
+\end{subfigure}
+\caption{Positioning MAE heatmaps over the $x$--$y$ plane for different schemes.}
+\Description{Three heatmaps of positioning MAE over the sensing plane for MUSIC, ESPRIT, and CMTP.}
+\label{fig:heatmap}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\caption{The performance of different schemes.}
+\label{tab:performance}
+\begin{tabular}{lccc}
+\toprule
+Scheme & GMAE (m) & CMAE (m) & Latency (ms) \\
+\midrule
+MUSIC  & 0.937 & 0.599 & 1.363 \\
+ESPRIT & 0.966 & 0.627 & 1.983 \\
+CMTP   & 0.579 & 0.355 & 0.626 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Fig.~\ref{fig:positioning-cdf} compares the positioning MAE CDF of different schemes. Although the three curves are close below $0.3\,\mathrm{m}$, CMTP is consistently shifted leftward over the full distribution. It achieves a GMAE of $0.579\,\mathrm{m}$, corresponding to reductions of about $38\%$ and $40\%$ relative to MUSIC ($0.937\,\mathrm{m}$) and ESPRIT ($0.966\,\mathrm{m}$), respectively. At the $80\%$ CDF level, the positioning MAE of CMTP is about $0.9\,\mathrm{m}$, whereas MUSIC and ESPRIT require about $1.9\,\mathrm{m}$. Moreover, the CMTP tail terminates near $1.8\,\mathrm{m}$, while MUSIC and ESPRIT extend to about $3.4\,\mathrm{m}$, indicating that joint positioning suppresses the propagation of single-BS ranging failures into the final coordinate estimate.
+
+Fig.~\ref{fig:heatmap} further shows the spatial distribution of positioning MAE over the $x$--$y$ plane. For MUSIC and ESPRIT, the center zone remains relatively accurate, whereas the corners and the outer region degrade severely. In contrast, CMTP maintains low errors over most of the sensing plane, with only mild degradation near the edges. Quantitatively, CMTP reduces the CMAE from $0.599\,\mathrm{m}$ (MUSIC) and $0.627\,\mathrm{m}$ (ESPRIT) to $0.355\,\mathrm{m}$, i.e., an improvement of about $41\%$ in the center zone. These results confirm that jointly modeling complementary dual-BS spectral features avoids the error accumulation of the conventional two-stage pipeline.
+
+Table~\ref{tab:performance} reports GMAE, CMAE, and fusion-center latency on an NVIDIA RTX~4090 GPU.
+Latency is the average per-sample runtime of the fusion-center stage only (excluding per-BS range-spectrum preprocessing and data transfer), measured after GPU warm-up over the Day-2 test set.
+CMTP achieves the lowest errors and the lowest latency ($0.626\,\mathrm{ms}$), about $46\%$ of MUSIC ($1.363\,\mathrm{ms}$) and $32\%$ of ESPRIT ($1.983\,\mathrm{ms}$), by avoiding subspace search and explicit dual-circle intersection.
+
+\section{Conclusion}
+In this paper, a CNN-based CMTP algorithm is proposed for dual-BS ISAC sensing, and is deployed on an OFDM prototype with USRP front ends and GPU-based fusion-center inference. By jointly mapping dual-BS ROI range spectra to planar coordinates, CMTP avoids explicit per-BS range estimation and geometric intersection. Cross-day indoor measurements show that CMTP reduces the MAE by about $38\%$ and $40\%$ relative to MUSIC and ESPRIT, respectively, while also lowering the fusion-center latency. These results verify the effectiveness of the proposed scheme for cooperative monostatic ISAC positioning in terms of accuracy and runtime efficiency.
+
+Limitations remain: the measurements use a static reflector without motion tracking, and the indoor dual-BS setup leaves denser multipath, multi-target, and outdoor scenarios for future work.
+
+\begin{acks}
+This work was supported in part by the National Natural Science Foundation of China (NSFC) under Grant No.~62501646.
+\end{acks}
+
+%% bibliography
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
+\endinput
+%%
+%% End of file `sigconf.tex'.

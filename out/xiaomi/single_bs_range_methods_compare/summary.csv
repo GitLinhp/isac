@@ -1,0 +1,4 @@
+method,n_valid,fail_rate,rmse_m,mae_m,min_abs_err_m,max_abs_err_m,var_abs_err_m,n_total
+music,6550,0.000,0.877,0.513,0.002,5.756,0.505,6550
+esprit,6550,0.000,0.725,0.463,0.002,3.785,0.311,6550
+cnn,6550,0.000,0.047,0.032,0.000,0.645,0.001,6550

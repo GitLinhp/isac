@@ -148,7 +148,7 @@ The measurement campaign is conducted on a dual-BS cooperative monostatic ISAC p
 
 During the measurement campaign, both base stations transmit and receive synchronized OFDM waveforms. BS-$0$ and BS-$1$ operate at carrier frequencies of $6.0\,\mathrm{GHz}$ and $3.5\,\mathrm{GHz}$, respectively. The OFDM configuration employs a subcarrier spacing of $120\,\mathrm{kHz}$ with $2048$ subcarriers, yielding an effective bandwidth of $245.76\,\mathrm{MHz}$ and a range resolution of approximately $0.61\,\mathrm{m}$. Each coherent processing interval (CPI) comprises $M_{\mathrm{CPI}}=4$ consecutive OFDM symbols that are integrated at the receiver.
 
-At each target location, a measurement session records synchronized CPI frames from both base stations. For each CPI, the receiver extracts the complex range profile, which is cropped to the ROI $[0,4]\,\mathrm{m}$ and stored together with the ground-truth coordinate $\mathbf{p}=(x,y)$. The dual-BS ROI spectra $\{\mathbf{r}_0,\mathbf{r}_1\}$ and the label $\mathbf{p}$ constitute one training / evaluation sample for CNN-based CMTP. Two independent measurement campaigns are conducted on two different days under the same geometry and processing pipeline. Each campaign covers $217$ distinct planar coordinates with $50$ CPI frames per location. The Day-1 dataset is partitioned into training and validation subsets with a validation ratio of $0.4$ in a session-wise and region-stratified manner: all CPI frames recorded at the same target location are assigned exclusively to either the training or the validation subset, and the split is performed independently within each planar zone. CMTP is trained on the training subset following Section~\ref{sec:CMTP scheme} and Algorithm~\ref{alg:cmtp}, with early stopping and checkpoint selection based on the validation loss. The Day-2 dataset is reserved for evaluation of different schemes, so as to avoid same-day sample leakage and to assess cross-day generalization.
+At each target location, a measurement session records synchronized CPI frames from both base stations. For each CPI, the receiver extracts the complex range profile, which is cropped to the ROI $[0,4]\,\mathrm{m}$ and stored together with the ground-truth coordinate $\mathbf{p}=(x,y)$. The dual-BS ROI spectra $\{\mathbf{r}_0,\mathbf{r}_1\}$ and the label $\mathbf{p}$ constitute one training / evaluation sample for CNN-based CMTP. Two independent measurement campaigns are conducted on two different days under the same geometry and processing pipeline. Each campaign covers $217$ distinct planar coordinates with up to $50$ CPI frames per location. The Day-1 dataset is partitioned into training and validation subsets with a validation ratio of $0.4$ in a session-wise and region-stratified manner: all CPI frames recorded at the same target location are assigned exclusively to either the training or the validation subset, and the split is performed independently within each planar zone. CMTP is trained on the training subset following Section~\ref{sec:CMTP scheme} and Algorithm~\ref{alg:cmtp}, with early stopping and checkpoint selection based on the validation loss. The Day-2 dataset is reserved for evaluation of different schemes, so as to avoid same-day sample leakage and to assess cross-day generalization; after discarding incomplete sessions it contains $10{,}752$ CPI frames.
 
 \begin{figure}[htbp]
 \centering
@@ -163,7 +163,7 @@ The following performance metrics are evaluated:
 \begin{itemize}
 \item \textbf{Global mean absolute error (GMAE):} The mean Euclidean positioning error over all samples in the sensing plane.
 \item \textbf{Center mean absolute error (CMAE):} The mean Euclidean positioning error restricted to the center zone with $|x|,|y|\le 0.5\,\mathrm{m}$.
-\item \textbf{Latency:} The average per-sample runtime of the fusion-center algorithm core (excluding data loading and plotting), measured on a GPU.
+\item \textbf{Latency:} The average per-sample wall-clock runtime of the fusion-center algorithm core on a GPU, after a short warm-up whose passes are discarded. For all schemes the timed stage starts from dual-BS ROI range spectra already available at the fusion center (MUSIC/ESPRIT: subspace ranging and geometric intersection; CMTP: CNN forward). Per-BS range-spectrum preprocessing, data loading, and plotting are excluded.
 \end{itemize}
 Moreover, the following typical localization schemes are selected as baselines:
 \begin{itemize}
@@ -218,7 +218,7 @@ Fig.~\ref{fig:bim} further illustrates the spatial distribution of positioning M
 \label{fig:bim}
 \end{figure*}
 
-In Table~\ref{tab:perf}, the GMAE, CMAE, and fusion-center latency of different schemes are summarized. The CMTP scheme not only attains the lowest positioning errors, but also achieves the lowest latency of $0.590\,\mathrm{ms}$ per sample, which is only about $32\%$ of MUSIC ($1.834\,\mathrm{ms}$) and $23\%$ of ESPRIT ($2.541\,\mathrm{ms}$). Although CMTP introduces a CNN with approximately $5.0\times 10^{5}$ trainable parameters, it avoids the computational burden of subspace spectral search and explicit dual-circle intersection. Consequently, the proposed scheme simultaneously improves localization accuracy and reduces fusion latency. Overall, the experimental results verify the effectiveness of CMTP-CNN for cooperative monostatic ISAC localization in terms of accuracy, spatial robustness, and runtime efficiency.
+In Table~\ref{tab:perf}, the GMAE, CMAE, and fusion-center latency of different schemes are summarized. The CMTP scheme not only attains the lowest positioning errors, but also achieves the lowest latency of $0.574\,\mathrm{ms}$ per sample, which is only about $42\%$ of MUSIC ($1.369\,\mathrm{ms}$) and $28\%$ of ESPRIT ($2.067\,\mathrm{ms}$). Although CMTP introduces a CNN with approximately $5.0\times 10^{5}$ trainable parameters, it avoids the computational burden of subspace spectral search and explicit dual-circle intersection. Consequently, the proposed scheme simultaneously improves localization accuracy and reduces fusion latency. Overall, the experimental results verify the effectiveness of CMTP-CNN for cooperative monostatic ISAC localization in terms of accuracy, spatial robustness, and runtime efficiency.
 
 \begin{table}[htbp]
 \centering
@@ -228,11 +228,11 @@ In Table~\ref{tab:perf}, the GMAE, CMAE, and fusion-center latency of different 
 \hline
 Scheme & GMAE (m) & CMAE (m) & Latency (ms) \\
 \hline
-MUSIC  & 0.937 & 0.599 & 1.834 \\
+MUSIC  & 0.937 & 0.599 & 1.369 \\
 \hline
-ESPRIT & 0.966 & 0.627 & 2.541 \\
+ESPRIT & 0.966 & 0.627 & 2.067 \\
 \hline
-CMTP   & 0.579 & 0.355 & 0.590 \\
+CMTP   & 0.579 & 0.355 & 0.574 \\
 \hline
 \end{tabular}
 \end{table}

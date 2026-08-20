@@ -1,0 +1,8 @@
+{
+  "method": "cnn",
+  "eval_s": 6.168439080007374,
+  "n_samples": 10744,
+  "mean_ms_per_sample": 0.5741287304548933,
+  "timing_scope": "algo_core",
+  "device": "cuda:0"
+}

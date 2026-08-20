@@ -49,7 +49,10 @@ from isac_imp.cooperative_monostatic_pipeline import (
     DEFAULT_ESPRIT_SUBARRAY_SIZE,
     DEFAULT_ESPRIT_WINDOW_SIZE,
     DEFAULT_RANGE_ROI,
+    divide_cpi_to_roi_range_profile,
+    divide_cpi_to_roi_range_profile_torch,
     esprit_range_from_divide_cpi,
+    esprit_range_from_roi_profile,
     grc_cooperative_processing_params,
     localize_xy_from_two_ranges_with_bias,
 )
@@ -364,6 +367,24 @@ def _esprit_range_from_divide_cpi(
     )
 
 
+def _esprit_range_from_roi_profile(
+    profile_roi,
+    *,
+    proc_params: dict,
+    range_roi: tuple[float, float],
+    cfar_detector: CFARDetector | None = None,
+    device: str | None = None,
+) -> float:
+    """Thin wrapper：预裁切 ROI 谱 → ESPRIT（融合中心计时核）。"""
+    return esprit_range_from_roi_profile(
+        profile_roi,
+        proc_params=proc_params,
+        range_roi=range_roi,
+        cfar_detector=cfar_detector,
+        device=device,
+    )
+
+
 def _xy_pair(values: tuple[float, float] | list[float]) -> tuple[float, float]:
     return (float(values[0]), float(values[1]))
 
@@ -489,7 +510,7 @@ def _evaluate_per_frame(
     cfar_detector: CFARDetector | None = None,
     device: str = "cuda:0",
 ) -> tuple[list[dict[str, float | int]], float, int]:
-    """预加载 CPI 后按算法核口径计时；返回 ``(rows, eval_s, n_timed)``。"""
+    """预加载 ROI 谱后按融合中心算法核口径计时；返回 ``(rows, eval_s, n_timed)``。"""
     import torch
 
     ant = antenna_kwargs or {}
@@ -509,11 +530,18 @@ def _evaluate_per_frame(
             indices = indices[: max_samples]
 
         meta: list[tuple[int, int, int, float, float]] = []
-        cpi0_list: list = []
-        cpi1_list: list = []
+        roi0_list: list = []
+        roi1_list: list = []
         use_cuda = str(device).startswith("cuda") and torch.cuda.is_available()
         torch_device = torch.device(device if use_cuda else "cpu")
         algo_device = str(torch_device) if use_cuda else "cpu"
+        roi_kwargs = {
+            "range_bin_step": float(proc_params["range_bin_step"]),
+            "range_roi": range_roi,
+            "fft_len": int(proc_params["fft_len"]),
+            "zeropadding_fac": int(proc_params["zeropadding_fac"]),
+            "transpose_len": int(proc_params["transpose_len"]),
+        }
 
         for sample_idx in tqdm(
             indices,
@@ -524,11 +552,19 @@ def _evaluate_per_frame(
             d0 = np.asarray(dev0_ds[sample_idx], dtype=np.complex64)
             d1 = np.asarray(dev1_ds[sample_idx], dtype=np.complex64)
             if use_cuda:
-                cpi0_list.append(torch.as_tensor(d0, device=torch_device))
-                cpi1_list.append(torch.as_tensor(d1, device=torch_device))
+                roi0_list.append(
+                    divide_cpi_to_roi_range_profile_torch(
+                        d0, device=torch_device, **roi_kwargs
+                    )
+                )
+                roi1_list.append(
+                    divide_cpi_to_roi_range_profile_torch(
+                        d1, device=torch_device, **roi_kwargs
+                    )
+                )
             else:
-                cpi0_list.append(d0)
-                cpi1_list.append(d1)
+                roi0_list.append(divide_cpi_to_roi_range_profile(d0, **roi_kwargs))
+                roi1_list.append(divide_cpi_to_roi_range_profile(d1, **roi_kwargs))
             true_x, true_y = (float(v) for v in target_ds[sample_idx, :2])
             meta.append(
                 (
@@ -545,15 +581,15 @@ def _evaluate_per_frame(
 
     def run_one(i: int) -> None:
         sample_idx, sess, frame_i, true_x, true_y = meta[i]
-        r0 = _esprit_range_from_divide_cpi(
-            cpi0_list[i],
+        r0 = _esprit_range_from_roi_profile(
+            roi0_list[i],
             proc_params=proc_params,
             range_roi=range_roi,
             cfar_detector=cfar_detector,
             device=algo_device if use_cuda else None,
         )
-        r1 = _esprit_range_from_divide_cpi(
-            cpi1_list[i],
+        r1 = _esprit_range_from_roi_profile(
+            roi1_list[i],
             proc_params=proc_params,
             range_roi=range_roi,
             cfar_detector=cfar_detector,

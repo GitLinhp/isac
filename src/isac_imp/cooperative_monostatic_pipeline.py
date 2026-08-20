@@ -403,6 +403,48 @@ def estimate_monostatic_range_esprit_m(
     return float(peaks.peak_ranges_m[0])
 
 
+def music_range_from_roi_profile(
+    profile_roi: Sequence[complex] | np.ndarray | torch.Tensor,
+    *,
+    proc_params: dict[str, Any],
+    range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
+    cfar_detector: CFARDetector | None = None,
+    device: torch.device | str | None = None,
+) -> float:
+    """预裁切 ROI 复数距离谱 → 1D MUSIC 最强峰距离 (m)。"""
+    return estimate_monostatic_range_m(
+        profile_roi,
+        range_bin_step=float(proc_params["range_bin_step"]),
+        range_roi=range_roi,
+        num_sources=int(proc_params["music_num_sources"]),
+        subarray_size=int(proc_params["music_subarray_size"]),
+        threshold=float(proc_params["music_threshold"]),
+        cfar_detector=cfar_detector,
+        device=device,
+    )
+
+
+def esprit_range_from_roi_profile(
+    profile_roi: Sequence[complex] | np.ndarray | torch.Tensor,
+    *,
+    proc_params: dict[str, Any],
+    range_roi: tuple[float, float] = DEFAULT_RANGE_ROI,
+    cfar_detector: CFARDetector | None = None,
+    device: torch.device | str | None = None,
+) -> float:
+    """预裁切 ROI 复数距离谱 → 1D ESPRIT 最强峰距离 (m)。"""
+    return estimate_monostatic_range_esprit_m(
+        profile_roi,
+        range_bin_step=float(proc_params["range_bin_step"]),
+        range_roi=range_roi,
+        num_sources=int(proc_params["esprit_num_sources"]),
+        subarray_size=int(proc_params["esprit_subarray_size"]),
+        window_size=int(proc_params["esprit_window_size"]),
+        cfar_detector=cfar_detector,
+        device=device,
+    )
+
+
 def music_range_from_divide_cpi(
     divide_cpi: Sequence[complex] | np.ndarray | torch.Tensor,
     *,
@@ -434,13 +476,10 @@ def music_range_from_divide_cpi(
             zeropadding_fac=int(proc_params["zeropadding_fac"]),
             transpose_len=int(proc_params["transpose_len"]),
         )
-    return estimate_monostatic_range_m(
+    return music_range_from_roi_profile(
         profile_roi,
-        range_bin_step=float(proc_params["range_bin_step"]),
+        proc_params=proc_params,
         range_roi=range_roi,
-        num_sources=int(proc_params["music_num_sources"]),
-        subarray_size=int(proc_params["music_subarray_size"]),
-        threshold=float(proc_params["music_threshold"]),
         cfar_detector=cfar_detector,
         device=device,
     )
@@ -477,13 +516,10 @@ def esprit_range_from_divide_cpi(
             zeropadding_fac=int(proc_params["zeropadding_fac"]),
             transpose_len=int(proc_params["transpose_len"]),
         )
-    return estimate_monostatic_range_esprit_m(
+    return esprit_range_from_roi_profile(
         profile_roi,
-        range_bin_step=float(proc_params["range_bin_step"]),
+        proc_params=proc_params,
         range_roi=range_roi,
-        num_sources=int(proc_params["esprit_num_sources"]),
-        subarray_size=int(proc_params["esprit_subarray_size"]),
-        window_size=int(proc_params["esprit_window_size"]),
         cfar_detector=cfar_detector,
         device=device,
     )

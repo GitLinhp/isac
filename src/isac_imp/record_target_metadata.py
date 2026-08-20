@@ -144,6 +144,141 @@ def append_mono_range_target_row(
     return csv_path
 
 
+def _is_empty_mono_range_csv_row(row: dict[str, str]) -> bool:
+    return not any((row.get(col) or "").strip() for col in MONO_RANGE_TARGET_CSV_COLUMNS)
+
+
+def _mono_range_sort_key(row: dict[str, str]) -> tuple[float, str]:
+    return (float(row["target_range_m"]), row.get("recorded_at_utc") or "")
+
+
+def _read_mono_range_target_rows(csv_path: Path) -> list[dict[str, str]]:
+    with csv_path.open(newline="", encoding="utf-8") as csv_f:
+        return [
+            row
+            for row in csv.DictReader(csv_f)
+            if not _is_empty_mono_range_csv_row(row)
+        ]
+
+
+def _write_mono_range_target_rows(csv_path: Path, rows: list[dict[str, str]]) -> None:
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", newline="", encoding="utf-8") as csv_f:
+        writer = csv.DictWriter(csv_f, fieldnames=MONO_RANGE_TARGET_CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def sort_mono_range_target_csv(
+    csv_path: str | Path,
+    *,
+    backup_suffix: str = ".bak",
+) -> Path:
+    """按 target_range_m、recorded_at_utc 升序整理 CSV，删除空行。"""
+    path = Path(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+
+    rows = _read_mono_range_target_rows(path)
+
+    if backup_suffix:
+        backup_path = path.with_name(path.name + backup_suffix)
+        shutil.copy2(path, backup_path)
+
+    rows.sort(key=_mono_range_sort_key)
+    _write_mono_range_target_rows(path, rows)
+
+    print(f"{_LOG_PREFIX} mono_range sorted {len(rows)} rows → {path}", file=sys.stderr)
+    return path
+
+
+def round_mono_range_labels(
+    csv_path: str | Path,
+    *,
+    ndigits: int = 2,
+    backup_suffix: str = "",
+) -> Path:
+    """将 ``target_range_m`` 四舍五入到 ``ndigits`` 位小数并写回 CSV。"""
+    path = Path(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+
+    rows = _read_mono_range_target_rows(path)
+    if backup_suffix:
+        backup_path = path.with_name(path.name + backup_suffix)
+        shutil.copy2(path, backup_path)
+
+    for row in rows:
+        rounded = round(float(row["target_range_m"]), ndigits)
+        row["target_range_m"] = f"{rounded:.{ndigits}f}"
+
+    _write_mono_range_target_rows(path, rows)
+    print(
+        f"{_LOG_PREFIX} mono_range rounded {len(rows)} labels to {ndigits} dp → {path}",
+        file=sys.stderr,
+    )
+    return path
+
+
+def prune_unreferenced_mono_range_data(
+    parent_dir: str | Path,
+    *,
+    dry_run: bool = False,
+) -> tuple[list[Path], list[Path]]:
+    """删除目录内未被 ``target_positions.csv`` 引用的杂项文件。
+
+    保留 CSV、``.h5``、``.bak`` 与 CSV 备份；删除未引用的
+    ``divide_profiles_*`` 以及 ``Untitled`` 等无关文件。
+    """
+    parent = Path(parent_dir)
+    root_csv = parent / COOPERATIVE_TARGET_CSV
+    if not root_csv.is_file():
+        raise FileNotFoundError(root_csv)
+
+    rows = _read_mono_range_target_rows(root_csv)
+    referenced: set[str] = {row["data_file"] for row in rows}
+
+    on_disk: list[Path] = []
+    for path in parent.iterdir():
+        if not path.is_file():
+            continue
+        name = path.name
+        if name == COOPERATIVE_TARGET_CSV:
+            continue
+        if name.endswith(".h5") or name.endswith(".bak"):
+            continue
+        if name.startswith(COOPERATIVE_TARGET_CSV + "."):
+            continue
+        on_disk.append(path)
+
+    deleted: list[Path] = []
+    for path in on_disk:
+        rel = str(path.relative_to(parent))
+        if rel not in referenced:
+            deleted.append(path)
+            if not dry_run:
+                path.unlink()
+
+    missing_referenced: list[Path] = []
+    for rel in sorted(referenced):
+        path = parent / rel
+        if not path.is_file():
+            missing_referenced.append(path)
+
+    action = "would delete" if dry_run else "deleted"
+    print(
+        f"{_LOG_PREFIX} mono_range referenced={len(referenced)} on_disk={len(on_disk)} "
+        f"{action}={len(deleted)} missing={len(missing_referenced)}",
+        file=sys.stderr,
+    )
+    if missing_referenced:
+        print(
+            f"{_LOG_PREFIX} warning: {len(missing_referenced)} referenced files missing",
+            file=sys.stderr,
+        )
+    return deleted, missing_referenced
+
+
 def _is_empty_csv_row(row: dict[str, str]) -> bool:
     return not any((row.get(col) or "").strip() for col in CSV_COLUMNS)
 

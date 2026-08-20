@@ -19,10 +19,12 @@ from isac_imp.cooperative_monostatic_pipeline import (
     divide_cpi_to_complex_range_profile,
     divide_cpi_to_roi_range_profile,
     esprit_range_from_divide_cpi,
+    esprit_range_from_roi_profile,
     estimate_monostatic_range_esprit_m,
     estimate_monostatic_range_m,
     grc_cooperative_processing_params,
     music_range_from_divide_cpi,
+    music_range_from_roi_profile,
 )
 
 
@@ -251,3 +253,43 @@ def test_full_spectrum_vs_roi_spectrum_music_esprit_equivalent() -> None:
         assert np.isnan(r_esprit_entry)
     else:
         assert r_esprit_entry == pytest.approx(r_esprit_roi, rel=0, abs=1e-6)
+
+
+def test_music_esprit_roi_entry_matches_divide_cpi() -> None:
+    """``*_from_roi_profile`` 与 ``*_from_divide_cpi`` 在同一随机 CPI 上等价。"""
+    params = grc_cooperative_processing_params()
+    range_roi = params["range_roi"]
+    vlen = int(params["vlen_divide_cpi"])
+    rng = np.random.default_rng(7)
+    cpi = (rng.normal(size=vlen) + 1j * rng.normal(size=vlen)).astype(np.complex64)
+
+    profile_roi = divide_cpi_to_roi_range_profile(
+        cpi,
+        range_bin_step=float(params["range_bin_step"]),
+        range_roi=range_roi,
+        fft_len=int(params["fft_len"]),
+        zeropadding_fac=int(params["zeropadding_fac"]),
+        transpose_len=int(params["transpose_len"]),
+    )
+
+    r_music_div = music_range_from_divide_cpi(
+        cpi, proc_params=params, range_roi=range_roi
+    )
+    r_music_roi = music_range_from_roi_profile(
+        profile_roi, proc_params=params, range_roi=range_roi
+    )
+    r_esprit_div = esprit_range_from_divide_cpi(
+        cpi, proc_params=params, range_roi=range_roi
+    )
+    r_esprit_roi = esprit_range_from_roi_profile(
+        profile_roi, proc_params=params, range_roi=range_roi
+    )
+
+    if np.isnan(r_music_div):
+        assert np.isnan(r_music_roi)
+    else:
+        assert r_music_roi == pytest.approx(r_music_div, rel=0, abs=1e-6)
+    if np.isnan(r_esprit_div):
+        assert np.isnan(r_esprit_roi)
+    else:
+        assert r_esprit_roi == pytest.approx(r_esprit_div, rel=0, abs=1e-6)

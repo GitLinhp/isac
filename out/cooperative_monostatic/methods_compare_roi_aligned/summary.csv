@@ -1,0 +1,4 @@
+method,global_mean_err_m,inner_mean_err_m,outer_mean_err_m,n_samples,eval_s,mean_ms_per_sample,device,csv_path
+music,0.937073609707677,0.5987574453838389,1.3624726246426897,10752,14.713087172945961,1.3694236013538683,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_roi_aligned/music/music_rmse.csv
+esprit,0.9656268356230149,0.6271685737421588,1.39120452413959,10752,22.20545376103837,2.066777155718389,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_roi_aligned/esprit/esprit_rmse.csv
+cnn,0.5785832847695356,0.3549014975596666,0.859840942464246,10752,6.168439080007374,0.5741287304548933,cuda:0,/home/lhp/projects/isac/out/cooperative_monostatic/methods_compare_roi_aligned/cnn/cnn_rmse.csv

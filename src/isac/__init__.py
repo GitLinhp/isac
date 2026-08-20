@@ -50,4 +50,16 @@ DEFAULT_BISTATIC_SENSING_CNN_MODEL = (
 DEFAULT_MONOSTATIC_CNN_DIR = DEFAULT_SENSING_CNN_DIR / "monostatic"
 DEFAULT_MONOSTATIC_CNN_MODEL = DEFAULT_SENSING_CNN_MODEL
 
+# --- 小米单站测距 ---
+DEFAULT_XIAOMI_SINGLE_BS_RANGE_H5 = (
+    DATA_DIR
+    / "xiaomi"
+    / "usrp_ofdm_single_bs_range_train"
+    / "usrp_ofdm_single_bs_range_dataset.h5"
+)
+DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_DIR = MODELS_DIR / "xiaomi_single_bs_range_cnn"
+DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_MODEL = (
+    DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_DIR / "best_model.pth"
+)
+
 __version__ = "0.1.0"
