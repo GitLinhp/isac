@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """单站测距 CNN / MUSIC / ESPRIT 距离估计性能对比。
 
-默认在 train H5 上评测；日后可通过 ``--h5-path`` 切换验证集。
+默认在 val H5 上评测；可通过 ``--h5-path`` 切换训练集或其他 HDF5。
 
 示例::
 
@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from isac import (
     DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_MODEL,
-    DEFAULT_XIAOMI_SINGLE_BS_RANGE_H5,
+    DEFAULT_XIAOMI_SINGLE_BS_RANGE_VAL_H5,
     PROJECT_ROOT,
 )
 from isac.xiaomi_models import (
@@ -333,8 +333,8 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--h5-path",
         type=Path,
-        default=DEFAULT_XIAOMI_SINGLE_BS_RANGE_H5,
-        help="input single-BS range HDF5 (default: train set)",
+        default=DEFAULT_XIAOMI_SINGLE_BS_RANGE_VAL_H5,
+        help="input single-BS range HDF5 (default: val set)",
     )
     parser.add_argument(
         "--checkpoint",

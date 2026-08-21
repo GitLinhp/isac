@@ -57,6 +57,12 @@ DEFAULT_XIAOMI_SINGLE_BS_RANGE_H5 = (
     / "usrp_ofdm_single_bs_range_train"
     / "usrp_ofdm_single_bs_range_dataset.h5"
 )
+DEFAULT_XIAOMI_SINGLE_BS_RANGE_VAL_H5 = (
+    DATA_DIR
+    / "xiaomi"
+    / "usrp_ofdm_single_bs_range_val"
+    / "usrp_ofdm_single_bs_range_dataset.h5"
+)
 DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_DIR = MODELS_DIR / "xiaomi_single_bs_range_cnn"
 DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_MODEL = (
     DEFAULT_XIAOMI_SINGLE_BS_RANGE_CNN_DIR / "best_model.pth"
